@@ -4552,7 +4552,7 @@ async function copilotTentarAPI(userMsg) {
     COP.messages.push({ role: 'bot', text: fullText });
 
     // Chips contextuais pós-resposta
-    copilotSetChips(['O que é BDI?','Ir para o módulo','O que é BDI?','Meu orçamento atual']);
+    copilotSetChips(['Ir para Elaborar','Ir para BDI','Ir para ABC','Meu orçamento atual']);
     return true;
 
   } catch(err) {
@@ -4566,14 +4566,19 @@ async function copilotTentarAPI(userMsg) {
 window.addEventListener('load', () => setTimeout(copilotTestarServidor, 3000));
 
 async function copilotResponder(txt) {
-  // Tenta API Anthropic primeiro (se servidor disponível)
-  const usouAPI = await copilotTentarAPI(txt);
-  if (usouAPI) return;
-
   // Normaliza o texto: remove acentos, pontuação, minúsculas
   const norm = txt.toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g,'')
     .replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+
+  const localFirst = /^(ir|abrir|acessar)\b/.test(norm)
+    || /^(o que e bdi|meu orcamento atual|o que posso fazer aqui|sim me guie|como importar|como exportar)$/.test(norm);
+
+  // Comandos de navegação e chips previsíveis são locais para não prender o usuário em chamadas externas.
+  if (!localFirst) {
+    const usouAPI = await copilotTentarAPI(txt);
+    if (usouAPI) return;
+  }
 
   // ══ MAPA DE TÓPICOS ═══════════════════════════════════════
   // Cada entrada: array de palavras/frases que disparam a resposta
@@ -4677,6 +4682,12 @@ async function copilotResponder(txt) {
   ];
 
   // ══ NAVEGAÇÃO DIRETA ══════════════════════════════════════
+  if (/^ir para( o)? modulo$|^abrir( o)? modulo$|^acessar( o)? modulo$/.test(norm)) {
+    copilotBotMsg('Claro. Qual módulo você quer abrir?');
+    copilotSetChips(['Ir para Elaborar','Ir para BDI','Ir para ABC','Ir para Auditoria','Ir para Importar','Ir para CPU']);
+    return;
+  }
+
   const navMap = [
     { keys:['ir para bdi','abrir bdi','acessar bdi','modulo bdi','ir para encargos'], view:'bdi' },
     { keys:['ir para curva','ir para abc','abrir abc','curva abc'], view:'curvaABC' },
@@ -4726,7 +4737,7 @@ async function copilotResponder(txt) {
       const kb = COPILOT_KB[entry];
       if (kb && kb.r) {
         copilotBotMsg(kb.r);
-        copilotSetChips(kb.chips || ['O que é BDI?','Ir para o módulo','O que é BDI?']);
+        copilotSetChips(kb.chips || ['Ir para Elaborar','Ir para BDI','Ir para ABC','Meu orçamento atual']);
         return;
       }
     }
