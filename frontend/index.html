@@ -709,20 +709,20 @@
 <!-- ═══════════════ IMPORTAR EDITAL ═══════════════ -->
 <div id="view-importar" class="view">
   <div class="page-title">Importar <span class="gold-text">Edital</span></div>
-  <div class="page-sub">Extraia itens de planilhas em PDF ou Excel (.xlsx) e importe diretamente ao orçamento</div>
+  <div class="page-sub">Extraia itens de um lote de PDFs, imagens digitalizadas ou planilhas e revise antes de enviar ao orçamento</div>
 
   <!-- Passo 1: Upload -->
   <div class="card" style="margin-bottom:16px" id="imp-card-upload">
-    <div class="sec-header"><div class="sec-title">&#x31;&#xFE0F;&#x20E3; Selecionar <span>Arquivo</span></div></div>
+    <div class="sec-header"><div class="sec-title">&#x31;&#xFE0F;&#x20E3; Selecionar <span>Arquivos</span></div></div>
     <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
          ondragover="event.preventDefault();this.classList.add('dragover')"
          ondragleave="this.classList.remove('dragover')"
          ondrop="handleDrop(event)">
       <div class="upload-icon">&#128196;</div>
-      <p>Clique para selecionar ou arraste o arquivo aqui</p>
-      <small>Suportado: PDF digital (gerado por computador) · Excel .xlsx · .xls · .ods</small>
+      <p>Clique para selecionar ou arraste os arquivos aqui</p>
+      <small>Suportado: PDF digital ou escaneado, imagens .png/.jpg/.tiff, Excel .xlsx/.xls/.ods e CSV</small>
     </div>
-    <input id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.ods,.csv" style="display:none" onchange="handleFileSelect(event)"/>
+    <input id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.ods,.csv,.png,.jpg,.jpeg,.tif,.tiff" multiple style="display:none" onchange="handleFileSelect(event)"/>
     <div id="imp-file-chip" style="margin-top:12px;display:none"></div>
 
     <div style="margin-top:16px">
@@ -755,7 +755,7 @@
 
   <!-- Passo 2: Progresso -->
   <div class="card" style="margin-bottom:16px;display:none" id="imp-card-progress">
-    <div class="sec-header"><div class="sec-title">&#x32;&#xFE0F;&#x20E3; Processando <span>Arquivo</span></div></div>
+    <div class="sec-header"><div class="sec-title">&#x32;&#xFE0F;&#x20E3; Processando <span>Arquivos</span></div></div>
     <div id="imp-steps"></div>
     <div class="progress-ring">
       <span id="imp-prog-label" style="font-size:12px;color:var(--text2);min-width:120px">Aguardando...</span>
@@ -771,6 +771,7 @@
         <div class="sec-title">&#x33;&#xFE0F;&#x20E3; Revisar <span>Itens Extraídos</span></div>
         <div class="flex">
           <span id="imp-rev-stats" style="font-size:12px;color:var(--text2)"></span>
+          <button class="btn btn-outline btn-sm" onclick="exportarMemoriaImportacao()">Mem&oacute;ria .md</button>
           <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(true)">Todos</button>
           <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(false)">Nenhum</button>
         </div>

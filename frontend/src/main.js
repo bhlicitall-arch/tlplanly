@@ -872,38 +872,96 @@ window.addEventListener('DOMContentLoaded', () => {
 // ═══════════════════════════════════════════════════════════
 let IMP = {
   file: null,
+  files: [],
   rawItems: [],      // itens extraídos brutos
   reviewed: [],      // itens com match SINAPI
+  importResults: [],
+  markdown: '',
   filtro: 'todos'
 };
 
+const IMPORT_EXTS = ['pdf','xlsx','xls','ods','csv','png','jpg','jpeg','tif','tiff'];
+const IMAGE_EXTS = ['png','jpg','jpeg','tif','tiff'];
+const SPREADSHEET_EXTS = ['xlsx','xls','ods','csv'];
+
 function handleFileSelect(e) {
-  const f = e.target.files[0];
-  if (f) setImportFile(f);
+  setImportFiles(Array.from(e.target.files || []));
 }
 
 function handleDrop(e) {
   e.preventDefault();
   document.getElementById('uploadZone').classList.remove('dragover');
-  const f = e.dataTransfer.files[0];
-  if (f) setImportFile(f);
+  setImportFiles(Array.from(e.dataTransfer.files || []));
 }
 
 function setImportFile(f) {
-  IMP.file = f;
-  const ext = f.name.split('.').pop().toLowerCase();
-  const icon = ext === 'pdf' ? '📄' : '📊';
-  const chip = document.getElementById('imp-file-chip');
-  chip.style.display = 'block';
-  chip.innerHTML = `<div class="file-chip">${icon} <span>${f.name}</span> <span style="color:var(--text3)">(${(f.size/1024).toFixed(0)} KB)</span> <span class="chip-remove" onclick="removerArquivo()">×</span></div>`;
-  document.getElementById('btnExtract').disabled = false;
+  setImportFiles(f ? [f] : []);
 }
 
-function removerArquivo() {
-  IMP.file = null;
-  document.getElementById('imp-file-chip').style.display = 'none';
-  document.getElementById('btnExtract').disabled = true;
-  document.getElementById('fileInput').value = '';
+function setImportFiles(files) {
+  const validos = files.filter(f => IMPORT_EXTS.includes(getFileExt(f)));
+  if (!validos.length) {
+    toast('Selecione PDF, Excel, CSV ou imagem digitalizada.', 'error');
+    return;
+  }
+  if (validos.length !== files.length) {
+    toast('Alguns arquivos foram ignorados por formato não suportado.', 'info');
+  }
+
+  IMP.files = validos;
+  IMP.file = validos[0] || null;
+  IMP.markdown = '';
+  renderImportFileChips();
+  document.getElementById('btnExtract').disabled = !IMP.files.length;
+}
+
+function getFileExt(file) {
+  return (file?.name || '').split('.').pop().toLowerCase();
+}
+
+function getImportFileIcon(file) {
+  const ext = getFileExt(file);
+  if (ext === 'pdf') return '📄';
+  if (IMAGE_EXTS.includes(ext)) return '🖼️';
+  return '📊';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderImportFileChips() {
+  const chip = document.getElementById('imp-file-chip');
+  if (!chip) return;
+  if (!IMP.files.length) {
+    chip.style.display = 'none';
+    chip.innerHTML = '';
+    return;
+  }
+
+  chip.style.display = 'block';
+  chip.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${IMP.files.map((f, idx) => `<div class="file-chip">${getImportFileIcon(f)} <span>${escapeHtml(f.name)}</span> <span style="color:var(--text3)">(${(f.size/1024).toFixed(0)} KB)</span> <span class="chip-remove" onclick="removerArquivo(${idx})">×</span></div>`).join('')}
+    </div>
+    <small style="display:block;margin-top:4px;color:var(--text3)">${IMP.files.length} arquivo(s) selecionado(s). PDFs escaneados e imagens serão processados por OCR.</small>
+  `;
+}
+
+function removerArquivo(index = null) {
+  if (Number.isInteger(index)) IMP.files.splice(index, 1);
+  else IMP.files = [];
+
+  IMP.file = IMP.files[0] || null;
+  renderImportFileChips();
+  document.getElementById('btnExtract').disabled = !IMP.files.length;
+  const input = document.getElementById('fileInput');
+  if (input && !IMP.files.length) input.value = '';
 }
 
 function resetarImportacao() {
@@ -911,7 +969,7 @@ function resetarImportacao() {
   document.getElementById('imp-card-progress').style.display = 'none';
   document.getElementById('imp-card-review').style.display = 'none';
   document.getElementById('imp-card-upload').style.display = 'block';
-  IMP.rawItems = []; IMP.reviewed = [];
+  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = '';
 }
 
 function setStep(steps, idx, status, statusText) {
@@ -932,8 +990,8 @@ function setProgress(pct, label) {
 }
 
 async function iniciarExtracao() {
-  if (!IMP.file) return;
-  const ext = IMP.file.name.split('.').pop().toLowerCase();
+  const files = IMP.files.length ? IMP.files : (IMP.file ? [IMP.file] : []);
+  if (!files.length) return;
 
   // Show progress card
   document.getElementById('imp-card-upload').style.display = 'none';
@@ -941,9 +999,9 @@ async function iniciarExtracao() {
   document.getElementById('imp-card-review').style.display = 'none';
 
   const stepsHtml = [
-    ['Lendo arquivo', 'Aguardando'],
-    ['Extraindo linhas', 'Aguardando'],
-    ['Detectando colunas', 'Aguardando'],
+    ['Lendo lote', `${files.length} arquivo(s)`],
+    ['Extraindo linhas / OCR', 'Aguardando'],
+    ['Normalizando itens', 'Aguardando'],
     ['Match com SINAPI', 'Aguardando'],
   ].map((s, i) => `<div class="imp-step" id="imp-step-${i}">
     <div class="imp-step-num">${i+1}</div>
@@ -957,17 +1015,33 @@ async function iniciarExtracao() {
 
   try {
     let items = [];
-    if (ext === 'pdf') {
-      items = await extrairDePDF(IMP.file);
-    } else {
-      items = await extrairDeExcel(IMP.file);
+    let results = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setStep(null, 0, 'spin', `${i+1}/${files.length}`);
+      setStep(null, 1, 'spin', file.name);
+      setProgress(Math.min(15 + Math.round((i / files.length) * 55), 65), `Extraindo ${i+1}/${files.length}: ${file.name}`);
+
+      const result = await extrairArquivoImportacao(file, i, files.length);
+      results.push(result);
+      items = items.concat(result.items);
     }
 
-    setStep(null, 2, 'done', `${items.length} linhas`);
-    setProgress(70, 'Detectando colunas...');
+    IMP.rawItems = items;
+    IMP.importResults = results;
+    IMP.markdown = gerarMemoriaImportacao(results);
+
+    if (!items.length) {
+      throw new Error('Nenhum item orçamentário foi identificado. Verifique a qualidade do arquivo ou tente uma imagem/PDF com melhor resolução.');
+    }
+
+    setStep(null, 0, 'done', `${files.length} arquivo(s)`);
+    setStep(null, 1, 'done', `${items.length} itens`);
+    setStep(null, 2, 'spin', 'Preparando revisão...');
+    setProgress(70, 'Normalizando itens...');
     await sleep(100);
     setStep(null, 2, 'done', 'OK');
-    setStep(null, 3, 'done', 'OK');
     setProgress(80, 'Fazendo match com SINAPI...');
     await sleep(50);
 
@@ -983,6 +1057,158 @@ async function iniciarExtracao() {
     toast('Erro na extração: ' + err.message, 'error');
     console.error(err);
   }
+}
+
+async function extrairArquivoImportacao(file, index = 0, total = 1) {
+  const ext = getFileExt(file);
+  let metodo = 'desconhecido';
+  let items = [];
+  let rawText = '';
+  let aviso = '';
+
+  if (ext === 'pdf') {
+    metodo = 'PDF digital';
+    try {
+      items = await extrairDePDF(file);
+    } catch (err) {
+      aviso = `Falha na extração digital: ${err.message}`;
+      items = [];
+    }
+
+    if (items.length < 1) {
+      metodo = 'OCR';
+      const ocr = await extrairDeOCRImportacao(file, index, total);
+      items = ocr.items;
+      rawText = ocr.text;
+    }
+  } else if (IMAGE_EXTS.includes(ext)) {
+    metodo = 'OCR imagem';
+    const ocr = await extrairDeOCRImportacao(file, index, total);
+    items = ocr.items;
+    rawText = ocr.text;
+  } else if (SPREADSHEET_EXTS.includes(ext)) {
+    metodo = 'Planilha';
+    items = await extrairDeExcel(file);
+  } else {
+    throw new Error(`Formato não suportado: ${file.name}`);
+  }
+
+  items = items.map((it, itemIndex) => ({
+    ...it,
+    origemArquivo: file.name,
+    origemMetodo: metodo,
+    origemIndice: itemIndex + 1,
+    origem: it.origem || metodo.toLowerCase()
+  }));
+
+  return { fileName: file.name, size: file.size, ext, metodo, aviso, items, rawText };
+}
+
+async function extrairDeOCRImportacao(file, fileIndex = 0, totalFiles = 1) {
+  if (!window.Tesseract) {
+    throw new Error('OCR indisponível: Tesseract.js não carregou.');
+  }
+  if (!window.pdfjsLib && getFileExt(file) === 'pdf') {
+    throw new Error('PDF.js não carregou para converter o PDF escaneado.');
+  }
+
+  const lang = document.getElementById('ocr-lang')?.value || 'por';
+  const psm = document.getElementById('ocr-mode')?.value || '6';
+  const ext = getFileExt(file);
+  let fullText = '';
+
+  if (ext === 'pdf') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const ab = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+    const pagIni = parseInt(document.getElementById('imp-pag-ini').value) || 1;
+    const pagFimRaw = parseInt(document.getElementById('imp-pag-fim').value) || 0;
+    const fim = pagFimRaw === 0 ? pdf.numPages : Math.min(pagFimRaw, pdf.numPages);
+
+    for (let p = pagIni; p <= fim; p++) {
+      const pctArquivo = (p - pagIni + 1) / Math.max(1, fim - pagIni + 1);
+      const pctLote = (fileIndex + pctArquivo) / Math.max(1, totalFiles);
+      setProgress(Math.min(20 + Math.round(pctLote * 50), 70), `OCR ${file.name} - página ${p}/${fim}`);
+
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 2.2 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+      const result = await Tesseract.recognize(canvas, lang, { tessedit_pageseg_mode: psm });
+      fullText += `\n\n--- Página ${p} ---\n${result.data.text}`;
+      await sleep(20);
+    }
+  } else {
+    setProgress(Math.min(20 + Math.round((fileIndex / Math.max(1, totalFiles)) * 50), 70), `OCR ${file.name}`);
+    const result = await Tesseract.recognize(file, lang, {
+      tessedit_pageseg_mode: psm,
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const pctLote = (fileIndex + m.progress) / Math.max(1, totalFiles);
+          setProgress(Math.min(20 + Math.round(pctLote * 50), 70), `OCR ${file.name}`);
+        }
+      }
+    });
+    fullText = result.data.text;
+  }
+
+  const items = parsearLinhas(fullText.split('\n')).map(it => ({ ...it, origem: 'ocr' }));
+  return { items, text: fullText };
+}
+
+function gerarMemoriaImportacao(results) {
+  const linhas = [
+    '# Memória de Importação - TLPlanly',
+    '',
+    `Gerado em: ${new Date().toLocaleString('pt-BR')}`,
+    '',
+    '## Arquivos processados',
+    ''
+  ];
+
+  results.forEach((r, idx) => {
+    linhas.push(`${idx + 1}. **${r.fileName}** - ${r.metodo} - ${r.items.length} item(ns)`);
+    if (r.aviso) linhas.push(`   - Aviso: ${r.aviso}`);
+  });
+
+  linhas.push('', '## Itens extraídos', '');
+  linhas.push('| Arquivo | Método | Código | Descrição | Unid. | Qtd. | Preço |');
+  linhas.push('|---|---|---:|---|---:|---:|---:|');
+
+  results.forEach(r => {
+    r.items.forEach(item => {
+      linhas.push(`| ${mdCell(r.fileName)} | ${mdCell(r.metodo)} | ${mdCell(item.cod || '-')} | ${mdCell(item.desc || '-')} | ${mdCell(item.unid || 'UN')} | ${item.qtd || 0} | ${item.preco || 0} |`);
+    });
+  });
+
+  linhas.push('', '## Observação técnica', '');
+  linhas.push('O Markdown é usado como memória de conferência e rastreabilidade. A importação operacional do orçamento usa dados estruturados para preservar código, descrição, unidade, quantidade, preço e origem.');
+
+  return linhas.join('\n');
+}
+
+function mdCell(value) {
+  return String(value ?? '').replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
+}
+
+function exportarMemoriaImportacao() {
+  if (!IMP.markdown && IMP.importResults.length) IMP.markdown = gerarMemoriaImportacao(IMP.importResults);
+  if (!IMP.markdown) {
+    toast('Extraia os arquivos antes de gerar a memória .md.', 'error');
+    return;
+  }
+  const blob = new Blob([IMP.markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `memoria_importacao_tlplanly_${new Date().toISOString().slice(0,10)}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ─── PDF PARSER ────────────────────────────────────────────
@@ -1232,6 +1458,9 @@ function renderRevisao() {
     const sugestaoHtml = r.matchTipo === 'parcial'
       ? `<div style="font-size:10px;color:var(--gold);margin-top:2px">Sugestão: ${r.sugestao} — ${r.refDesc?.substring(0,50)}</div>`
       : '';
+    const origemHtml = r.origemArquivo
+      ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Origem: ${escapeHtml(r.origemArquivo)}${r.origemMetodo ? ' · ' + escapeHtml(r.origemMetodo) : ''}</div>`
+      : '';
 
     return `<div class="rev-row">
       <input type="checkbox" ${r.selecionado?'checked':''} onchange="IMP.reviewed[${globalIdx}].selecionado=this.checked;atualizarStatsRevisao()"/>
@@ -1239,6 +1468,7 @@ function renderRevisao() {
       <span style="flex:1;min-width:0">
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.desc}">${r.desc}</div>
         ${sugestaoHtml}
+        ${origemHtml}
       </span>
       <span style="width:45px;flex-shrink:0;color:var(--text2)">${r.unid}</span>
       <span style="width:60px;flex-shrink:0;color:var(--text2)">${fmtNum(r.qtd)}</span>
@@ -1279,7 +1509,7 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
 
     // Use suggested SINAPI code if partial match and no original code
     const cod = r.cod || r.sugestao || 'IMP';
-    return { cod, desc: r.desc, unid: r.unid, qtd: r.qtd, preco: preco||0, ref: r.refSinapi||0, cat };
+    return { cod, desc: r.desc, unid: r.unid, qtd: r.qtd, preco: preco||0, ref: r.refSinapi||0, cat, origemArquivo: r.origemArquivo || '', origemMetodo: r.origemMetodo || '' };
   });
 
   if (acao === 'substituir') STATE.orcamento = novos;
@@ -1712,13 +1942,23 @@ async function iniciarOCR(file) {
       }
 
       updateOCRProg(95, 'Parseando texto extraído...');
-      const items = parsearLinhas(fullText.split('\n'));
+      const items = parsearLinhas(fullText.split('\n')).map((it, itemIndex) => ({
+        ...it,
+        origemArquivo: file.name,
+        origemMetodo: 'OCR',
+        origemIndice: itemIndex + 1,
+        origem: 'ocr'
+      }));
       const reviewed = items.map(it => matchSINAPI(it));
       updateOCRProg(100, `OCR concluído: ${reviewed.length} itens`);
 
       // Hand off to review flow
+      IMP.files = [file];
+      IMP.rawItems = items;
       IMP.reviewed = reviewed;
       IMP.file = file;
+      IMP.importResults = [{ fileName: file.name, size: file.size, ext, metodo: 'OCR', aviso: '', items, rawText: fullText }];
+      IMP.markdown = gerarMemoriaImportacao(IMP.importResults);
       mostrarRevisao();
       showView('importar');
       toast(`OCR concluído: ${reviewed.length} itens extraídos`, 'success');
@@ -1735,11 +1975,21 @@ async function iniciarOCR(file) {
       });
       document.getElementById('ocr-pages-grid').innerHTML = '<div class="ocr-page-thumb done">Imagem</div>';
       updateOCRProg(95, 'Parseando...');
-      const items = parsearLinhas(result.data.text.split('\n'));
+      const items = parsearLinhas(result.data.text.split('\n')).map((it, itemIndex) => ({
+        ...it,
+        origemArquivo: file.name,
+        origemMetodo: 'OCR imagem',
+        origemIndice: itemIndex + 1,
+        origem: 'ocr'
+      }));
       const reviewed = items.map(it => matchSINAPI(it));
       updateOCRProg(100, `OCR concluído: ${reviewed.length} itens`);
+      IMP.files = [file];
+      IMP.rawItems = items;
       IMP.reviewed = reviewed;
       IMP.file = file;
+      IMP.importResults = [{ fileName: file.name, size: file.size, ext, metodo: 'OCR imagem', aviso: '', items, rawText: result.data.text }];
+      IMP.markdown = gerarMemoriaImportacao(IMP.importResults);
       mostrarRevisao();
       showView('importar');
       toast(`OCR: ${reviewed.length} itens extraídos`, 'success');
@@ -2751,14 +3001,14 @@ const COPILOT_KB = {
   // ── IMPORTAÇÃO ────────────────────────────────────────
   importar: {
     q: ['importar edital','importar planilha','importar pdf','abrir edital','ler pdf','importar excel'],
-    r: `**Como importar planilhas de editais:** 📄\n\n**PDF Digital** (texto selecionável):\n1. Ir em **Importar Edital** no menu\n2. Arraste o PDF ou clique para selecionar\n3. Configure página inicial/final se necessário\n4. Clique **"Extrair Dados"** — extração automática\n5. Revise os itens e faça o match com SINAPI\n6. Confirme importação\n\n**Excel (.xlsx/.xls):**\nMesmo fluxo — o sistema detecta o cabeçalho automaticamente.\n\n**PDF Escaneado** (imagem):\n1. Ir em **Bases de Referência → OCR**\n2. Selecione o PDF escaneado\n3. O OCR (Tesseract.js) processa localmente — 100% privado\n\n💡 Taxa de sucesso: PDFs digitais ~85%, escaneados ~70%.`,
-    chips: ['Ir para Importar','OCR PDF escaneado?','Ir para Bases']
+    r: `**Como importar planilhas de editais:** 📄\n\n1. Ir em **Importar Edital** no menu\n2. Arraste **todos os arquivos do edital/planilha** de uma vez: PDF digital, PDF escaneado, imagens, Excel, ODS ou CSV\n3. Configure página inicial/final se necessário\n4. Clique **"Extrair Dados"**\n5. O sistema tenta texto digital primeiro e aciona **OCR automático** quando o arquivo for digitalizado\n6. Revise os itens, confira a origem de cada linha e baixe a **Memória .md** se quiser rastreabilidade\n7. Confirme para **Elaboração** ou **Auditoria**\n\n💡 Para orçamento, o TLPlanly usa dados estruturados. O Markdown entra como memória de conferência, não como substituto da planilha.`,
+    chips: ['Ir para Importar','OCR PDF escaneado?','Memória .md']
   },
 
   ocr: {
     q: ['ocr','pdf escaneado','imagem pdf','digitalizado','reconhecimento texto'],
-    r: `**OCR — Reconhecimento de Texto em PDFs Escaneados** 🔍\n\nO TLPlanly usa **Tesseract.js**, biblioteca de OCR que roda **100% no seu navegador**.\n\n✅ **Vantagens:**\n• Nenhum dado sai do seu computador\n• Funciona sem internet\n• Suporta português e inglês\n\n**Passos:**\n1. Bases de Referência → seção OCR\n2. Selecione idioma (Português recomendado)\n3. Modo: "Bloco uniforme" para planilhas\n4. Arraste o PDF escaneado\n5. O sistema processa página a página com progresso visual\n6. Os itens extraídos vão automaticamente para a fila de revisão\n\n⚠️ PDFs de qualidade baixa (foto torta, manchada) reduzem a precisão. Resolução mínima recomendada: 200 DPI.`,
-    chips: ['Ir para Bases','Como importar edital?','Dica de qualidade OCR']
+    r: `**OCR — Reconhecimento de Texto em PDFs Escaneados** 🔍\n\nO TLPlanly usa **Tesseract.js** no navegador. No módulo **Importar Edital**, o OCR agora entra automaticamente quando o PDF não tem texto aproveitável ou quando você envia imagem digitalizada.\n\n✅ **Vantagens:**\n• Aceita lote com PDF + anexos + imagens\n• Mantém a origem de cada item extraído\n• Gera **Memória .md** para conferência\n\n**Passos:**\n1. Importar Edital\n2. Arraste todos os arquivos relacionados\n3. Clique **Extrair Dados**\n4. Revise os itens e confirme para Elaboração ou Auditoria\n\n⚠️ PDFs de baixa qualidade reduzem a precisão. Resolução mínima recomendada: 200 DPI.`,
+    chips: ['Ir para Importar','Como importar edital?','Dica de qualidade OCR']
   },
 
   // ── EXPORTAÇÃO ────────────────────────────────────────
