@@ -25,9 +25,14 @@ O TLPlanly roda como uma aplicacao Node/Express unica:
 
 ## Variaveis de ambiente
 
-Obrigatoria:
+Recomendada:
 
 - `ANTHROPIC_API_KEY`: chave da Anthropic para o Copilot IA
+
+Opcionais:
+
+- `DEEPSEEK_API_KEY`: chave da DeepSeek para fallback automatico se a Anthropic ficar sem credito, limite ou disponibilidade
+- `DEEPSEEK_MODEL`: modelo DeepSeek usado no fallback; padrao recomendado: `deepseek-v4-flash`
 
 O Render define `PORT` automaticamente. Nao configure `PORT` manualmente no painel.
 
@@ -38,4 +43,4 @@ Depois do deploy concluir, validar:
 - `https://SEU-SERVICO.onrender.com/health`
 - `https://SEU-SERVICO.onrender.com/`
 
-O `/health` deve retornar `status: "ok"` e `costAware: true`.
+O `/health` deve retornar `status: "ok"` e `costAware: true`. Se o fallback estiver configurado, tambem deve retornar `deepseek: true`.

@@ -2904,22 +2904,34 @@ function copilotEnviar() {
 let COP_API_URL = '/api/copilot';
 let COP_API_DISPONIVEL = null; // null=não testado, true/false
 
+function copilotSetModoLocal() {
+  COP_API_DISPONIVEL = false;
+  const lbl = document.getElementById('cop-mode-label');
+  if (lbl) lbl.innerHTML = '🟡 Modo local — base de conhecimento';
+}
+
+function copilotSetModoOnline(data = {}) {
+  const lbl = document.getElementById('cop-mode-label');
+  const primary = data.providers?.primary === 'deepseek' ? 'DeepSeek' : 'Claude';
+  const fallback = data.providers?.fallback === 'deepseek' ? ' + DeepSeek backup' : '';
+  if (lbl) lbl.innerHTML = `🟢 ${primary}${fallback} — IA online`;
+}
+
 async function copilotTestarServidor() {
   if (COP_API_DISPONIVEL !== null) return COP_API_DISPONIVEL;
   try {
     const r = await fetch('/health', { signal: AbortSignal.timeout(2000) });
     const data = await r.json();
-    COP_API_DISPONIVEL = r.ok && data.anthropic === true;
-    const lbl = document.getElementById('cop-mode-label');
+    COP_API_DISPONIVEL = r.ok && (data.anthropic === true || data.deepseek === true);
     if (COP_API_DISPONIVEL) {
-      console.log('[Copilot] API Anthropic disponível ✅');
-      if (lbl) lbl.innerHTML = '🟢 Claude Haiku 4.5 — IA ativa';
+      console.log('[Copilot] IA online disponível ✅');
+      copilotSetModoOnline(data);
     } else {
       console.log('[Copilot] Servidor sem API key — usando base local');
-      if (lbl) lbl.innerHTML = '🟡 Modo local — base de conhecimento';
+      copilotSetModoLocal();
     }
   } catch {
-    COP_API_DISPONIVEL = false;
+    copilotSetModoLocal();
     console.log('[Copilot] Servidor offline — usando base local');
   }
   return COP_API_DISPONIVEL;
@@ -2967,8 +2979,8 @@ async function copilotTentarAPI(userMsg) {
     });
 
     if (!resp.ok) {
-      bubble.innerHTML = '⚠️ Erro ao contatar o servidor. Usando base local...';
-      setTimeout(() => el.remove(), 1500);
+      copilotSetModoLocal();
+      el.remove();
       return false;
     }
 
@@ -2989,9 +3001,19 @@ async function copilotTentarAPI(userMsg) {
         if (raw === '[DONE]') break;
         try {
           const chunk = JSON.parse(raw);
+          if (chunk.meta) {
+            if (chunk.meta.provider === 'deepseek') {
+              const lbl = document.getElementById('cop-mode-label');
+              if (lbl) lbl.innerHTML = chunk.meta.fallbackFrom
+                ? '🟢 DeepSeek backup — IA online'
+                : '🟢 DeepSeek — IA online';
+            }
+            continue;
+          }
           if (chunk.error) {
-            bubble.innerHTML = '⚠️ ' + copilotMarkdown(chunk.error);
-            return true;
+            copilotSetModoLocal();
+            el.remove();
+            return false;
           }
           if (chunk.text) {
             fullText += chunk.text;
@@ -3003,6 +3025,11 @@ async function copilotTentarAPI(userMsg) {
     }
 
     // Finaliza — remove cursor
+    if (!fullText.trim()) {
+      copilotSetModoLocal();
+      el.remove();
+      return false;
+    }
     bubble.innerHTML = copilotMarkdown(fullText);
     COP.messages.push({ role: 'bot', text: fullText });
 
@@ -3012,7 +3039,7 @@ async function copilotTentarAPI(userMsg) {
 
   } catch(err) {
     el.remove();
-    COP_API_DISPONIVEL = false; // falhou, próxima tentativa usa KB local
+    copilotSetModoLocal(); // falhou, próxima tentativa usa KB local
     return false;
   }
 }

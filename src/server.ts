@@ -55,6 +55,8 @@ console.log(`[Skills] ${SKILLS_CONTEXT.length > 0 ? 'Carregados' : 'Nenhum encon
 
 const PORT = process.env.PORT || 3000;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
+const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || process.env.AI_FALLBACK_KEY || '';
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 
 // ── Anthropic client ──────────────────────────────────────────────────────
 const anthropic = ANTHROPIC_KEY
@@ -116,7 +118,7 @@ function estimateInputCostUsd(model: string, inputTokens: number): number {
 
 function isRetryableError(err: any): boolean {
   const type = err?.error?.type || err?.type;
-  return err?.status >= 500 || ['overloaded_error', 'api_error'].includes(type);
+  return err?.status === 429 || err?.status >= 500 || ['overloaded_error', 'api_error'].includes(type);
 }
 
 async function withRetry<T>(fn: () => T | Promise<T>, retries = MAX_RETRIES): Promise<T> {
@@ -129,6 +131,79 @@ async function withRetry<T>(fn: () => T | Promise<T>, retries = MAX_RETRIES): Pr
     }
   }
   throw new Error('Max retries exceeded');
+}
+
+function sanitizeAiError(err: any): { code: string; message: string; retryable: boolean } {
+  const raw = JSON.stringify(err?.error || err?.message || err || '').toLowerCase();
+
+  if (
+    err?.status === 402 ||
+    raw.includes('credit balance') ||
+    raw.includes('billing') ||
+    raw.includes('insufficient balance') ||
+    raw.includes('insufficient_quota')
+  ) {
+    return {
+      code: 'AI_CREDITS_UNAVAILABLE',
+      message: 'A IA principal está sem crédito no momento. Vou continuar pelo modo local.',
+      retryable: false,
+    };
+  }
+
+  if (raw.includes('rate') || raw.includes('quota') || raw.includes('overloaded')) {
+    return {
+      code: 'AI_RATE_LIMITED',
+      message: 'A IA está temporariamente ocupada. Vou continuar pelo modo local.',
+      retryable: true,
+    };
+  }
+
+  return {
+    code: 'AI_UNAVAILABLE',
+    message: 'A IA online não respondeu agora. Vou continuar pelo modo local.',
+    retryable: true,
+  };
+}
+
+function extractDeepSeekText(data: any): string {
+  return (data?.choices?.[0]?.message?.content || '').trim();
+}
+
+async function callDeepSeekFallback(systemFinal: string, messages: CopilotMessage[]): Promise<string> {
+  if (!DEEPSEEK_KEY) throw new Error('DEEPSEEK_API_KEY ausente');
+
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${DEEPSEEK_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: 'system', content: systemFinal },
+        ...messages.map(message => ({
+          role: message.role,
+          content: message.content,
+        })),
+      ],
+      max_tokens: 1024,
+      stream: false,
+      thinking: { type: 'disabled' },
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw {
+      status: response.status,
+      error: data?.error || data,
+    };
+  }
+
+  const text = extractDeepSeekText(data);
+  if (!text) throw new Error('DeepSeek retornou resposta vazia');
+  return text;
 }
 
 // ── System prompt especializado TLPlanly ─────────────────────────────────
@@ -198,9 +273,9 @@ app.post('/api/copilot', async (req: Request, res: Response) => {
     return;
   }
 
-  if (!anthropic) {
+  if (!anthropic && !DEEPSEEK_KEY) {
     res.status(503).json({
-      error: 'ANTHROPIC_API_KEY não configurada. Adicione ao arquivo .env.'
+      error: 'Nenhum provedor de IA configurado. Configure ANTHROPIC_API_KEY ou DEEPSEEK_API_KEY.'
     });
     return;
   }
@@ -237,13 +312,22 @@ app.post('/api/copilot', async (req: Request, res: Response) => {
     res.write(`data: ${JSON.stringify({
       meta: {
         costAware: true,
-        model,
+        provider: anthropic ? 'anthropic' : 'deepseek',
+        model: anthropic ? model : DEEPSEEK_MODEL,
         estimatedInputTokens,
         estimatedRoutingTokens,
         estimatedInputUsd: Number(estimatedInputUsd.toFixed(6)),
         historyMessages: optimizedMessages.length,
       }
     })}\n\n`);
+
+    if (!anthropic) {
+      const fallbackText = await withRetry(() => callDeepSeekFallback(systemFinal, optimizedMessages));
+      res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
 
     const stream = await withRetry(() => anthropic.messages.stream({
       model,
@@ -266,8 +350,35 @@ app.post('/api/copilot', async (req: Request, res: Response) => {
     res.end();
 
   } catch (err: any) {
-    const msg = err?.message || 'Erro desconhecido';
-    res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
+    const primaryError = sanitizeAiError(err);
+
+    if (DEEPSEEK_KEY) {
+      try {
+        const optimizedMessages = optimizeMessages(messages);
+        res.write(`data: ${JSON.stringify({
+          meta: {
+            provider: 'deepseek',
+            model: DEEPSEEK_MODEL,
+            fallbackFrom: 'anthropic',
+            reason: primaryError.code,
+          }
+        })}\n\n`);
+        const fallbackText = await withRetry(() => callDeepSeekFallback(systemFinal, optimizedMessages));
+        res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      } catch (fallbackErr: any) {
+        console.warn('[Copilot] Fallback DeepSeek indisponivel:', sanitizeAiError(fallbackErr).code);
+      }
+    }
+
+    res.write(`data: ${JSON.stringify({
+      error: primaryError.message,
+      code: primaryError.code,
+      fallbackToLocal: true
+    })}\n\n`);
+    res.write('data: [DONE]\n\n');
     res.end();
   }
 });
@@ -293,9 +404,15 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     anthropic: !!anthropic,
+    deepseek: !!DEEPSEEK_KEY,
+    providers: {
+      primary: anthropic ? 'anthropic' : DEEPSEEK_KEY ? 'deepseek' : 'local',
+      fallback: DEEPSEEK_KEY && anthropic ? 'deepseek' : 'local',
+    },
     model: HAIKU_MODEL,
     costAware: true,
     fallbackModel: SONNET_MODEL,
+    deepseekModel: DEEPSEEK_MODEL,
     historyMessages: MAX_HISTORY_MESSAGES,
     maxMessageChars: MAX_MESSAGE_CHARS,
     timestamp: new Date().toISOString(),
