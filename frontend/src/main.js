@@ -1264,7 +1264,7 @@ function atualizarStatsRevisao() {
     `${sel} selecionados | ✓ ${ok} match | ~ ${parcial} parcial | ✗ ${nenhum} sem match`;
 }
 
-function confirmarImportacao() {
+function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 'elaborar') {
   const selecionados = IMP.reviewed.filter(r => r.selecionado);
   if (!selecionados.length) { toast('Selecione pelo menos 1 item', 'error'); return; }
 
@@ -1289,8 +1289,10 @@ function confirmarImportacao() {
   renderElaborar();
   renderDashboard();
 
-  toast(`${novos.length} itens importados com sucesso!`, 'success');
-  showView('elaborar');
+  const alvo = destino === 'auditoria' ? 'auditoria' : 'elaborar';
+  const destinoLabel = alvo === 'auditoria' ? 'Auditoria' : 'Elaboração';
+  toast(`${novos.length} itens importados e enviados para ${destinoLabel}.`, 'success');
+  showView(alvo);
 }
 
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }

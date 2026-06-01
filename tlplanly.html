@@ -1273,8 +1273,9 @@ input[type=range]{width:100%;accent-color:var(--gold)}
           </select>
         </div>
       </div>
-      <div class="flex">
-        <button class="btn btn-gold" onclick="confirmarImportacao()">&#10003; Importar Selecionados</button>
+      <div class="flex flex-wrap">
+        <button class="btn btn-gold" onclick="confirmarImportacao('elaborar')">&#10003; Confirmar e enviar para Elabora&ccedil;&atilde;o</button>
+        <button class="btn btn-outline" onclick="confirmarImportacao('auditoria')">&#128269; Confirmar e auditar planilha</button>
         <button class="btn btn-outline" onclick="resetarImportacao()">&#8635; Novo Arquivo</button>
       </div>
     </div>
@@ -2782,7 +2783,7 @@ function atualizarStatsRevisao() {
     `${sel} selecionados | ✓ ${ok} match | ~ ${parcial} parcial | ✗ ${nenhum} sem match`;
 }
 
-function confirmarImportacao() {
+function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 'elaborar') {
   const selecionados = IMP.reviewed.filter(r => r.selecionado);
   if (!selecionados.length) { toast('Selecione pelo menos 1 item', 'error'); return; }
 
@@ -2807,8 +2808,10 @@ function confirmarImportacao() {
   renderElaborar();
   renderDashboard();
 
-  toast(`${novos.length} itens importados com sucesso!`, 'success');
-  showView('elaborar');
+  const alvo = destino === 'auditoria' ? 'auditoria' : 'elaborar';
+  const destinoLabel = alvo === 'auditoria' ? 'Auditoria' : 'Elaboração';
+  toast(`${novos.length} itens importados e enviados para ${destinoLabel}.`, 'success');
+  showView(alvo);
 }
 
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
