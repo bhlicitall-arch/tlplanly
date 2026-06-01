@@ -4337,7 +4337,82 @@ let COP = {
   messages: [],
   firstOpen: true,
   currentView: 'dashboard',
+  pendingAction: null,
 };
+
+function copilotNormText(txt) {
+  return (txt || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function copilotActionForView(view) {
+  const ctx = VIEW_CONTEXT[view] || { nome: view };
+  return { type: 'navigate', view, label: ctx.nome };
+}
+
+function copilotDetectPendingAction(txt) {
+  const norm = copilotNormText(txt);
+  const asksToContinue = /\b(quer|pronto|posso|devo|deseja|avise|confirma|confirmar|agora|seguir|continuar|vamos)\b/.test(norm);
+  if (!asksToContinue) return null;
+
+  if (/(relatorio|exportar|pdf final|gerar pdf|baixar)/.test(norm)) return copilotActionForView('relatorio');
+  if (/(upload|arquivo|pdf|excel|planilha|edital|import)/.test(norm)) return copilotActionForView('importar');
+  if (/(bdi|encargo)/.test(norm)) return copilotActionForView('bdi');
+  if (/(curva abc|abc|pareto)/.test(norm)) return copilotActionForView('curvaABC');
+  if (/(orcamento|elaborar|insumo)/.test(norm)) return copilotActionForView('elaborar');
+  if (/(auditoria|auditar|conformidade|sinapi)/.test(norm)) return copilotActionForView('auditoria');
+  if (/(cpu|composicao)/.test(norm)) return copilotActionForView('cpu');
+  if (/(modulo|passo|comecar|iniciar|guie|guiar)/.test(norm)) return { type: 'module-menu' };
+  return null;
+}
+
+function copilotSetPendingFromBot(txt) {
+  const action = copilotDetectPendingAction(txt);
+  if (action) COP.pendingAction = action;
+}
+
+function copilotExecuteAction(action) {
+  if (!action) return false;
+  COP.pendingAction = null;
+
+  if (action.type === 'module-menu') {
+    copilotBotMsg('Perfeito. Escolha por onde vamos começar:');
+    copilotSetChips(['Ir para Configurações','Ir para Bases','Ir para BDI','Ir para Elaborar','Ir para Importar']);
+    return true;
+  }
+
+  if (action.type === 'navigate') {
+    const ctx = VIEW_CONTEXT[action.view] || { nome: action.label || action.view };
+    copilotBotMsg(`Perfeito. Abrindo **${ctx.nome}** agora...`);
+    setTimeout(() => showView(action.view), 500);
+    copilotSetChips(['O que posso fazer aqui?','Meu orçamento atual','Ir para Dashboard']);
+    return true;
+  }
+
+  return false;
+}
+
+function copilotHandleShortReply(norm) {
+  const yes = /^(sim|s|ok|okay|pode|pode sim|vamos|bora|claro|confirmo|isso|quero|quero sim|continuar|prosseguir|seguir|manda|vai)$/.test(norm);
+  const no = /^(nao|n|não|cancelar|cancela|depois|agora nao|agora não|voltar|deixa)$/.test(norm);
+
+  if (yes) {
+    if (COP.pendingAction && copilotExecuteAction(COP.pendingAction)) return true;
+    copilotBotMsg('Claro. O que você quer fazer agora?');
+    copilotSetChips(['Ir para Elaborar','Ir para Importar','Ir para BDI','Ir para ABC','Meu orçamento atual']);
+    return true;
+  }
+
+  if (no) {
+    COP.pendingAction = null;
+    copilotBotMsg('Sem problema. O que você prefere fazer agora?');
+    copilotSetChips(['O que é BDI?','Como importar edital?','Ir para Dashboard','Meu orçamento atual']);
+    return true;
+  }
+
+  return false;
+}
 
 function copilotToggle() {
   COP.open = !COP.open;
@@ -4371,6 +4446,7 @@ function copilotBotMsg(txt) {
     msgs.appendChild(el);
     msgs.scrollTop = msgs.scrollHeight;
     COP.messages.push({ role: 'bot', text: txt });
+    copilotSetPendingFromBot(txt);
   }, 600 + Math.min(txt.length * 4, 800));
 }
 
@@ -4550,6 +4626,7 @@ async function copilotTentarAPI(userMsg) {
     }
     bubble.innerHTML = copilotMarkdown(fullText);
     COP.messages.push({ role: 'bot', text: fullText });
+    copilotSetPendingFromBot(fullText);
 
     // Chips contextuais pós-resposta
     copilotSetChips(['Ir para Elaborar','Ir para BDI','Ir para ABC','Meu orçamento atual']);
@@ -4567,12 +4644,13 @@ window.addEventListener('load', () => setTimeout(copilotTestarServidor, 3000));
 
 async function copilotResponder(txt) {
   // Normaliza o texto: remove acentos, pontuação, minúsculas
-  const norm = txt.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g,'')
-    .replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+  const norm = copilotNormText(txt);
+
+  if (copilotHandleShortReply(norm)) return;
 
   const localFirst = /^(ir|abrir|acessar)\b/.test(norm)
-    || /^(o que e bdi|meu orcamento atual|o que posso fazer aqui|sim me guie|como importar|como exportar)$/.test(norm);
+    || /^(meu orcamento atual|o que posso fazer aqui|sim me guie)$/.test(norm)
+    || /^(o que e bdi|como importar|como exportar|como calcular bdi|o que e sinapi|o que e curva abc|limite bdi)/.test(norm);
 
   // Comandos de navegação e chips previsíveis são locais para não prender o usuário em chamadas externas.
   if (!localFirst) {
@@ -4696,7 +4774,7 @@ async function copilotResponder(txt) {
     { keys:['ir para auditoria','ir para analise sinapi'], view:'auditoria' },
     { keys:['ir para relatorio','ir para exportar'], view:'relatorio' },
     { keys:['ir para bases','ir para base','abrir bases'], view:'bases' },
-    { keys:['ir para importar','abrir importar'], view:'importar' },
+    { keys:['ir para importar','abrir importar','fazer upload','upload agora','enviar arquivo','subir arquivo','selecionar arquivo','importar agora'], view:'importar' },
     { keys:['ir para composicoes','ir para cpu','abrir cpu'], view:'cpu' },
     { keys:['ir para configuracoes','ir para config'], view:'config' },
     { keys:['ir para dashboard'], view:'dashboard' },
