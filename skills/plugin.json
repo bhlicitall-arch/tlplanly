@@ -1,0 +1,38 @@
+{
+  "name": "tlplanly-skills",
+  "version": "1.0.0",
+  "description": "Skills especializados em orçamentação de obras públicas brasileiras para o TLPlanly — BDI, SINAPI, legislação de licitações, Curva ABC, composições CPU e análise de risco em editais.",
+  "author": "TechLicense",
+  "skills": [
+    {
+      "name": "bdi-obras",
+      "path": "./bdi-obras/SKILL.md",
+      "description": "Calcular e validar BDI conforme Decreto 7983/2013 e TCU Acórdão 2622/2013"
+    },
+    {
+      "name": "sinapi-conformidade",
+      "path": "./sinapi-conformidade/SKILL.md",
+      "description": "Verificar conformidade de preços com o SINAPI — metodologia de auditoria e parecer técnico"
+    },
+    {
+      "name": "lei-licitacoes",
+      "path": "./lei-licitacoes/SKILL.md",
+      "description": "Lei 14.133/2021, Decreto 7983/2013 — exigências legais para obras públicas brasileiras"
+    },
+    {
+      "name": "curva-abc-obras",
+      "path": "./curva-abc-obras/SKILL.md",
+      "description": "Análise de Pareto para orçamentos de obras — classificação A/B/C e estratégias por classe"
+    },
+    {
+      "name": "cpu-composicao",
+      "path": "./cpu-composicao/SKILL.md",
+      "description": "Criar e auditar Composições de Preço Unitário — coeficientes, encargos sociais, referências"
+    },
+    {
+      "name": "risco-edital",
+      "path": "./risco-edital/SKILL.md",
+      "description": "Análise de risco em editais de licitação de obras — matriz risco, impugnação, cláusulas abusivas"
+    }
+  ]
+}

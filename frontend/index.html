@@ -1,0 +1,1071 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TLPlanly by TechLicense</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/frontend/src/styles.css">
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <a class="logo" href="#" onclick="return false">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+    </div>
+    <div><div class="logo-text">TLPlanly</div><div class="logo-sub">by TechLicense</div></div>
+  </a>
+
+  <div class="topbar-sep"></div>
+
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btnConstrutor" onclick="setMode('construtor')">&#9998; Construtor</button>
+    <button class="mode-btn" id="btnAuditor" onclick="setMode('auditor')">&#128269; Auditor</button>
+  </div>
+
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">&#9788;</button>
+</div>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div class="nav-section">Orçamento</div>
+  <div class="nav-item active" onclick="showView('dashboard')"><span class="nav-icon">&#9632;</span>Dashboard</div>
+  <div class="nav-item" onclick="showView('elaborar')"><span class="nav-icon">&#128196;</span>Elaborar Orçamento</div>
+  <div class="nav-item" onclick="showView('cpu')"><span class="nav-icon">&#9881;</span>Composições (CPU)<span class="nav-badge" style="background:var(--blue,#1976d2)">3</span></div>
+  <div class="nav-item" onclick="showView('importar')"><span class="nav-icon">&#128196;</span>Importar Edital<span class="nav-badge" style="background:var(--green);display:inline">2A</span></div>
+  <div class="nav-item" onclick="showView('bdi')"><span class="nav-icon">&#9881;</span>BDI / Encargos</div>
+  <div class="nav-item" onclick="showView('curvaABC')"><span class="nav-icon">&#128200;</span>Curva ABC</div>
+  <div class="nav-item" onclick="showView('memoria')"><span class="nav-icon">&#128203;</span>Memória de Cálculo</div>
+  <div class="nav-section" style="margin-top:8px">Auditoria</div>
+  <div class="nav-item" id="nav-auditoria" onclick="showView('auditoria')"><span class="nav-icon">&#128269;</span>Análise SINAPI<span class="nav-badge" id="auditBadge" style="display:none">!</span></div>
+  <div class="nav-item" onclick="showView('conformidade')"><span class="nav-icon">&#10003;</span>Conformidade BDI</div>
+  <div class="nav-item" onclick="showView('relatorio')"><span class="nav-icon">&#128438;</span>Exportar / Relatório</div>
+  <div class="nav-section" style="margin-top:8px">Sistema</div>
+  <div class="nav-item" onclick="showView('bases')"><span class="nav-icon">&#128452;</span>Bases de Referência</div>
+  <div class="nav-item" onclick="showView('config')"><span class="nav-icon">&#9881;</span>Configurações</div>
+</nav>
+
+<!-- MAIN -->
+<div id="main">
+
+<!-- ═══════════════ DASHBOARD ═══════════════ -->
+<div id="view-dashboard" class="view active">
+  <div class="page-title">Dashboard <span class="gold-text">TLPlanly</span></div>
+  <div class="page-sub">Visão geral do orçamento ativo</div>
+
+  <div class="grid grid-4" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-title">Total Orçamento</div>
+      <div class="card-value gold" id="dash-total">R$ 0,00</div>
+      <div class="card-sub" id="dash-itens">0 itens</div>
+    </div>
+    <div class="card">
+      <div class="card-title">BDI Aplicado</div>
+      <div class="card-value" id="dash-bdi">—</div>
+      <div class="card-sub" id="dash-bdi-status">Não configurado</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Total c/ BDI</div>
+      <div class="card-value green" id="dash-total-bdi">R$ 0,00</div>
+      <div class="card-sub">Preço de venda</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Itens Acima Ref.</div>
+      <div class="card-value red" id="dash-acima">0</div>
+      <div class="card-sub">vs. SINAPI</div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Distribuição <span>Curva ABC</span></div></div>
+      <canvas id="chartABC" height="220"></canvas>
+    </div>
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Categorias de <span>Serviço</span></div></div>
+      <canvas id="chartCat" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="sec-header">
+      <div class="sec-title">Itens Críticos <span>(Classe A)</span></div>
+      <button class="btn btn-outline btn-sm" onclick="showView('curvaABC')">Ver Curva ABC</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Un</th><th>Qtd</th><th>Preço Unit</th><th>Total</th><th>% Acum</th><th>Classe</th></tr></thead>
+        <tbody id="dash-tabela"><tr><td colspan="8" class="empty-state" style="padding:24px;text-align:center;color:var(--text3)">Nenhum item no orçamento</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ ELABORAR ═══════════════ -->
+<div id="view-elaborar" class="view">
+  <div class="page-title">Elaborar <span class="gold-text">Orçamento</span></div>
+  <div class="page-sub">Pesquise e adicione itens SINAPI ao orçamento</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="grid grid-2" style="gap:12px;align-items:flex-end">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Buscar insumo SINAPI</label>
+        <div class="search-wrap">
+          <input id="sinapiSearch" class="form-input" placeholder="Digite código ou descrição..." oninput="buscarSINAPI(this.value)" autocomplete="off"/>
+          <div id="sinapiResults" class="search-results"></div>
+        </div>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Nome do Orçamento</label>
+        <input id="orcNome" class="form-input" placeholder="Ex: Reforma Escola Municipal" value="Orçamento SINAPI"/>
+      </div>
+    </div>
+    <div id="addItemPanel" style="display:none;margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius)">
+      <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+        <div><label class="form-label">Código</label><input id="addCod" class="form-input" readonly/></div>
+        <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="addDesc" class="form-input" readonly/></div>
+        <div><label class="form-label">Unidade</label><input id="addUnid" class="form-input" readonly/></div>
+        <div><label class="form-label">Quantidade</label><input id="addQtd" class="form-input" type="number" min="0.001" step="0.001" value="1"/></div>
+        <div><label class="form-label">Preço Unit (R$)</label><input id="addPreco" class="form-input" type="number" min="0" step="0.01"/></div>
+        <div><label class="form-label">Ref. SINAPI (R$)</label><input id="addRef" class="form-input" readonly style="color:var(--gold)"/></div>
+        <div><label class="form-label">Categoria</label>
+          <select id="addCat" class="form-select">
+            <option>Serviços</option><option>Materiais</option><option>Mão de Obra</option><option>Equipamentos</option><option>Outros</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex mt-4">
+        <button class="btn btn-gold" onclick="adicionarItem()">&#43; Adicionar Item</button>
+        <button class="btn btn-outline" onclick="document.getElementById('addItemPanel').style.display='none'">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sec-header">
+      <div class="sec-title">Planilha Orçamentária</div>
+      <div class="flex">
+        <button class="btn btn-outline btn-sm" onclick="limparOrcamento()">&#128465; Limpar</button>
+        <button class="btn btn-gold btn-sm" onclick="exportarOrcamento()">&#128229; Exportar</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Un</th><th>Qtd</th><th>P.Unit</th><th>Ref.SINAPI</th><th>Desv.</th><th>Total</th><th>Cat.</th><th></th></tr></thead>
+        <tbody id="elab-tabela"><tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text3)">Pesquise insumos SINAPI acima para adicionar itens</td></tr></tbody>
+      </table>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:32px" id="elab-totais">
+      <span class="text-sm">Subtotal (sem BDI): <strong id="elab-sub">R$ 0,00</strong></span>
+      <span class="text-sm">BDI: <strong id="elab-bdi-pct" class="gold-text">0%</strong></span>
+      <span class="text-sm">Total c/ BDI: <strong id="elab-total" class="gold-text">R$ 0,00</strong></span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ BDI ═══════════════ -->
+<div id="view-bdi" class="view">
+  <div class="page-title">BDI &amp; <span class="gold-text">Encargos Sociais</span></div>
+  <div class="page-sub">Decreto 7983/2013 · TCU Acórdão 2622/2013 · INSS/FGTS/CPRB</div>
+
+  <div class="bdi-grid">
+    <!-- Inputs BDI -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="sec-header"><div class="sec-title">Componentes <span>BDI</span></div></div>
+        <div class="grid grid-2" style="gap:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">AC — Administração Central (%)</label>
+            <input id="bdi-ac" class="form-input" type="number" value="4.00" step="0.01" oninput="calcBDI()"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">S — Seguros e Garantias (%)</label>
+            <input id="bdi-s" class="form-input" type="number" value="0.50" step="0.01" oninput="calcBDI()"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">R — Risco (%)</label>
+            <input id="bdi-r" class="form-input" type="number" value="1.27" step="0.01" oninput="calcBDI()"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">DF — Despesas Financeiras (%)</label>
+            <input id="bdi-df" class="form-input" type="number" value="1.23" step="0.01" oninput="calcBDI()"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">L — Lucro (%)</label>
+            <input id="bdi-l" class="form-input" type="number" value="7.40" step="0.01" oninput="calcBDI()"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">I — Tributos (ISS+PIS+COFINS) (%)</label>
+            <input id="bdi-i" class="form-input" type="number" value="8.65" step="0.01" oninput="calcBDI()"/>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <label class="form-label">Tipo de Obra</label>
+          <select id="bdi-tipo" class="form-select" onchange="aplicarPreset()">
+            <option value="civil">Obras Civis (lim. TCU: 25%)</option>
+            <option value="eletrica">Instalações Elétricas (lim. TCU: 24%)</option>
+            <option value="material">Fornecimento de Materiais (lim. TCU: 15%)</option>
+          </select>
+        </div>
+        <div class="bdi-formula" style="margin-top:12px">
+          BDI = [(1+AC+S+R)(1+DF)(1+L) / (1-I) - 1] × 100
+        </div>
+      </div>
+    </div>
+
+    <!-- Resultado BDI -->
+    <div>
+      <div class="bdi-result" style="margin-bottom:16px">
+        <div class="card-title" style="color:rgba(245,166,35,.6)">BDI CALCULADO</div>
+        <div class="bdi-pct" id="bdi-result-pct">0,00%</div>
+        <div class="bdi-label">Limite TCU: <span id="bdi-limite">25%</span></div>
+        <div id="bdi-status-badge" class="bdi-status bdi-ok">&#10003; Dentro do Limite</div>
+        <div style="margin-top:20px;width:100%">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:4px">
+            <span>0%</span><span id="bdi-limite-lbl">25%</span>
+          </div>
+          <div class="progress-bar">
+            <div id="bdi-progress" class="progress-fill" style="background:var(--green);width:0%"></div>
+          </div>
+        </div>
+        <button class="btn btn-gold" style="margin-top:16px;width:100%" onclick="aplicarBDIaOrcamento()">&#10003; Aplicar ao Orçamento</button>
+      </div>
+
+      <div class="card">
+        <div class="sec-title" style="margin-bottom:12px">Comparativo <span class="gold-text">TCU 2622/2013</span></div>
+        <div id="bdi-comp-table"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Encargos Sociais -->
+  <div class="card mt-4">
+    <div class="sec-header"><div class="sec-title">Encargos Sociais</div></div>
+    <div class="enc-tabs">
+      <button class="enc-tab active" onclick="showEncargos('nd')">Não Desonerado (~127,5%)</button>
+      <button class="enc-tab" onclick="showEncargos('d')">Desonerado (~96,8%)</button>
+    </div>
+    <div id="enc-content"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ CURVA ABC ═══════════════ -->
+<div id="view-curvaABC" class="view">
+  <div class="page-title">Curva <span class="gold-text">ABC</span></div>
+  <div class="page-sub">Análise de representatividade — Pareto do orçamento</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-header">
+      <div class="sec-title">Controle de <span>Faixas</span></div>
+      <button class="btn btn-gold btn-sm" onclick="gerarCurvaABC()">&#8635; Gerar Curva ABC</button>
+    </div>
+    <div class="grid grid-3" style="gap:12px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Faixa A — Até (%)</label>
+        <input id="abc-limA" class="form-input" type="number" value="80" min="1" max="99" oninput="gerarCurvaABC()"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Faixa B — Até (%)</label>
+        <input id="abc-limB" class="form-input" type="number" value="95" min="1" max="100" oninput="gerarCurvaABC()"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Faixa C — Até (%)</label>
+        <input class="form-input" value="100" readonly style="color:var(--text3)"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-3" style="margin-bottom:20px">
+    <div class="card"><div class="card-title">Classe A</div><div class="card-value red" id="abc-A-pct">0%</div><div class="card-sub" id="abc-A-desc">0 itens</div></div>
+    <div class="card"><div class="card-title">Classe B</div><div class="card-value gold" id="abc-B-pct">0%</div><div class="card-sub" id="abc-B-desc">0 itens</div></div>
+    <div class="card"><div class="card-title">Classe C</div><div class="card-value green" id="abc-C-pct">0%</div><div class="card-sub" id="abc-C-desc">0 itens</div></div>
+  </div>
+
+  <div class="grid grid-2" style="margin-bottom:20px">
+    <div class="card">
+      <div class="sec-title" style="margin-bottom:16px">Distribuição por <span class="gold-text">Classe</span></div>
+      <canvas id="chartABCpizza" height="240"></canvas>
+    </div>
+    <div class="card">
+      <div class="sec-title" style="margin-bottom:16px">Curva <span class="gold-text">Acumulada</span></div>
+      <canvas id="chartABClinha" height="240"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title" style="margin-bottom:12px">Itens Ordenados por Representatividade</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Un</th><th>Qtd</th><th>P.Unit</th><th>Total</th><th>% Item</th><th>% Acum.</th><th>Participação</th><th>Classe</th></tr></thead>
+        <tbody id="abc-tabela"><tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text3)">Gere a Curva ABC a partir dos itens do orçamento</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ MEMÓRIA ═══════════════ -->
+<div id="view-memoria" class="view">
+  <div class="page-title">Memória de <span class="gold-text">Cálculo</span></div>
+  <div class="page-sub">Composição unitária, coeficientes e rastreabilidade</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-header">
+      <div class="sec-title">Configurações de <span>Cálculo</span></div>
+    </div>
+    <div class="grid grid-3" style="gap:12px">
+      <div>
+        <label class="form-label">Encargos Sociais</label>
+        <select id="mem-enc" class="form-select" onchange="renderMemoria()">
+          <option value="127.5">Não Desonerado (127,5%)</option>
+          <option value="96.8">Desonerado (96,8%)</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Referência de Preço</label>
+        <select id="mem-ref" class="form-select" onchange="renderMemoria()">
+          <option value="sinapi">SINAPI (tabela carregada)</option>
+          <option value="custom">Preço digitado manualmente</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">BDI p/ Memória</label>
+        <input id="mem-bdi" class="form-input" type="number" value="24.46" readonly style="color:var(--gold)"/>
+      </div>
+    </div>
+  </div>
+
+  <div id="mem-lista">
+    <div class="empty-state">
+      <div class="empty-icon">&#128203;</div>
+      <p>Adicione itens ao orçamento para ver a memória de cálculo</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ AUDITORIA ═══════════════ -->
+<div id="view-auditoria" class="view">
+  <div class="page-title">Análise <span class="gold-text">SINAPI</span></div>
+  <div class="page-sub">Confronto de preços com a tabela de referência SINAPI</div>
+
+  <div class="audit-summary">
+    <div class="grid grid-4">
+      <div><div class="card-title">Total Analisado</div><div style="font-size:22px;font-weight:900" id="aud-total">R$ 0,00</div></div>
+      <div><div class="card-title">Itens Conformes</div><div style="font-size:22px;font-weight:900;color:var(--green)" id="aud-ok">0</div></div>
+      <div><div class="card-title">Itens Acima (+5%)</div><div style="font-size:22px;font-weight:900;color:var(--red)" id="aud-acima">0</div></div>
+      <div><div class="card-title">Itens Não Encontrados</div><div style="font-size:22px;font-weight:900;color:var(--text3)" id="aud-nf">0</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sec-header">
+      <div class="sec-title">Análise por <span>Item</span></div>
+      <div class="flex">
+        <select id="aud-filtro" class="form-select" style="width:180px" onchange="filtrarAuditoria()">
+          <option value="">Todos</option>
+          <option value="ok">Conformes</option>
+          <option value="acima">Acima do limite</option>
+          <option value="nf">Não encontrado</option>
+        </select>
+        <button class="btn btn-gold btn-sm" onclick="executarAuditoria()">&#128269; Auditar</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Un</th><th>Preço Orç.</th><th>Ref. SINAPI</th><th>Desvio %</th><th>Status</th></tr></thead>
+        <tbody id="aud-tabela"><tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text3)">Execute a auditoria para ver o resultado</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ CONFORMIDADE BDI ═══════════════ -->
+<div id="view-conformidade" class="view">
+  <div class="page-title">Conformidade <span class="gold-text">BDI</span></div>
+  <div class="page-sub">Verificação dos limites do TCU Acórdão 2622/2013</div>
+
+  <div class="card">
+    <div class="sec-header"><div class="sec-title">Verificação <span>TCU</span></div></div>
+    <div id="conf-content">
+      <div class="empty-state"><div class="empty-icon">&#10003;</div><p>Configure o BDI na aba BDI/Encargos e clique em "Verificar Conformidade"</p></div>
+    </div>
+    <button class="btn btn-gold mt-4" onclick="verificarConformidade()">&#128269; Verificar Conformidade</button>
+  </div>
+</div>
+
+<!-- ═══════════════ EXPORTAR / RELATÓRIO ═══════════════ -->
+<div id="view-relatorio" class="view">
+  <div class="page-title">Exportar <span class="gold-text">Relatório</span></div>
+  <div class="page-sub">Planilha orçamentária profissional — padrão TCU/CGU/editais públicos</div>
+
+  <!-- Identificação da Obra -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-title" style="margin-bottom:14px">Identificação da <span class="gold-text">Obra</span></div>
+    <div class="grid grid-3" style="gap:12px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Nome da Obra / Projeto</label>
+        <input id="rel-obra" class="form-input" placeholder="Ex: Reforma Escola Municipal João XXIII"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Órgão / Contratante</label>
+        <input id="rel-orgao" class="form-input" placeholder="Ex: Prefeitura Municipal de..."/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Processo / Edital nº</label>
+        <input id="rel-edital" class="form-input" placeholder="Ex: Tomada de Preços 001/2026"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Responsável Técnico</label>
+        <input id="rel-rt" class="form-input" placeholder="Nome do Eng. / Arq."/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">CREA / CAU nº</label>
+        <input id="rel-crea" class="form-input" placeholder="Ex: CREA-MG 12345/D"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">ART / RRT nº</label>
+        <input id="rel-art" class="form-input" placeholder="Ex: ART 2026123456"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Município / UF</label>
+        <input id="rel-local" class="form-input" placeholder="Ex: Belo Horizonte / MG"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Data Base (mês/ano)</label>
+        <input id="rel-data" class="form-input" type="month"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Fonte de Preços</label>
+        <input id="rel-fonte" class="form-input" value="SINAPI/CAIXA" placeholder="SINAPI, SICRO, etc."/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs de exportação -->
+  <div class="exp-tab-bar">
+    <div class="exp-tab active" onclick="abrirExpTab('planilha')">&#128196; Planilha Orçamentária</div>
+    <div class="exp-tab" onclick="abrirExpTab('bdi-rel')">&#9881; Composição BDI</div>
+    <div class="exp-tab" onclick="abrirExpTab('abc-rel')">&#128200; Curva ABC</div>
+    <div class="exp-tab" onclick="abrirExpTab('resumo-rel')">&#128203; Resumo Executivo</div>
+  </div>
+
+  <!-- Tab: Planilha Orçamentária -->
+  <div id="exp-planilha" class="exp-panel active">
+    <div class="action-bar">
+      <button class="btn btn-gold" onclick="exportarExcelProfissional()">&#128229; Excel (.xlsx) Profissional</button>
+      <button class="btn btn-outline" onclick="exportarCSV()">&#128229; CSV</button>
+      <button class="btn btn-outline" onclick="exportarJSON()">&#123;&#125; JSON</button>
+      <button class="btn btn-outline" onclick="imprimirRelatorio()">&#128438; Imprimir / PDF</button>
+      <span class="text-sm" style="margin-left:auto;align-self:center" id="rel-info-count"></span>
+    </div>
+    <div class="preview-sheet" id="preview-planilha">
+      <div style="padding:20px;text-align:center;color:#999">Preencha a identificação da obra e clique em "Planilha Orçamentária" para visualizar o preview</div>
+    </div>
+  </div>
+
+  <!-- Tab: BDI -->
+  <div id="exp-bdi-rel" class="exp-panel">
+    <div class="action-bar">
+      <button class="btn btn-gold" onclick="exportarExcelBDI()">&#128229; Exportar Composição BDI</button>
+      <button class="btn btn-outline" onclick="imprimirRelatorio()">&#128438; Imprimir</button>
+    </div>
+    <div class="preview-sheet" id="preview-bdi-rel"></div>
+  </div>
+
+  <!-- Tab: Curva ABC -->
+  <div id="exp-abc-rel" class="exp-panel">
+    <div class="action-bar">
+      <button class="btn btn-gold" onclick="exportarExcelABC()">&#128229; Exportar Curva ABC</button>
+    </div>
+    <div class="preview-sheet" id="preview-abc-rel"></div>
+  </div>
+
+  <!-- Tab: Resumo Executivo -->
+  <div id="exp-resumo-rel" class="exp-panel">
+    <div class="action-bar">
+      <button class="btn btn-gold" onclick="imprimirRelatorio()">&#128438; Imprimir / Gerar PDF</button>
+    </div>
+    <div class="preview-sheet" id="preview-resumo-rel"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════ BASES DE REFERÊNCIA ═══════════════ -->
+<div id="view-bases" class="view">
+  <div class="page-title">Bases de <span class="gold-text">Referência</span></div>
+  <div class="page-sub">Gerencie as tabelas de preços ativas — SINAPI, SICRO 3 e bases estaduais</div>
+
+  <!-- Cards das bases -->
+  <div class="grid grid-3" style="margin-bottom:20px" id="bases-cards">
+
+    <!-- SINAPI -->
+    <div class="base-card active" id="base-card-sinapi">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span class="base-tag base-tag-federal">Federal</span>
+        <span id="sinapi-status-dot" style="font-size:12px;color:var(--text3)">&#9679; Aguardando</span>
+      </div>
+      <div style="font-size:16px;font-weight:800">SINAPI</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Caixa Econômica Federal / IBGE</div>
+      <div class="base-stat base-empty" id="sinapi-count-b">—</div>
+      <div style="font-size:11px;color:var(--text3)" id="sinapi-mes-b">insumos carregados</div>
+      <div class="sep" style="margin:12px 0"></div>
+      <button class="btn btn-outline btn-sm" style="width:100%" onclick="document.getElementById('sinapi-file-inp').click()">
+        &#128228; Carregar XLSX/ZIP SINAPI
+      </button>
+      <input id="sinapi-file-inp" type="file" accept=".xlsx,.zip" style="display:none" onchange="carregarSINAPI(event)"/>
+      <div style="margin-top:6px;font-size:11px;color:var(--text3);text-align:center">
+        ou use a base padrão carregada pelo servidor
+      </div>
+    </div>
+
+    <!-- SICRO 3 -->
+    <div class="base-card" id="base-card-sicro">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span class="base-tag base-tag-federal">Federal</span>
+        <span id="sicro-status-dot" style="font-size:12px;color:var(--text3)">&#9679; Não carregado</span>
+      </div>
+      <div style="font-size:16px;font-weight:800">SICRO 3</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">DNIT — Obras de Infraestrutura</div>
+      <div class="base-stat base-empty" id="sicro-count">—</div>
+      <div style="font-size:11px;color:var(--text3)" id="sicro-info">insumos (não carregado)</div>
+      <div class="sep" style="margin:12px 0"></div>
+      <button class="btn btn-outline btn-sm" style="width:100%" onclick="document.getElementById('sicro-file-inp').click()">
+        &#128228; Carregar XLSX SICRO 3
+      </button>
+      <input id="sicro-file-inp" type="file" accept=".xlsx,.xls" style="display:none" onchange="carregarSICRO(event)"/>
+      <div style="margin-top:6px;font-size:11px;color:var(--text3);text-align:center">
+        <a href="https://www.gov.br/dnit/pt-br/assuntos/planejamento-e-pesquisa/custos-e-pagamentos" 
+           target="_blank" style="color:var(--gold)">Baixar em dnit.gov.br &#8599;</a>
+      </div>
+    </div>
+
+    <!-- Base Estadual -->
+    <div class="base-card" id="base-card-estadual">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span class="base-tag base-tag-estadual">Estadual</span>
+        <span id="est-status-dot" style="font-size:12px;color:var(--text3)">&#9679; Não carregado</span>
+      </div>
+      <div style="font-size:16px;font-weight:800" id="est-nome">Base Estadual</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px" id="est-desc">SEINFRA-MG / ORSE-SE / EMOP-RJ / SEINFRA-CE</div>
+      <div class="base-stat base-empty" id="est-count">—</div>
+      <div style="font-size:11px;color:var(--text3)" id="est-info">itens (não carregado)</div>
+      <div class="sep" style="margin:12px 0"></div>
+      <div style="margin-bottom:8px">
+        <select id="est-tipo" class="form-select" style="font-size:12px" onchange="atualizarLinksEstadual()">
+          <option value="seinfra-mg">SEINFRA-MG (Minas Gerais)</option>
+          <option value="orse-se">ORSE-SE (Sergipe)</option>
+          <option value="emop-rj">EMOP-RJ (Rio de Janeiro)</option>
+          <option value="seinfra-ce">SEINFRA-CE (Ceará)</option>
+          <option value="sudecap-bh">SUDECAP-BH (Belo Horizonte)</option>
+          <option value="goinfra">GOINFRA (Goiás)</option>
+          <option value="daer-rs">DAER-RS (Rio Grande do Sul)</option>
+          <option value="outro">Outro (XLSX genérico)</option>
+        </select>
+      </div>
+      <button class="btn btn-outline btn-sm" style="width:100%" onclick="document.getElementById('est-file-inp').click()">
+        &#128228; Carregar XLSX Estadual
+      </button>
+      <input id="est-file-inp" type="file" accept=".xlsx,.xls" style="display:none" onchange="carregarEstadual(event)"/>
+      <div style="margin-top:6px;font-size:11px;text-align:center">
+        <a id="est-link" href="#" target="_blank" style="color:var(--gold)">Acessar site oficial &#8599;</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Prioridade de busca -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="sec-header">
+      <div class="sec-title">Ordem de <span>Prioridade</span> na Busca</div>
+    </div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:12px">
+      Quando um código é pesquisado, o sistema busca na ordem abaixo e usa o primeiro resultado encontrado (fallback automático):
+    </div>
+    <div id="prioridade-lista" style="display:flex;flex-direction:column;gap:6px">
+      <!-- Rendered by JS -->
+    </div>
+    <div style="margin-top:12px;font-size:12px;color:var(--text3)">
+      &#9432; Itens sem correspondência em nenhuma base são marcados como "Não Encontrado" na auditoria.
+    </div>
+  </div>
+
+  <!-- OCR para PDFs escaneados -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="sec-header">
+      <div class="sec-title">&#128247; OCR para PDFs <span>Escaneados</span></div>
+      <span class="badge badge-warn" style="font-size:11px">Novo</span>
+    </div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
+      Para planilhas de edital que são <strong>imagens escaneadas</strong> (PDFs onde não é possível selecionar o texto), 
+      use o OCR abaixo. O processo usa Tesseract.js localmente — <strong>nenhum dado sai do seu computador.</strong>
+    </div>
+    <div class="grid grid-2" style="gap:12px;margin-bottom:12px">
+      <div>
+        <label class="form-label">Idioma OCR</label>
+        <select id="ocr-lang" class="form-select">
+          <option value="por">Português (por)</option>
+          <option value="eng">Inglês (eng)</option>
+          <option value="por+eng">Português + Inglês</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Modo de reconhecimento</label>
+        <select id="ocr-mode" class="form-select">
+          <option value="6">Bloco uniforme de texto (recomendado para planilhas)</option>
+          <option value="4">Coluna única de texto variável</option>
+          <option value="3">Automático</option>
+        </select>
+      </div>
+    </div>
+    <div class="upload-zone" id="ocrUploadZone" onclick="document.getElementById('ocr-file-inp').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="handleOcrDrop(event)">
+      <div class="upload-icon">&#128247;</div>
+      <p>Arraste ou clique para selecionar PDF escaneado</p>
+      <small>O OCR é processado localmente no navegador — privado e offline</small>
+    </div>
+    <input id="ocr-file-inp" type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff" style="display:none" onchange="iniciarOCR(event.target.files[0])"/>
+    <div class="ocr-progress" id="ocr-progress">
+      <div class="flex" style="margin-bottom:8px">
+        <span id="ocr-status-txt" style="font-size:13px;color:var(--text2);flex:1">Iniciando OCR...</span>
+        <span id="ocr-pct-txt" style="font-size:13px;font-weight:800;color:var(--gold)">0%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="ocr-prog-fill" style="background:var(--gold);width:0%"></div></div>
+      <div class="ocr-page-grid" id="ocr-pages-grid"></div>
+    </div>
+  </div>
+
+  <!-- Tabela de busca unificada -->
+  <div class="card">
+    <div class="sec-header">
+      <div class="sec-title">Busca <span>Unificada</span></div>
+      <span style="font-size:12px;color:var(--text3)" id="total-bases-count"></span>
+    </div>
+    <input id="uni-search" class="form-input" placeholder="Buscar por código ou descrição em todas as bases..." 
+           oninput="buscarUnificado(this.value)" style="margin-bottom:12px"/>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Un</th><th>Preço Ref.</th><th>Base</th><th>Referência</th></tr></thead>
+        <tbody id="uni-tabela"><tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text3)">Digite para buscar em todas as bases</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Keep old SINAPI view as alias -->
+<div id="view-sinapi" class="view">
+  <script>showView('bases');</script>
+</div>
+
+<!-- ═══════════════ BASE SINAPI (legacy) ═══════════════ -->
+
+
+<!-- ═══════════════ CONFIG ═══════════════ -->
+<div id="view-config" class="view">
+  <div class="page-title"><span class="gold-text">Configurações</span></div>
+  <div class="page-sub">Parâmetros do sistema</div>
+  <div class="card">
+    <div class="sec-title" style="margin-bottom:16px">Parâmetros <span class="gold-text">Gerais</span></div>
+    <div class="grid grid-2" style="gap:12px">
+      <div>
+        <label class="form-label">UF de Referência SINAPI</label>
+        <select id="cfg-uf" class="form-select">
+          <option>MG</option><option>SP</option><option>RJ</option><option>ES</option><option>BA</option><option>GO</option><option>DF</option>
+          <option>PR</option><option>SC</option><option>RS</option><option>MT</option><option>MS</option><option>PA</option><option>AM</option>
+          <option>CE</option><option>PE</option><option>MA</option><option>RN</option><option>PB</option><option>AL</option><option>SE</option>
+          <option>PI</option><option>TO</option><option>RO</option><option>AC</option><option>RR</option><option>AP</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Tolerância de Desvio para Auditoria (%)</label>
+        <input id="cfg-tol" class="form-input" type="number" value="5" min="0" step="0.5"/>
+      </div>
+      <div>
+        <label class="form-label">Encargos Sociais Padrão</label>
+        <select id="cfg-enc" class="form-select">
+          <option value="nd">Não Desonerado (127,5%)</option>
+          <option value="d">Desonerado (96,8%)</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Tipo de Obra Padrão (BDI)</label>
+        <select id="cfg-obra" class="form-select">
+          <option value="civil">Obras Civis</option>
+          <option value="eletrica">Instalações Elétricas</option>
+          <option value="material">Fornecimento de Materiais</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-gold mt-4" onclick="salvarConfig()">&#10003; Salvar Configurações</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════ IMPORTAR EDITAL ═══════════════ -->
+<div id="view-importar" class="view">
+  <div class="page-title">Importar <span class="gold-text">Edital</span></div>
+  <div class="page-sub">Extraia itens de planilhas em PDF ou Excel (.xlsx) e importe diretamente ao orçamento</div>
+
+  <!-- Passo 1: Upload -->
+  <div class="card" style="margin-bottom:16px" id="imp-card-upload">
+    <div class="sec-header"><div class="sec-title">&#x31;&#xFE0F;&#x20E3; Selecionar <span>Arquivo</span></div></div>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="handleDrop(event)">
+      <div class="upload-icon">&#128196;</div>
+      <p>Clique para selecionar ou arraste o arquivo aqui</p>
+      <small>Suportado: PDF digital (gerado por computador) · Excel .xlsx · .xls · .ods</small>
+    </div>
+    <input id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.ods,.csv" style="display:none" onchange="handleFileSelect(event)"/>
+    <div id="imp-file-chip" style="margin-top:12px;display:none"></div>
+
+    <div style="margin-top:16px">
+      <div class="sec-title" style="font-size:13px;margin-bottom:10px">Configurações de Extração</div>
+      <div class="grid grid-3" style="gap:10px">
+        <div>
+          <label class="form-label">Tipo de Planilha</label>
+          <select id="imp-tipo" class="form-select">
+            <option value="auto">Detectar automaticamente</option>
+            <option value="sinapi">SINAPI padrão (cód+desc+un+qtd+preço)</option>
+            <option value="orse">ORSE / SEINFRA</option>
+            <option value="tcpo">TCPO / PINI</option>
+            <option value="livre">Layout livre</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Página inicial (PDF)</label>
+          <input id="imp-pag-ini" class="form-input" type="number" value="1" min="1"/>
+        </div>
+        <div>
+          <label class="form-label">Página final (PDF, 0=todas)</label>
+          <input id="imp-pag-fim" class="form-input" type="number" value="0" min="0"/>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-gold mt-4" id="btnExtract" onclick="iniciarExtracao()" disabled>
+      &#x26A1; Extrair Dados
+    </button>
+  </div>
+
+  <!-- Passo 2: Progresso -->
+  <div class="card" style="margin-bottom:16px;display:none" id="imp-card-progress">
+    <div class="sec-header"><div class="sec-title">&#x32;&#xFE0F;&#x20E3; Processando <span>Arquivo</span></div></div>
+    <div id="imp-steps"></div>
+    <div class="progress-ring">
+      <span id="imp-prog-label" style="font-size:12px;color:var(--text2);min-width:120px">Aguardando...</span>
+      <div class="progress-ring-bar"><div class="progress-ring-fill" id="imp-prog-fill" style="width:0%"></div></div>
+      <span id="imp-prog-pct" style="font-size:12px;font-weight:700;min-width:36px">0%</span>
+    </div>
+  </div>
+
+  <!-- Passo 3: Revisão -->
+  <div id="imp-card-review" style="display:none">
+    <div class="card" style="margin-bottom:12px">
+      <div class="sec-header">
+        <div class="sec-title">&#x33;&#xFE0F;&#x20E3; Revisar <span>Itens Extraídos</span></div>
+        <div class="flex">
+          <span id="imp-rev-stats" style="font-size:12px;color:var(--text2)"></span>
+          <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(true)">Todos</button>
+          <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(false)">Nenhum</button>
+        </div>
+      </div>
+      <div class="flex" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('todos')" id="rfilt-todos" style="border-color:var(--gold);color:var(--gold)">Todos</button>
+        <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('ok')" id="rfilt-ok">&#10003; Match SINAPI</button>
+        <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('parcial')" id="rfilt-parcial">&#126; Parcial</button>
+        <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('nenhum')" id="rfilt-nenhum">&#10007; Sem match</button>
+      </div>
+      <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="display:flex;background:var(--bg3);padding:8px 12px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;gap:8px">
+          <span style="width:22px"></span>
+          <span style="width:80px">Código</span>
+          <span style="flex:1">Descrição</span>
+          <span style="width:45px">Un</span>
+          <span style="width:60px">Qtd</span>
+          <span style="width:80px">P.Unit</span>
+          <span style="width:80px">Ref.SINAPI</span>
+          <span style="width:75px">Match</span>
+        </div>
+        <div id="imp-rev-lista"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-header">
+        <div class="sec-title">Configurar <span>Importação</span></div>
+      </div>
+      <div class="grid grid-3" style="gap:12px;margin-bottom:16px">
+        <div>
+          <label class="form-label">Categoria padrão</label>
+          <select id="imp-cat" class="form-select">
+            <option>Serviços</option><option>Materiais</option><option>Mão de Obra</option><option>Equipamentos</option><option>Outros</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Ao importar, usar preço:</label>
+          <select id="imp-preco-src" class="form-select">
+            <option value="edital">Do edital / planilha</option>
+            <option value="sinapi">Referência SINAPI</option>
+            <option value="menor">Menor (edital vs SINAPI)</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Ação no orçamento</label>
+          <select id="imp-acao" class="form-select">
+            <option value="adicionar">Adicionar aos itens existentes</option>
+            <option value="substituir">Substituir orçamento atual</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex">
+        <button class="btn btn-gold" onclick="confirmarImportacao()">&#10003; Importar Selecionados</button>
+        <button class="btn btn-outline" onclick="resetarImportacao()">&#8635; Novo Arquivo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════ COMPOSIÇÕES ANALÍTICAS (CPU) ═══════════════ -->
+<div id="view-cpu" class="view">
+  <div class="page-title">Composições <span class="gold-text">Analíticas (CPU)</span></div>
+  <div class="page-sub">Crie composições unitárias com insumos SINAPI — materiais, mão de obra e equipamentos</div>
+
+  <!-- Stepper -->
+  <div class="cpu-stepper" style="max-width:600px;margin-bottom:20px">
+    <div class="cpu-step active" id="cpu-step-0" onclick="cpuIrPasso(0)">1. Identificação</div>
+    <div class="cpu-step" id="cpu-step-1" onclick="cpuIrPasso(1)">2. Insumos</div>
+    <div class="cpu-step" id="cpu-step-2" onclick="cpuIrPasso(2)">3. Encargos</div>
+    <div class="cpu-step" id="cpu-step-3" onclick="cpuIrPasso(3)">4. Resultado</div>
+  </div>
+
+  <div class="grid grid-2" style="gap:20px;align-items:start">
+
+    <!-- EDITOR (esquerda) -->
+    <div>
+      <!-- Passo 0: Identificação -->
+      <div id="cpu-passo-0" class="card" style="margin-bottom:16px">
+        <div class="sec-title" style="margin-bottom:14px">Identificação da <span class="gold-text">Composição</span></div>
+        <div class="grid grid-2" style="gap:10px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Código CPU</label>
+            <input id="cpu-cod" class="form-input" placeholder="Ex: CPU-001 ou 74209/001"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Unidade</label>
+            <select id="cpu-unid" class="form-select">
+              <option>m²</option><option>m³</option><option>m</option><option>kg</option>
+              <option>t</option><option>un</option><option>vb</option><option>cj</option>
+              <option>h</option><option>l</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;grid-column:span 2">
+            <label class="form-label">Descrição do Serviço</label>
+            <input id="cpu-desc" class="form-input" placeholder="Ex: Alvenaria de tijolo cerâmico 9x19x19cm, e=14cm"/>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Tipo de Serviço</label>
+            <select id="cpu-tipo" class="form-select">
+              <option>Serviços Gerais</option>
+              <option>Fundações</option><option>Estrutura</option><option>Alvenaria</option>
+              <option>Cobertura</option><option>Revestimentos</option><option>Instalações Elétricas</option>
+              <option>Instalações Hidrossanitárias</option><option>Pintura</option>
+              <option>Pavimentação</option><option>Terraplenagem</option><option>Drenagem</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Produtividade (Hh/un)</label>
+            <input id="cpu-prod" class="form-input" type="number" value="1.0" step="0.01" min="0.001"/>
+          </div>
+        </div>
+        <button class="btn btn-gold btn-sm mt-4" onclick="cpuIrPasso(1)">Próximo: Insumos &#8594;</button>
+      </div>
+
+      <!-- Passo 1: Insumos -->
+      <div id="cpu-passo-1" class="card" style="margin-bottom:16px;display:none">
+        <div class="sec-title" style="margin-bottom:10px">Insumos da <span class="gold-text">Composição</span></div>
+
+        <!-- Busca insumo -->
+        <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;margin-bottom:12px">
+          <div class="grid" style="grid-template-columns:1fr 80px 100px auto;gap:8px;align-items:flex-end">
+            <div>
+              <label class="form-label">Buscar Insumo SINAPI</label>
+              <div class="search-wrap">
+                <input id="cpu-search" class="form-input" placeholder="Código ou descrição..." oninput="cpuBuscarInsumo(this.value)" autocomplete="off"/>
+                <div id="cpu-search-results" class="search-results"></div>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">Tipo</label>
+              <select id="cpu-ins-tipo" class="form-select">
+                <option value="M">Material</option>
+                <option value="E">Equip.</option>
+                <option value="S" selected>Mão de Obra</option>
+                <option value="T">Transporte</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Coeficiente</label>
+              <input id="cpu-ins-coef" class="form-input" type="number" value="1.000" step="0.001" min="0.0001"/>
+            </div>
+            <div>
+              <label class="form-label">&nbsp;</label>
+              <button class="btn btn-gold btn-sm" onclick="cpuAdicionarInsumo()" style="width:100%">&#43; Add</button>
+            </div>
+          </div>
+          <div id="cpu-ins-preview" style="margin-top:8px;display:none;font-size:12px;color:var(--text2)"></div>
+        </div>
+
+        <!-- Tabela de insumos -->
+        <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <div class="cpu-insumo-row cpu-insumo-header">
+            <span>Código</span><span>Descrição</span><span>Un</span><span>Coef.</span><span>P.Unit (R$)</span><span>Subtotal</span><span></span>
+          </div>
+          <div id="cpu-insumos-lista">
+            <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Adicione insumos à composição</div>
+          </div>
+        </div>
+
+        <div class="cpu-total-bar" id="cpu-custo-direto" style="display:none">
+          <span class="cpu-total-label">Custo Direto (sem encargos):</span>
+          <span class="cpu-total-value" id="cpu-cd-val">R$ 0,00</span>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-outline btn-sm" onclick="cpuIrPasso(0)">&#8592; Voltar</button>
+          <button class="btn btn-gold btn-sm" onclick="cpuIrPasso(2)">Próximo: Encargos &#8594;</button>
+        </div>
+      </div>
+
+      <!-- Passo 2: Encargos -->
+      <div id="cpu-passo-2" class="card" style="margin-bottom:16px;display:none">
+        <div class="sec-title" style="margin-bottom:14px">Encargos <span class="gold-text">Sociais</span></div>
+        <div class="enc-tabs" style="margin-bottom:14px">
+          <button class="enc-tab active" id="cpu-enc-nd" onclick="cpuSetEncargos('nd')">Não Desonerado (127,5%)</button>
+          <button class="enc-tab" id="cpu-enc-d" onclick="cpuSetEncargos('d')">Desonerado (96,8%)</button>
+        </div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:12px">
+          Os encargos sociais incidem sobre a parcela de <strong>Mão de Obra (tipo S)</strong> da composição.
+        </div>
+        <div id="cpu-enc-resumo" style="background:var(--bg3);border-radius:var(--radius);padding:12px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+            <span style="color:var(--text2)">Custo Mão de Obra (s/ encargos):</span>
+            <strong id="cpu-mo-base">R$ 0,00</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+            <span style="color:var(--text2)">Encargos Sociais:</span>
+            <strong id="cpu-enc-pct-label" class="gold-text">127,5%</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+            <span style="color:var(--text2)">Valor dos Encargos:</span>
+            <strong id="cpu-enc-valor">R$ 0,00</strong>
+          </div>
+          <div style="height:1px;background:var(--border);margin:8px 0"></div>
+          <div style="display:flex;justify-content:space-between;font-size:14px">
+            <span style="font-weight:700">MO c/ Encargos:</span>
+            <strong id="cpu-mo-total" class="gold-text">R$ 0,00</strong>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-outline btn-sm" onclick="cpuIrPasso(1)">&#8592; Voltar</button>
+          <button class="btn btn-gold btn-sm" onclick="cpuIrPasso(3)">Ver Resultado &#8594;</button>
+        </div>
+      </div>
+
+      <!-- Passo 3: Resultado -->
+      <div id="cpu-passo-3" class="card" style="display:none">
+        <div class="sec-title" style="margin-bottom:14px">Resultado <span class="gold-text">Final</span></div>
+        <div id="cpu-resultado-detalhado"></div>
+        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+          <button class="btn btn-gold" onclick="cpuSalvarNaBiblioteca()">&#128190; Salvar na Biblioteca</button>
+          <button class="btn btn-green" onclick="cpuEnviarParaOrcamento()">&#10133; Enviar ao Orçamento</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuNova()">&#43; Nova Composição</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BIBLIOTECA (direita) -->
+    <div>
+      <div class="card">
+        <div class="sec-header">
+          <div class="sec-title">Biblioteca de <span>CPUs</span></div>
+          <div class="flex">
+            <span id="cpu-lib-count" style="font-size:12px;color:var(--text3)">0 composições</span>
+            <button class="btn btn-outline btn-sm" onclick="cpuImportarBiblioteca()">&#128228; Importar</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuExportarBiblioteca()">&#128229; Exportar</button>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <input id="cpu-lib-search" class="form-input" placeholder="Buscar composição..." oninput="cpuRenderBiblioteca(this.value)" style="margin-bottom:10px"/>
+
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="cpu-lib-filtros">
+          <button class="btn btn-outline btn-sm" onclick="cpuFiltrarLib('')" id="lf-all" style="border-color:var(--gold);color:var(--gold)">Todos</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuFiltrarLib('Serviços Gerais')" id="lf-sg">Serviços</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuFiltrarLib('Estrutura')" id="lf-est">Estrutura</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuFiltrarLib('Alvenaria')" id="lf-alv">Alvenaria</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuFiltrarLib('Instalações Elétricas')" id="lf-ele">Elétricas</button>
+        </div>
+
+        <div style="max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)" id="cpu-biblioteca">
+          <div style="padding:32px;text-align:center;color:var(--text3)">
+            <div style="font-size:28px;margin-bottom:8px">&#9881;</div>
+            Nenhuma composição salva ainda.<br>Crie sua primeira CPU ao lado.
+          </div>
+        </div>
+      </div>
+
+      <!-- Ficha técnica da CPU selecionada -->
+      <div class="card" style="margin-top:16px;display:none" id="cpu-ficha-card">
+        <div class="sec-header">
+          <div class="sec-title">Ficha <span>Técnica</span></div>
+          <button class="btn btn-gold btn-sm" onclick="cpuUsarDaBiblioteca()">&#10133; Usar no Orçamento</button>
+        </div>
+        <div id="cpu-ficha-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- TOAST CONTAINER -->
+
+<!-- ═══ COPILOT AGENT ═══ -->
+<button id="copilot-btn" onclick="copilotToggle()" title="Abrir Copilot TLPlanly">
+  🤖
+  <span class="cop-badge" id="cop-badge" style="display:none">1</span>
+</button>
+
+<div id="copilot-panel">
+  <div class="cop-header">
+    <div class="cop-avatar">🤖</div>
+    <div class="cop-header-text">
+      <div class="cop-header-title">TLPlanly Copilot</div>
+      <div class="cop-header-sub" id="cop-mode-label">Tutor inteligente — sempre disponível</div>
+    </div>
+    <button class="cop-close" onclick="copilotToggle()">✕</button>
+  </div>
+  <div class="cop-messages" id="cop-messages"></div>
+  <div class="cop-chips" id="cop-chips"></div>
+  <div class="cop-input-row">
+    <input class="cop-input" id="cop-input" placeholder="Pergunte qualquer coisa..." 
+           onkeydown="if(event.key==='Enter')copilotEnviar()"/>
+    <button class="cop-send" onclick="copilotEnviar()">➤</button>
+  </div>
+</div>
+
+<div id="cop-highlight" class="cop-highlight-ring" style="display:none"></div>
+<div id="cop-tooltip" class="cop-tooltip" style="display:none"></div>
+
+<div id="toast"></div>
+
+<script src="/frontend/src/main.js"></script>
+</body>
+</html>
