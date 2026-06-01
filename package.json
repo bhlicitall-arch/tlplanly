@@ -2,9 +2,13 @@
   "name": "orcamentos_sinapi",
   "version": "1.0.0",
   "description": "TLPlanly - Plataforma de orçamentação e auditoria de obras com referência SINAPI",
-  "main": "index.js",
+  "main": "dist/src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "npx ts-node src/index.ts",
+    "start": "node dist/src/server.js",
+    "local": "npx ts-node src/index.ts",
     "server": "npx ts-node src/server.ts",
     "server:dev": "npx ts-node --watch src/server.ts",
     "test": "npm run test:auditoria && npm run test:matching && npm run test:importadores",
@@ -27,6 +31,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.1",
+    "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   },
   "dependencies": {

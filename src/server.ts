@@ -20,8 +20,12 @@ app.use(express.json({ limit: '2mb' }));
 
 // ── Carrega Skills TLPlanly como contexto adicional ───────────────────────
 function carregarSkills(): string {
-  const skillsDir = path.join(__dirname, '../skills');
-  if (!fs.existsSync(skillsDir)) return '';
+  const skillsDir = [
+    path.join(__dirname, '../skills'),
+    path.join(__dirname, '../../skills'),
+    'skills',
+  ].find(p => fs.existsSync(p));
+  if (!skillsDir) return '';
   const skills: string[] = [];
   try {
     const pastas = fs.readdirSync(skillsDir).filter(n =>
