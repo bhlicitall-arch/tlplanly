@@ -29,6 +29,7 @@
   </div>
 
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">&#9788;</button>
+  <button class="theme-btn" id="cloudBtn" onclick="cloudOpen()" title="Conta e obras salvas">&#128274;</button>
 </div>
 
 <!-- SIDEBAR -->
@@ -1311,6 +1312,63 @@
 </div>
 
 </div><!-- /main -->
+
+<!-- CLOUD ACCOUNT -->
+<div id="cloud-backdrop" class="modal-backdrop" style="display:none" onclick="cloudClose()"></div>
+<div id="cloud-modal" class="cloud-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="cloud-title">
+  <div class="cloud-head">
+    <div>
+      <div class="cloud-title" id="cloud-title">Conta TLPlanly</div>
+      <div class="cloud-sub" id="cloud-status">Modo local ativo</div>
+    </div>
+    <button class="cloud-close" onclick="cloudClose()" title="Fechar">&times;</button>
+  </div>
+
+  <div id="cloud-auth">
+    <div class="grid grid-2 cloud-grid">
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input id="cloud-email" class="form-input" type="email" autocomplete="email" placeholder="voce@empresa.com.br"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input id="cloud-password" class="form-input" type="password" autocomplete="current-password" placeholder="Minimo 8 caracteres"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nome</label>
+        <input id="cloud-name" class="form-input" autocomplete="name" placeholder="Responsavel"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Organizacao</label>
+        <input id="cloud-org" class="form-input" placeholder="Construtora ou orgao"/>
+      </div>
+    </div>
+    <div class="cloud-actions">
+      <button class="btn btn-gold" onclick="cloudLogin()">Entrar</button>
+      <button class="btn btn-outline" onclick="cloudRegister()">Criar conta</button>
+    </div>
+  </div>
+
+  <div id="cloud-workspace" style="display:none">
+    <div class="cloud-user">
+      <div>
+        <strong id="cloud-user-name">Usuario</strong>
+        <span id="cloud-user-email"></span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="cloudLogout()">Sair</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Obra / orcamento salvo</label>
+      <select id="cloud-projects" class="form-select" onchange="cloudSelectProject(this.value)"></select>
+    </div>
+    <div class="cloud-actions">
+      <button class="btn btn-gold" onclick="cloudSaveNow()">Salvar na nuvem</button>
+      <button class="btn btn-outline" onclick="cloudLoadSelectedProject()">Carregar</button>
+      <button class="btn btn-outline" onclick="cloudCreateProject()">Nova obra</button>
+    </div>
+    <div class="cloud-note">O TLPlanly continua salvando localmente. Com conta ativa, o orcamento tambem fica persistido por obra.</div>
+  </div>
+</div>
 
 <!-- TOAST CONTAINER -->
 

@@ -5,18 +5,27 @@
  * Endpoint: GET  /               (serve tlplanly.html)
  */
 
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  assertPassword,
+  createSessionToken,
+  hashPassword,
+  hashSessionToken,
+  normalizeEmail,
+  verifyPassword,
+} from './saas/auth';
+import { createSaasStore, PublicUser } from './saas/store';
 
 // Carrega .env se existir
 try { require('dotenv').config(); } catch {}
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json({ limit: '25mb' }));
 
 // ── Carrega Skills TLPlanly como contexto adicional ───────────────────────
 function carregarSkills(): string {
@@ -57,6 +66,78 @@ const PORT = process.env.PORT || 3000;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || process.env.AI_FALLBACK_KEY || '';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+const SESSION_COOKIE = 'tlplanly_session';
+const SESSION_DAYS = 7;
+const SESSION_SECRET = process.env.SESSION_SECRET || 'tlplanly-dev-session-secret';
+const saasStore = createSaasStore();
+
+type AuthedRequest = Request & { user?: PublicUser };
+
+function parseCookies(req: Request): Record<string, string> {
+  const header = req.headers.cookie || '';
+  return header.split(';').reduce<Record<string, string>>((acc, part) => {
+    const [rawKey, ...rest] = part.trim().split('=');
+    if (!rawKey) return acc;
+    acc[rawKey] = decodeURIComponent(rest.join('=') || '');
+    return acc;
+  }, {});
+}
+
+function setSessionCookie(res: Response, token: string): void {
+  const secure = process.env.NODE_ENV === 'production';
+  const maxAge = SESSION_DAYS * 24 * 60 * 60;
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure ? '; Secure' : ''}`
+  );
+}
+
+function clearSessionCookie(res: Response): void {
+  const secure = process.env.NODE_ENV === 'production';
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? '; Secure' : ''}`
+  );
+}
+
+function sessionExpiry(): Date {
+  return new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function sanitizeProjectState(state: any): any {
+  if (!state || typeof state !== 'object') return {};
+  return state;
+}
+
+function routeParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] : value || '';
+}
+
+async function getCurrentUser(req: Request): Promise<PublicUser | null> {
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (!token) return null;
+  return saasStore.getUserBySession(hashSessionToken(token + SESSION_SECRET));
+}
+
+async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) {
+      res.status(401).json({ error: 'Autenticacao necessaria.' });
+      return;
+    }
+    req.user = user;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function createUserSession(res: Response, user: PublicUser): Promise<void> {
+  const token = createSessionToken();
+  await saasStore.createSession(user.id, hashSessionToken(token + SESSION_SECRET), sessionExpiry());
+  setSessionCookie(res, token);
+}
 
 // ── Anthropic client ──────────────────────────────────────────────────────
 const anthropic = ANTHROPIC_KEY
@@ -255,6 +336,116 @@ O frontend pode enviar um campo "context" com o estado atual do sistema (view at
 // System prompt final = base + skills carregados dinamicamente
 const SYSTEM_PROMPT = BASE_PROMPT + SKILLS_CONTEXT;
 
+// ── SaaS Auth + Persistencia ─────────────────────────────────────────────
+app.post('/api/auth/register', async (req: Request, res: Response) => {
+  try {
+    const { name, email, password, orgName } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    if (!name || !normalizedEmail) {
+      res.status(400).json({ error: 'Nome e e-mail sao obrigatorios.' });
+      return;
+    }
+    assertPassword(password);
+    const { salt, hash } = hashPassword(password);
+    const user = await saasStore.createUser({
+      name,
+      email: normalizedEmail,
+      passwordHash: hash,
+      passwordSalt: salt,
+      orgName,
+    });
+    await createUserSession(res, user);
+    res.status(201).json({ user, persistence: saasStore.mode });
+  } catch (err: any) {
+    const message = err?.message || 'Erro ao cadastrar usuario.';
+    res.status(message.includes('cadastrado') ? 409 : 400).json({ error: message });
+  }
+});
+
+app.post('/api/auth/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body || {};
+    const user = await saasStore.findUserByEmail(email);
+    if (!user || !verifyPassword(password || '', user.passwordSalt, user.passwordHash)) {
+      res.status(401).json({ error: 'E-mail ou senha invalidos.' });
+      return;
+    }
+    const publicUser: PublicUser = {
+      id: user.id,
+      tenantId: user.tenantId,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    };
+    await createUserSession(res, publicUser);
+    res.json({ user: publicUser, persistence: saasStore.mode });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao autenticar.' });
+  }
+});
+
+app.post('/api/auth/logout', async (req: Request, res: Response) => {
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (token) await saasStore.deleteSession(hashSessionToken(token + SESSION_SECRET));
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', async (req: Request, res: Response) => {
+  const user = await getCurrentUser(req);
+  res.json({ user, persistence: saasStore.mode });
+});
+
+app.get('/api/projects', requireAuth, async (req: AuthedRequest, res: Response) => {
+  const projects = await saasStore.listProjects(req.user!);
+  res.json({ projects });
+});
+
+app.post('/api/projects', requireAuth, async (req: AuthedRequest, res: Response) => {
+  const { name, state } = req.body || {};
+  const project = await saasStore.createProject(req.user!, {
+    name: name || state?.config?.nome || 'Orcamento TLPlanly',
+    state: sanitizeProjectState(state),
+  });
+  res.status(201).json({ project });
+});
+
+app.get('/api/projects/:id', requireAuth, async (req: AuthedRequest, res: Response) => {
+  const project = await saasStore.getProject(req.user!, routeParam(req.params.id));
+  if (!project) {
+    res.status(404).json({ error: 'Obra/orcamento nao encontrado.' });
+    return;
+  }
+  res.json({ project });
+});
+
+app.put('/api/projects/:id', requireAuth, async (req: AuthedRequest, res: Response) => {
+  const { name, state } = req.body || {};
+  const project = await saasStore.updateProject(req.user!, routeParam(req.params.id), {
+    name,
+    state: state !== undefined ? sanitizeProjectState(state) : undefined,
+  });
+  if (!project) {
+    res.status(404).json({ error: 'Obra/orcamento nao encontrado.' });
+    return;
+  }
+  res.json({ project });
+});
+
+app.delete('/api/projects/:id', requireAuth, async (req: AuthedRequest, res: Response) => {
+  const deleted = await saasStore.deleteProject(req.user!, routeParam(req.params.id));
+  res.status(deleted ? 200 : 404).json({ ok: deleted });
+});
+
+app.get('/api/saas/status', async (_req: Request, res: Response) => {
+  res.json({
+    persistence: saasStore.mode,
+    database: saasStore.mode === 'postgres',
+    auth: true,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // ── POST /api/copilot — Streaming SSE ────────────────────────────────────
 app.post('/api/copilot', async (req: Request, res: Response) => {
   const { messages, context } = req.body as {
@@ -413,6 +604,8 @@ app.get('/health', (_req, res) => {
     costAware: true,
     fallbackModel: SONNET_MODEL,
     deepseekModel: DEEPSEEK_MODEL,
+    persistence: saasStore.mode,
+    database: saasStore.mode === 'postgres',
     historyMessages: MAX_HISTORY_MESSAGES,
     maxMessageChars: MAX_MESSAGE_CHARS,
     timestamp: new Date().toISOString(),
@@ -437,10 +630,17 @@ app.get('/', (_req, res) => {
 app.use(express.static(path.join(__dirname, '../..')));
 
 // ── Start ─────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log('╔══════════════════════════════════════════════════════╗');
-  console.log('║         TLPlanly Server — TechLicense                ║');
-  console.log(`║  http://localhost:${PORT}                              ║`);
-  console.log(`║  Anthropic API: ${anthropic ? '✅ Configurada' : '⚠️  ANTHROPIC_API_KEY ausente'}         ║`);
-  console.log('╚══════════════════════════════════════════════════════╝');
+async function startServer() {
+  await saasStore.init();
+  app.listen(PORT, () => {
+    console.log('TLPlanly Server - TechLicense');
+    console.log(`http://localhost:${PORT}`);
+    console.log(`Persistencia: ${saasStore.mode}`);
+    console.log(`Anthropic API: ${anthropic ? 'configurada' : 'ausente'}`);
+  });
+}
+
+startServer().catch(err => {
+  console.error('[TLPlanly] Falha ao iniciar servidor:', err);
+  process.exit(1);
 });

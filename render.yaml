@@ -16,3 +16,7 @@ services:
         sync: false
       - key: DEEPSEEK_MODEL
         value: deepseek-v4-flash
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false

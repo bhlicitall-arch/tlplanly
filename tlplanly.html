@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-
+﻿
 /* ── TOKENS ──────────────────────────────────────────────────── */
 :root{
   --gold:#f5a623;--gold2:#ffc045;--gold3:#ffe0a0;
@@ -70,6 +70,33 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
   font-size:16px;transition:all var(--transition);color:var(--text)
 }
 .theme-btn:hover{border-color:var(--gold);color:var(--gold)}
+/* Account modal */
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:9000;
+  backdrop-filter:blur(2px);
+}
+.cloud-modal{
+  position:fixed;top:76px;right:24px;width:min(520px,calc(100vw - 32px));
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
+  box-shadow:0 22px 60px rgba(0,0,0,.42);z-index:9001;padding:18px;
+}
+.cloud-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.cloud-title{font-size:18px;font-weight:800;color:var(--text)}
+.cloud-sub{font-size:12px;color:var(--text3);margin-top:3px}
+.cloud-close{
+  width:32px;height:32px;border-radius:50%;border:1px solid var(--border);
+  background:var(--bg3);color:var(--text);cursor:pointer;font-size:20px;line-height:1;
+}
+.cloud-close:hover{border-color:var(--gold);color:var(--gold)}
+.cloud-grid{gap:12px}
+.cloud-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.cloud-user{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px;margin-bottom:14px;
+}
+.cloud-user span{display:block;color:var(--text3);font-size:12px;margin-top:2px}
+.cloud-note{font-size:12px;color:var(--text3);margin-top:12px;line-height:1.45}
 /* ── SIDEBAR ─────────────────────────────────────────────────── */
 #sidebar{
   position:fixed;top:56px;left:0;bottom:0;width:220px;
@@ -518,6 +545,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   </div>
 
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">&#9788;</button>
+  <button class="theme-btn" id="cloudBtn" onclick="cloudOpen()" title="Conta e obras salvas">&#128274;</button>
 </div>
 
 <!-- SIDEBAR -->
@@ -1801,6 +1829,63 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 
 </div><!-- /main -->
 
+<!-- CLOUD ACCOUNT -->
+<div id="cloud-backdrop" class="modal-backdrop" style="display:none" onclick="cloudClose()"></div>
+<div id="cloud-modal" class="cloud-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="cloud-title">
+  <div class="cloud-head">
+    <div>
+      <div class="cloud-title" id="cloud-title">Conta TLPlanly</div>
+      <div class="cloud-sub" id="cloud-status">Modo local ativo</div>
+    </div>
+    <button class="cloud-close" onclick="cloudClose()" title="Fechar">&times;</button>
+  </div>
+
+  <div id="cloud-auth">
+    <div class="grid grid-2 cloud-grid">
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input id="cloud-email" class="form-input" type="email" autocomplete="email" placeholder="voce@empresa.com.br"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input id="cloud-password" class="form-input" type="password" autocomplete="current-password" placeholder="Minimo 8 caracteres"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nome</label>
+        <input id="cloud-name" class="form-input" autocomplete="name" placeholder="Responsavel"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Organizacao</label>
+        <input id="cloud-org" class="form-input" placeholder="Construtora ou orgao"/>
+      </div>
+    </div>
+    <div class="cloud-actions">
+      <button class="btn btn-gold" onclick="cloudLogin()">Entrar</button>
+      <button class="btn btn-outline" onclick="cloudRegister()">Criar conta</button>
+    </div>
+  </div>
+
+  <div id="cloud-workspace" style="display:none">
+    <div class="cloud-user">
+      <div>
+        <strong id="cloud-user-name">Usuario</strong>
+        <span id="cloud-user-email"></span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="cloudLogout()">Sair</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Obra / orcamento salvo</label>
+      <select id="cloud-projects" class="form-select" onchange="cloudSelectProject(this.value)"></select>
+    </div>
+    <div class="cloud-actions">
+      <button class="btn btn-gold" onclick="cloudSaveNow()">Salvar na nuvem</button>
+      <button class="btn btn-outline" onclick="cloudLoadSelectedProject()">Carregar</button>
+      <button class="btn btn-outline" onclick="cloudCreateProject()">Nova obra</button>
+    </div>
+    <div class="cloud-note">O TLPlanly continua salvando localmente. Com conta ativa, o orcamento tambem fica persistido por obra.</div>
+  </div>
+</div>
+
 <!-- TOAST CONTAINER -->
 
 <!-- ═══ COPILOT AGENT ═══ -->
@@ -1833,7 +1918,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 <div id="toast"></div>
 
 <script>
-
+﻿
 // ═══════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════
@@ -1861,6 +1946,16 @@ let STATE = {
     moedaCotacao:1,
     relatorioModelo:'publico'
   }
+};
+
+let CLOUD = {
+  user: null,
+  projects: [],
+  currentProjectId: localStorage.getItem('tlplanly_cloud_project') || '',
+  timer: null,
+  saving: false,
+  suppress: false,
+  persistence: 'local'
 };
 
 // Load from localStorage
@@ -1916,18 +2011,279 @@ normalizeState();
 function saveState() {
   try {
     normalizeState();
-    localStorage.setItem('tlplanly_state', JSON.stringify({
-      orcamento: STATE.orcamento,
-      planejamento: STATE.planejamento,
-      medicoes: STATE.medicoes,
-      quantitativos: STATE.quantitativos,
-      documentos: STATE.documentos,
-      backups: STATE.backups,
-      bdi: STATE.bdi,
-      bdiComponents: STATE.bdiComponents,
-      config: STATE.config
-    }));
+    localStorage.setItem('tlplanly_state', JSON.stringify(persistedState()));
+    cloudScheduleSave();
   } catch(e) {}
+}
+
+function persistedState() {
+  return {
+    orcamento: STATE.orcamento,
+    planejamento: STATE.planejamento,
+    medicoes: STATE.medicoes,
+    quantitativos: STATE.quantitativos,
+    documentos: STATE.documentos,
+    backups: STATE.backups,
+    bdi: STATE.bdi,
+    bdiComponents: STATE.bdiComponents,
+    config: STATE.config
+  };
+}
+
+function applyPersistedState(payload) {
+  if (!payload || typeof payload !== 'object') return;
+  CLOUD.suppress = true;
+  STATE.orcamento = Array.isArray(payload.orcamento) ? payload.orcamento : [];
+  STATE.planejamento = Array.isArray(payload.planejamento) ? payload.planejamento : [];
+  STATE.medicoes = Array.isArray(payload.medicoes) ? payload.medicoes : [];
+  STATE.quantitativos = payload.quantitativos && typeof payload.quantitativos === 'object' ? payload.quantitativos : {};
+  STATE.documentos = Array.isArray(payload.documentos) ? payload.documentos : [];
+  STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
+  STATE.bdi = Number.isFinite(Number(payload.bdi)) ? Number(payload.bdi) : STATE.bdi;
+  STATE.bdiComponents = payload.bdiComponents || STATE.bdiComponents;
+  STATE.config = { ...STATE.config, ...(payload.config || {}) };
+  normalizeState();
+  localStorage.setItem('tlplanly_state', JSON.stringify(persistedState()));
+  refreshAppFromState();
+  CLOUD.suppress = false;
+}
+
+function refreshAppFromState() {
+  const c = STATE.bdiComponents || {};
+  const setVal = (id, value) => {
+    const el = document.getElementById(id);
+    if (el && value !== undefined) el.value = value;
+  };
+  setVal('bdi-ac', c.ac);
+  setVal('bdi-s', c.s);
+  setVal('bdi-r', c.r);
+  setVal('bdi-df', c.df);
+  setVal('bdi-l', c.l);
+  setVal('bdi-i', c.i);
+  setVal('orcNome', STATE.config.nome || document.getElementById('orcNome')?.value || 'Orcamento SINAPI');
+  if (typeof syncConfigForm === 'function') syncConfigForm();
+  if (typeof calcBDI === 'function') calcBDI();
+  if (typeof renderElaborar === 'function') renderElaborar();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
+  if (typeof backupRender === 'function') backupRender();
+  if (typeof docsRender === 'function') docsRender();
+}
+
+async function cloudApi(path, options = {}) {
+  const opts = {
+    credentials: 'same-origin',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  };
+  const res = await fetch(path, opts);
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+  if (!res.ok) throw new Error(data.error || 'Falha de comunicacao com a nuvem TLPlanly.');
+  return data;
+}
+
+function cloudSetStatus(message) {
+  const el = document.getElementById('cloud-status');
+  if (el) el.textContent = message;
+}
+
+function cloudOpen() {
+  document.getElementById('cloud-backdrop').style.display = 'block';
+  document.getElementById('cloud-modal').style.display = 'block';
+  cloudRender();
+}
+
+function cloudClose() {
+  document.getElementById('cloud-backdrop').style.display = 'none';
+  document.getElementById('cloud-modal').style.display = 'none';
+}
+
+function cloudRender() {
+  const auth = document.getElementById('cloud-auth');
+  const workspace = document.getElementById('cloud-workspace');
+  const btn = document.getElementById('cloudBtn');
+  if (!auth || !workspace) return;
+  const logged = !!CLOUD.user;
+  auth.style.display = logged ? 'none' : 'block';
+  workspace.style.display = logged ? 'block' : 'none';
+  if (btn) {
+    btn.textContent = logged ? '☁' : '🔒';
+    btn.title = logged ? 'Obras salvas na nuvem' : 'Entrar na conta TLPlanly';
+  }
+  if (!logged) {
+    cloudSetStatus('Modo local ativo');
+    return;
+  }
+  document.getElementById('cloud-user-name').textContent = CLOUD.user.name || 'Usuario';
+  document.getElementById('cloud-user-email').textContent = CLOUD.user.email || '';
+  const select = document.getElementById('cloud-projects');
+  select.innerHTML = '';
+  if (!CLOUD.projects.length) {
+    select.innerHTML = '<option value="">Nenhuma obra salva</option>';
+  } else {
+    CLOUD.projects.forEach(project => {
+      const opt = document.createElement('option');
+      opt.value = project.id;
+      opt.textContent = `${project.name} - ${new Date(project.updatedAt).toLocaleDateString('pt-BR')}`;
+      if (project.id === CLOUD.currentProjectId) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo`);
+}
+
+async function cloudInit() {
+  try {
+    const data = await cloudApi('/api/auth/me');
+    CLOUD.user = data.user || null;
+    CLOUD.persistence = data.persistence || 'local';
+    if (CLOUD.user) await cloudRefreshProjects();
+    cloudRender();
+  } catch {
+    CLOUD.user = null;
+    cloudRender();
+  }
+}
+
+async function cloudLogin() {
+  try {
+    const email = document.getElementById('cloud-email').value.trim();
+    const password = document.getElementById('cloud-password').value;
+    if (!email || !password) throw new Error('Informe e-mail e senha.');
+    cloudSetStatus('Entrando...');
+    const data = await cloudApi('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    CLOUD.user = data.user;
+    CLOUD.persistence = data.persistence || 'local';
+    await cloudRefreshProjects();
+    toast('Conta conectada', 'success');
+    cloudRender();
+  } catch (err) {
+    cloudSetStatus(err.message || 'Erro ao entrar.');
+    toast(err.message || 'Erro ao entrar.', 'error');
+  }
+}
+
+async function cloudRegister() {
+  try {
+    const name = document.getElementById('cloud-name').value.trim();
+    const email = document.getElementById('cloud-email').value.trim();
+    const password = document.getElementById('cloud-password').value;
+    const orgName = document.getElementById('cloud-org').value.trim();
+    if (!name || !email || !password) throw new Error('Informe nome, e-mail e senha.');
+    cloudSetStatus('Criando conta...');
+    const data = await cloudApi('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, orgName })
+    });
+    CLOUD.user = data.user;
+    CLOUD.persistence = data.persistence || 'local';
+    await cloudRefreshProjects();
+    toast('Conta criada', 'success');
+    cloudRender();
+  } catch (err) {
+    cloudSetStatus(err.message || 'Erro ao criar conta.');
+    toast(err.message || 'Erro ao criar conta.', 'error');
+  }
+}
+
+async function cloudLogout() {
+  try { await cloudApi('/api/auth/logout', { method: 'POST', body: '{}' }); } catch {}
+  CLOUD.user = null;
+  CLOUD.projects = [];
+  CLOUD.currentProjectId = '';
+  localStorage.removeItem('tlplanly_cloud_project');
+  cloudRender();
+  toast('Conta desconectada', 'info');
+}
+
+async function cloudRefreshProjects() {
+  if (!CLOUD.user) return;
+  const data = await cloudApi('/api/projects');
+  CLOUD.projects = data.projects || [];
+  if (!CLOUD.projects.some(p => p.id === CLOUD.currentProjectId)) {
+    CLOUD.currentProjectId = CLOUD.projects[0]?.id || '';
+  }
+  if (CLOUD.currentProjectId) localStorage.setItem('tlplanly_cloud_project', CLOUD.currentProjectId);
+}
+
+function cloudSelectProject(id) {
+  CLOUD.currentProjectId = id || '';
+  if (CLOUD.currentProjectId) localStorage.setItem('tlplanly_cloud_project', CLOUD.currentProjectId);
+}
+
+function cloudProjectName() {
+  return document.getElementById('orcNome')?.value?.trim()
+    || STATE.config.nome
+    || 'Orcamento TLPlanly';
+}
+
+async function cloudCreateProject() {
+  if (!CLOUD.user) return cloudOpen();
+  try {
+    cloudSetStatus('Criando obra...');
+    const data = await cloudApi('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify({ name: cloudProjectName(), state: persistedState() })
+    });
+    CLOUD.currentProjectId = data.project.id;
+    localStorage.setItem('tlplanly_cloud_project', CLOUD.currentProjectId);
+    await cloudRefreshProjects();
+    cloudRender();
+    toast('Obra criada na nuvem', 'success');
+  } catch (err) {
+    toast(err.message || 'Erro ao criar obra.', 'error');
+  }
+}
+
+async function cloudSaveNow() {
+  if (!CLOUD.user) return cloudOpen();
+  if (!CLOUD.currentProjectId) return cloudCreateProject();
+  if (CLOUD.saving) return;
+  try {
+    CLOUD.saving = true;
+    cloudSetStatus('Salvando...');
+    const data = await cloudApi(`/api/projects/${encodeURIComponent(CLOUD.currentProjectId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: cloudProjectName(), state: persistedState() })
+    });
+    const idx = CLOUD.projects.findIndex(p => p.id === data.project.id);
+    if (idx >= 0) CLOUD.projects[idx] = data.project;
+    cloudSetStatus('Salvo agora');
+    cloudRender();
+  } catch (err) {
+    cloudSetStatus(err.message || 'Erro ao salvar.');
+    toast(err.message || 'Erro ao salvar na nuvem.', 'error');
+  } finally {
+    CLOUD.saving = false;
+  }
+}
+
+async function cloudLoadSelectedProject() {
+  if (!CLOUD.user || !CLOUD.currentProjectId) return;
+  try {
+    cloudSetStatus('Carregando obra...');
+    const data = await cloudApi(`/api/projects/${encodeURIComponent(CLOUD.currentProjectId)}`);
+    applyPersistedState(data.project.state || {});
+    cloudSetStatus('Obra carregada');
+    cloudClose();
+    toast('Obra carregada', 'success');
+  } catch (err) {
+    toast(err.message || 'Erro ao carregar obra.', 'error');
+  }
+}
+
+function cloudScheduleSave() {
+  if (CLOUD.suppress || !CLOUD.user || !CLOUD.currentProjectId) return;
+  clearTimeout(CLOUD.timer);
+  CLOUD.timer = setTimeout(() => cloudSaveNow(), 1800);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2980,6 +3336,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderDashboard();
   preencherSelectsOperacionais();
   loadSinapiBase();
+  cloudInit();
   // Sync BDI inputs from saved state
   const c = STATE.bdiComponents;
   if (c) {
