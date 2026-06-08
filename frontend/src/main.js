@@ -8,6 +8,11 @@ let STATE = {
   bdi: 24.46,
   bdiComponents: { ac:4, s:0.5, r:1.27, df:1.23, l:7.4, i:8.65 },
   orcamento: [],      // { cod, desc, unid, qtd, preco, ref, cat }
+  planejamento: [],
+  medicoes: [],
+  quantitativos: {},
+  documentos: [],
+  backups: [],
   sinapiBase: [],     // { codigoSinapi, descricao, unidade, precoMedio, ... }
   sinapiMes: '',
   auditResultados: [],
@@ -21,16 +26,47 @@ try {
   if (s) {
     const p = JSON.parse(s);
     STATE.orcamento = p.orcamento || [];
+    STATE.planejamento = p.planejamento || [];
+    STATE.medicoes = p.medicoes || [];
+    STATE.quantitativos = p.quantitativos || {};
+    STATE.documentos = p.documentos || [];
+    STATE.backups = p.backups || [];
     STATE.bdi = p.bdi || 24.46;
     STATE.bdiComponents = p.bdiComponents || STATE.bdiComponents;
     STATE.config = p.config || STATE.config;
   }
 } catch(e) {}
 
+function makeId(prefix='id') {
+  return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+}
+
+function normalizeState() {
+  STATE.orcamento = Array.isArray(STATE.orcamento) ? STATE.orcamento : [];
+  STATE.planejamento = Array.isArray(STATE.planejamento) ? STATE.planejamento : [];
+  STATE.medicoes = Array.isArray(STATE.medicoes) ? STATE.medicoes : [];
+  STATE.quantitativos = STATE.quantitativos && typeof STATE.quantitativos === 'object' ? STATE.quantitativos : {};
+  STATE.documentos = Array.isArray(STATE.documentos) ? STATE.documentos : [];
+  STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
+  STATE.orcamento.forEach((it, idx) => {
+    if (!it.id) it.id = makeId('orc');
+    if (!it.capitulo) it.capitulo = it.cat || 'Serviços';
+    if (!it.ordem) it.ordem = idx + 1;
+  });
+}
+
+normalizeState();
+
 function saveState() {
   try {
+    normalizeState();
     localStorage.setItem('tlplanly_state', JSON.stringify({
       orcamento: STATE.orcamento,
+      planejamento: STATE.planejamento,
+      medicoes: STATE.medicoes,
+      quantitativos: STATE.quantitativos,
+      documentos: STATE.documentos,
+      backups: STATE.backups,
       bdi: STATE.bdi,
       bdiComponents: STATE.bdiComponents,
       config: STATE.config
@@ -81,6 +117,11 @@ function showView(id) {
   if (id==='dashboard') renderDashboard();
   if (id==='curvaABC') gerarCurvaABC();
   if (id==='memoria') renderMemoria();
+  if (id==='planejamento') planejamentoRender();
+  if (id==='medicoes') medicoesRender();
+  if (id==='quantitativos') quantRender();
+  if (id==='documentos') docsRender();
+  if (id==='backups') backupRender();
   if (id==='relatorio') renderRelatorioPreview();
   if (id==='sinapi') renderSinapiBase();
   if (id==='bdi') { calcBDI(); showEncargos('nd'); renderBDIComp(); }
@@ -158,6 +199,8 @@ function selecionarInsumo(cod) {
   document.getElementById('addUnid').value = item.unidade;
   document.getElementById('addPreco').value = item.precoMedio.toFixed(2);
   document.getElementById('addRef').value = item.precoMedio.toFixed(2);
+  const cap = document.getElementById('addCapitulo');
+  if (cap && !cap.value) cap.value = 'Serviços';
   document.getElementById('addItemPanel').style.display = 'block';
 }
 
@@ -170,6 +213,21 @@ document.addEventListener('click', e => {
 // ═══════════════════════════════════════════════════════════
 // ORÇAMENTO
 // ═══════════════════════════════════════════════════════════
+function novoItemProprio() {
+  document.getElementById('sinapiSearch').value = '';
+  document.getElementById('addCod').value = 'PROP-' + String(STATE.orcamento.length + 1).padStart(3, '0');
+  document.getElementById('addDesc').value = '';
+  document.getElementById('addUnid').value = 'UN';
+  document.getElementById('addQtd').value = '1';
+  document.getElementById('addPreco').value = '0.00';
+  document.getElementById('addRef').value = '0.00';
+  document.getElementById('addCat').value = 'Serviços';
+  const cap = document.getElementById('addCapitulo');
+  if (cap) cap.value = 'Serviços próprios';
+  document.getElementById('addItemPanel').style.display = 'block';
+  document.getElementById('addDesc').focus();
+}
+
 function adicionarItem() {
   const cod = document.getElementById('addCod').value;
   const desc = document.getElementById('addDesc').value;
@@ -178,11 +236,13 @@ function adicionarItem() {
   const preco = parseFloat(document.getElementById('addPreco').value) || 0;
   const ref = parseFloat(document.getElementById('addRef').value) || 0;
   const cat = document.getElementById('addCat').value;
-  if (!cod) { toast('Selecione um insumo primeiro', 'error'); return; }
-  STATE.orcamento.push({ cod, desc, unid, qtd, preco, ref, cat });
+  const capitulo = document.getElementById('addCapitulo')?.value?.trim() || cat || 'Serviços';
+  if (!cod || !desc) { toast('Informe código e descrição do item', 'error'); return; }
+  STATE.orcamento.push({ id: makeId('orc'), cod, desc, unid, qtd, preco, ref, cat, capitulo, ordem: STATE.orcamento.length + 1 });
   saveState();
   renderElaborar();
   renderDashboard();
+  preencherSelectsOperacionais();
   document.getElementById('addItemPanel').style.display = 'none';
   document.getElementById('sinapiSearch').value = '';
   toast('Item adicionado ao orçamento', 'success');
@@ -193,6 +253,7 @@ function removerItem(idx) {
   saveState();
   renderElaborar();
   renderDashboard();
+  preencherSelectsOperacionais();
   toast('Item removido', 'info');
 }
 
@@ -202,10 +263,12 @@ function limparOrcamento() {
   saveState();
   renderElaborar();
   renderDashboard();
+  preencherSelectsOperacionais();
   toast('Orçamento limpo', 'info');
 }
 
 function renderElaborar() {
+  normalizeState();
   const tb = document.getElementById('elab-tabela');
   if (!STATE.orcamento.length) {
     tb.innerHTML = '<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text3)">Pesquise insumos SINAPI acima para adicionar itens</td></tr>';
@@ -223,7 +286,7 @@ function renderElaborar() {
     return `<tr>
       <td class="td-mono">${i+1}</td>
       <td class="td-mono">${it.cod}</td>
-      <td>${it.desc}</td>
+      <td><div>${it.desc}</div><div style="font-size:10px;color:var(--text3);margin-top:2px">${it.capitulo || it.cat || 'Serviços'}</div></td>
       <td>${it.unid}</td>
       <td>${fmtNum(it.qtd)}</td>
       <td>${fmtMoeda(it.preco)}</td>
@@ -853,6 +916,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderBDIComp();
   renderElaborar();
   renderDashboard();
+  preencherSelectsOperacionais();
   loadSinapiBase();
   // Sync BDI inputs from saved state
   const c = STATE.bdiComponents;
@@ -866,6 +930,481 @@ window.addEventListener('DOMContentLoaded', () => {
     calcBDI();
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// GESTÃO DA OBRA — PLANEJAMENTO, MEDIÇÕES, QUANTITATIVOS
+// ═══════════════════════════════════════════════════════════
+function getItemById(id) {
+  normalizeState();
+  return STATE.orcamento.find(i => i.id === id);
+}
+
+function itemLabel(item) {
+  if (!item) return 'Sem vínculo';
+  return `${item.cod || '—'} · ${(item.desc || '').substring(0, 70)}`;
+}
+
+function itemValor(item) {
+  return (Number(item?.qtd) || 0) * (Number(item?.preco) || 0);
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysIso(dateIso, days) {
+  const d = new Date(dateIso || todayIso());
+  d.setDate(d.getDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function daysBetween(a, b) {
+  const da = new Date(a || todayIso());
+  const db = new Date(b || a || todayIso());
+  return Math.max(1, Math.round((db - da) / 86400000) + 1);
+}
+
+function preencherSelectsOperacionais() {
+  normalizeState();
+  const itemOptions = STATE.orcamento.map((it, idx) =>
+    `<option value="${it.id}">${idx + 1}. ${escapeHtml(itemLabel(it))}</option>`
+  ).join('');
+
+  const plan = document.getElementById('plan-item');
+  if (plan) plan.innerHTML = `<option value="">Tarefa sem item direto</option>${itemOptions}`;
+  const qt = document.getElementById('qt-item');
+  if (qt) qt.innerHTML = itemOptions || '<option value="">Nenhum item no orçamento</option>';
+  const doc = document.getElementById('doc-item');
+  if (doc) doc.innerHTML = `<option value="obra">Obra / Geral</option>${itemOptions}`;
+}
+
+function planejamentoGerarDoOrcamento() {
+  normalizeState();
+  if (!STATE.orcamento.length) { toast('Adicione itens ao orçamento antes de gerar o planejamento.', 'error'); return; }
+  const inicio = document.getElementById('plan-ini')?.value || todayIso();
+  let cursor = inicio;
+  STATE.planejamento = STATE.orcamento.map((it, idx) => {
+    const dur = Math.max(1, Math.min(20, Math.ceil((Number(it.qtd) || 1) / 10)));
+    const ini = idx === 0 ? cursor : addDaysIso(cursor, 1);
+    const fim = addDaysIso(ini, dur - 1);
+    cursor = fim;
+    return {
+      id: makeId('plan'),
+      code: 'T' + (idx + 1),
+      itemId: it.id,
+      desc: it.desc,
+      inicio: ini,
+      fim,
+      deps: idx > 0 ? ['T' + idx] : [],
+      produtividade: 0,
+      progresso: 0
+    };
+  });
+  saveState();
+  planejamentoRender();
+  toast('Planejamento gerado a partir do orçamento.', 'success');
+}
+
+function planejamentoAdicionarTarefa() {
+  const desc = document.getElementById('plan-desc')?.value?.trim();
+  if (!desc) { toast('Informe a descrição da tarefa.', 'error'); return; }
+  const code = 'T' + (STATE.planejamento.length + 1);
+  const inicio = document.getElementById('plan-ini')?.value || todayIso();
+  const fim = document.getElementById('plan-fim')?.value || inicio;
+  STATE.planejamento.push({
+    id: makeId('plan'),
+    code,
+    itemId: document.getElementById('plan-item')?.value || '',
+    desc,
+    inicio,
+    fim,
+    deps: (document.getElementById('plan-deps')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
+    produtividade: parseFloat(document.getElementById('plan-prod')?.value) || 0,
+    progresso: Math.max(0, Math.min(100, parseFloat(document.getElementById('plan-prog')?.value) || 0))
+  });
+  saveState();
+  planejamentoRender();
+  toast('Tarefa adicionada ao planejamento.', 'success');
+}
+
+function planejamentoRemover(id) {
+  STATE.planejamento = STATE.planejamento.filter(t => t.id !== id);
+  saveState();
+  planejamentoRender();
+}
+
+function planejamentoCriticos() {
+  const byCode = Object.fromEntries(STATE.planejamento.map(t => [t.code, t]));
+  const memo = {};
+  const dur = t => daysBetween(t.inicio, t.fim);
+  const score = t => {
+    if (!t) return 0;
+    if (memo[t.code]) return memo[t.code];
+    const depScore = (t.deps || []).reduce((m, d) => Math.max(m, score(byCode[d])), 0);
+    memo[t.code] = depScore + dur(t);
+    return memo[t.code];
+  };
+  let endTask = null, maxScore = 0;
+  STATE.planejamento.forEach(t => {
+    const s = score(t);
+    if (s > maxScore) { maxScore = s; endTask = t; }
+  });
+  const critical = new Set();
+  while (endTask) {
+    critical.add(endTask.code);
+    const deps = endTask.deps || [];
+    endTask = deps.map(d => byCode[d]).filter(Boolean).sort((a,b) => score(b) - score(a))[0];
+  }
+  return critical;
+}
+
+function planejamentoRender() {
+  normalizeState();
+  preencherSelectsOperacionais();
+  const tb = document.getElementById('plan-tabela');
+  if (!tb) return;
+  const tasks = STATE.planejamento;
+  const critical = planejamentoCriticos();
+  const totalValor = tasks.reduce((s, t) => s + itemValor(getItemById(t.itemId)), 0);
+  const minDate = tasks.length ? tasks.map(t => t.inicio).sort()[0] : todayIso();
+  const maxDate = tasks.length ? tasks.map(t => t.fim).sort().slice(-1)[0] : minDate;
+  const totalDias = tasks.length ? daysBetween(minDate, maxDate) : 0;
+
+  document.getElementById('plan-kpi-tarefas').textContent = tasks.length;
+  document.getElementById('plan-kpi-dias').textContent = totalDias;
+  document.getElementById('plan-kpi-critico').textContent = critical.size;
+  document.getElementById('plan-kpi-valor').textContent = fmtMoeda(totalValor);
+
+  if (!tasks.length) {
+    tb.innerHTML = '<tr><td colspan="10" style="padding:28px;text-align:center;color:var(--text3)">Gere tarefas a partir do orçamento ou adicione uma tarefa manual.</td></tr>';
+    document.getElementById('plan-gantt').innerHTML = '<div class="empty-state" style="padding:24px">Sem tarefas planejadas.</div>';
+    renderCurvaS([]);
+    return;
+  }
+
+  tb.innerHTML = tasks.map(t => {
+    const item = getItemById(t.itemId);
+    const prog = Math.max(0, Math.min(100, Number(t.progresso) || 0));
+    return `<tr>
+      <td class="td-mono">${t.code}</td>
+      <td>${escapeHtml(t.desc)}</td>
+      <td>${escapeHtml(itemLabel(item))}</td>
+      <td>${t.inicio}</td>
+      <td>${t.fim}</td>
+      <td>${daysBetween(t.inicio, t.fim)}</td>
+      <td>${(t.deps || []).join(', ') || '—'}</td>
+      <td>${fmtMoeda(itemValor(item))}</td>
+      <td><div class="progress-bar"><div class="progress-fill" style="width:${prog}%;background:var(--green)"></div></div>${prog}%</td>
+      <td><button class="btn btn-danger btn-sm" onclick="planejamentoRemover('${t.id}')">×</button></td>
+    </tr>`;
+  }).join('');
+
+  const range = Math.max(1, daysBetween(minDate, maxDate));
+  document.getElementById('plan-gantt').innerHTML = tasks.map(t => {
+    const left = Math.max(0, (daysBetween(minDate, t.inicio) - 1) / range * 100);
+    const width = Math.max(3, daysBetween(t.inicio, t.fim) / range * 100);
+    const prog = Math.max(0, Math.min(100, Number(t.progresso) || 0));
+    return `<div class="gantt-row">
+      <div class="gantt-label" title="${escapeHtml(t.desc)}">${t.code} · ${escapeHtml(t.desc)}</div>
+      <div class="gantt-track"><div class="gantt-bar ${critical.has(t.code) ? 'critical' : ''}" style="left:${left}%;width:${width}%"><div class="gantt-progress" style="width:${prog}%"></div></div></div>
+    </div>`;
+  }).join('');
+  renderCurvaS(tasks);
+}
+
+function renderCurvaS(tasks) {
+  const canvas = document.getElementById('chartCurvaS');
+  if (!canvas || !window.Chart) return;
+  if (STATE.charts.curvaS) STATE.charts.curvaS.destroy();
+  const ordered = [...tasks].sort((a,b) => a.fim.localeCompare(b.fim));
+  let acum = 0;
+  const labels = ordered.map(t => t.fim);
+  const data = ordered.map(t => {
+    acum += itemValor(getItemById(t.itemId));
+    return acum;
+  });
+  STATE.charts.curvaS = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets: [{ label:'Valor planejado acumulado', data, borderColor:getCSSVar('--gold'), backgroundColor:'rgba(245,166,35,.12)', tension:.3, fill:true }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>fmtMilhar(v)}}} }
+  });
+}
+
+function planejamentoExportar() {
+  const lines = ['# Planejamento TLPlanly', '', '| ID | Tarefa | Início | Fim | Dependências | Progresso |', '|---|---|---:|---:|---|---:|'];
+  STATE.planejamento.forEach(t => lines.push(`| ${t.code} | ${mdCell(t.desc)} | ${t.inicio} | ${t.fim} | ${(t.deps || []).join(', ') || '-'} | ${t.progresso || 0}% |`));
+  downloadText(lines.join('\n'), 'planejamento_tlplanly.md', 'text/markdown');
+}
+
+function medicoesCriarPeriodo() {
+  const nome = document.getElementById('med-periodo')?.value?.trim() || `Medição ${STATE.medicoes.length + 1}`;
+  const data = document.getElementById('med-data')?.value || todayIso();
+  const med = { id: makeId('med'), nome, data, itens: {} };
+  STATE.medicoes.push(med);
+  saveState();
+  medicoesRender(med.id);
+  toast('Período de medição criado.', 'success');
+}
+
+function medicoesSelectAtivo(forcedId) {
+  return forcedId || document.getElementById('med-select')?.value || STATE.medicoes[0]?.id || '';
+}
+
+function medicoesSalvarAtual() {
+  const id = medicoesSelectAtivo();
+  const med = STATE.medicoes.find(m => m.id === id);
+  if (!med) { toast('Crie um período de medição primeiro.', 'error'); return; }
+  STATE.orcamento.forEach(it => {
+    med.itens[it.id] = parseFloat(document.getElementById('med-qtd-' + it.id)?.value) || 0;
+  });
+  saveState();
+  medicoesRender(id);
+  toast('Medição salva.', 'success');
+}
+
+function medicoesRemoverAtual() {
+  const id = medicoesSelectAtivo();
+  if (!id) { toast('Nenhum período selecionado.', 'error'); return; }
+  if (!confirm('Remover o período de medição selecionado?')) return;
+  STATE.medicoes = STATE.medicoes.filter(m => m.id !== id);
+  saveState();
+  medicoesRender();
+  toast('Período de medição removido.', 'info');
+}
+
+function medicoesAcumulado(itemId) {
+  return STATE.medicoes.reduce((s, m) => s + (Number(m.itens?.[itemId]) || 0), 0);
+}
+
+function medicoesRender(forcedId) {
+  normalizeState();
+  const sel = document.getElementById('med-select');
+  if (!sel) return;
+  sel.innerHTML = STATE.medicoes.map(m => `<option value="${m.id}">${escapeHtml(m.nome)} · ${m.data}</option>`).join('');
+  const activeId = medicoesSelectAtivo(forcedId);
+  if (activeId) sel.value = activeId;
+  const med = STATE.medicoes.find(m => m.id === activeId);
+  const tb = document.getElementById('med-tabela');
+
+  if (!STATE.orcamento.length) {
+    tb.innerHTML = '<tr><td colspan="7" style="padding:28px;text-align:center;color:var(--text3)">Adicione itens ao orçamento para medir execução.</td></tr>';
+    return;
+  }
+  if (!med) {
+    tb.innerHTML = '<tr><td colspan="7" style="padding:28px;text-align:center;color:var(--text3)">Crie um período de medição.</td></tr>';
+  } else {
+    tb.innerHTML = STATE.orcamento.map(it => {
+      const exec = Number(med.itens?.[it.id]) || 0;
+      const acumulado = medicoesAcumulado(it.id);
+      const saldo = (Number(it.qtd) || 0) - acumulado;
+      const excedido = acumulado > (Number(it.qtd) || 0);
+      return `<tr>
+        <td class="td-mono">${it.cod}</td>
+        <td>${escapeHtml(it.desc)}</td>
+        <td>${fmtNum(it.qtd)} ${it.unid}</td>
+        <td><input id="med-qtd-${it.id}" class="form-input" type="number" step="0.001" value="${exec}" style="max-width:120px"/></td>
+        <td>${fmtNum(saldo)} ${it.unid}</td>
+        <td>${fmtMoeda(exec * (Number(it.preco) || 0))}</td>
+        <td class="${excedido ? 'status-excedido' : saldo <= 0 ? 'status-ok' : 'status-pendente'}">${excedido ? 'Excedido' : saldo <= 0 ? 'Concluído' : 'Em execução'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const totalOrc = STATE.orcamento.reduce((s, it) => s + itemValor(it), 0);
+  const totalExec = STATE.orcamento.reduce((s, it) => s + medicoesAcumulado(it.id) * (Number(it.preco) || 0), 0);
+  const exced = STATE.orcamento.filter(it => medicoesAcumulado(it.id) > (Number(it.qtd) || 0)).length;
+  document.getElementById('med-kpi-periodo').textContent = med ? med.nome.replace(/^Medição\s*/i, '') : '—';
+  document.getElementById('med-kpi-exec').textContent = fmtMoeda(totalExec);
+  document.getElementById('med-kpi-avanco').textContent = totalOrc ? (totalExec / totalOrc * 100).toFixed(1) + '%' : '0%';
+  document.getElementById('med-kpi-exced').textContent = exced;
+}
+
+function quantRender() {
+  normalizeState();
+  preencherSelectsOperacionais();
+  quantRenderForm();
+  const resumo = document.getElementById('qt-resumo');
+  if (!resumo) return;
+  const vinculados = Object.entries(STATE.quantitativos).filter(([, linhas]) => linhas?.length);
+  resumo.innerHTML = vinculados.length ? `<div class="op-list">${vinculados.map(([itemId, linhas]) => {
+    const item = getItemById(itemId);
+    const total = linhas.reduce((s, l) => s + (Number(l.resultado) || 0), 0);
+    return `<div class="op-row"><div class="op-row-main"><div class="op-title">${escapeHtml(itemLabel(item))}</div><div class="op-meta">${linhas.length} linha(s) de memória</div></div><div class="op-value">${fmtNum(total)}</div></div>`;
+  }).join('')}</div>` : '<div class="empty-state" style="padding:24px">Nenhuma memória quantitativa vinculada.</div>';
+}
+
+function quantRenderForm() {
+  const itemId = document.getElementById('qt-item')?.value;
+  const lista = document.getElementById('qt-lista');
+  if (!lista) return;
+  const linhas = STATE.quantitativos[itemId] || [];
+  const total = linhas.reduce((s, l) => s + (Number(l.resultado) || 0), 0);
+  document.getElementById('qt-total').textContent = fmtNum(total);
+  lista.innerHTML = linhas.length ? `<div class="op-list">${linhas.map(l => `<div class="op-row">
+    <div class="op-row-main"><div class="op-title">${escapeHtml(l.desc)}</div><div class="op-meta"><span class="formula-chip">${escapeHtml(l.formula)}</span></div></div>
+    <div class="op-value">${fmtNum(l.resultado)}</div>
+    <button class="btn btn-danger btn-sm" onclick="quantRemoverLinha('${itemId}','${l.id}')">×</button>
+  </div>`).join('')}</div>` : '<div class="empty-state" style="padding:24px">Nenhuma linha para este serviço.</div>';
+}
+
+function calcFormulaSegura(formula) {
+  const expr = String(formula || '').replace(/,/g, '.');
+  if (!/^[\d\s+\-*/().]+$/.test(expr)) throw new Error('Use apenas números e operadores + - * / ( ).');
+  const result = Function('"use strict";return (' + expr + ')')();
+  if (!Number.isFinite(result)) throw new Error('Resultado inválido.');
+  return result;
+}
+
+function quantAdicionarLinha() {
+  const itemId = document.getElementById('qt-item')?.value;
+  if (!itemId) { toast('Selecione um serviço.', 'error'); return; }
+  const desc = document.getElementById('qt-desc')?.value?.trim() || 'Linha de quantitativo';
+  const formula = document.getElementById('qt-formula')?.value?.trim();
+  if (!formula) { toast('Informe a fórmula.', 'error'); return; }
+  try {
+    const resultado = calcFormulaSegura(formula);
+    if (!STATE.quantitativos[itemId]) STATE.quantitativos[itemId] = [];
+    STATE.quantitativos[itemId].push({ id: makeId('qt'), desc, formula, resultado });
+    saveState();
+    quantRender();
+    document.getElementById('qt-desc').value = '';
+    document.getElementById('qt-formula').value = '';
+  } catch(err) {
+    toast(err.message, 'error');
+  }
+}
+
+function quantRemoverLinha(itemId, lineId) {
+  STATE.quantitativos[itemId] = (STATE.quantitativos[itemId] || []).filter(l => l.id !== lineId);
+  saveState();
+  quantRender();
+}
+
+function quantAplicarNoOrcamento() {
+  const itemId = document.getElementById('qt-item')?.value;
+  const item = getItemById(itemId);
+  if (!item) return;
+  const total = (STATE.quantitativos[itemId] || []).reduce((s, l) => s + (Number(l.resultado) || 0), 0);
+  item.qtd = total;
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  quantRender();
+  toast('Quantidade aplicada ao item do orçamento.', 'success');
+}
+
+function docsAdicionar() {
+  const targetId = document.getElementById('doc-item')?.value || 'obra';
+  const titulo = document.getElementById('doc-titulo')?.value?.trim();
+  if (!titulo) { toast('Informe o título do anexo/especificação.', 'error'); return; }
+  const files = Array.from(document.getElementById('doc-files')?.files || []).map(f => ({ name:f.name, size:f.size, type:f.type }));
+  STATE.documentos.push({
+    id: makeId('doc'),
+    targetId,
+    tipo: document.getElementById('doc-tipo')?.value || 'Outro',
+    titulo,
+    texto: document.getElementById('doc-texto')?.value || '',
+    files,
+    criadoEm: new Date().toLocaleString('pt-BR')
+  });
+  saveState();
+  docsRender();
+  document.getElementById('doc-titulo').value = '';
+  document.getElementById('doc-texto').value = '';
+  document.getElementById('doc-files').value = '';
+  toast('Anexo/especificação registrado.', 'success');
+}
+
+function docsRender() {
+  normalizeState();
+  preencherSelectsOperacionais();
+  const el = document.getElementById('docs-lista');
+  if (!el) return;
+  el.innerHTML = STATE.documentos.length ? `<div class="op-list">${STATE.documentos.map(d => {
+    const item = d.targetId === 'obra' ? null : getItemById(d.targetId);
+    return `<div class="op-row">
+      <div class="op-row-main">
+        <div class="op-title">${escapeHtml(d.titulo)}</div>
+        <div class="op-meta">${escapeHtml(d.tipo)} · ${d.criadoEm} · ${d.targetId === 'obra' ? 'Obra / Geral' : escapeHtml(itemLabel(item))}</div>
+        ${d.texto ? `<div style="font-size:12px;color:var(--text2);margin-top:8px">${escapeHtml(d.texto)}</div>` : ''}
+        ${d.files?.length ? `<div class="op-meta" style="margin-top:6px">Arquivos: ${d.files.map(f => escapeHtml(f.name)).join(', ')}</div>` : ''}
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="docsRemover('${d.id}')">×</button>
+    </div>`;
+  }).join('')}</div>` : '<div class="empty-state" style="padding:24px">Nenhum anexo ou especificação registrado.</div>';
+}
+
+function docsRemover(id) {
+  STATE.documentos = STATE.documentos.filter(d => d.id !== id);
+  saveState();
+  docsRender();
+}
+
+function docsExportarDossie() {
+  const lines = ['# Dossiê Técnico TLPlanly', '', `Gerado em: ${new Date().toLocaleString('pt-BR')}`, ''];
+  STATE.documentos.forEach(d => {
+    const item = d.targetId === 'obra' ? null : getItemById(d.targetId);
+    lines.push(`## ${d.titulo}`, '', `- Tipo: ${d.tipo}`, `- Vínculo: ${d.targetId === 'obra' ? 'Obra / Geral' : itemLabel(item)}`, `- Criado em: ${d.criadoEm}`, '');
+    if (d.texto) lines.push(d.texto, '');
+    if (d.files?.length) lines.push('Arquivos: ' + d.files.map(f => f.name).join(', '), '');
+  });
+  downloadText(lines.join('\n'), 'dossie_tecnico_tlplanly.md', 'text/markdown');
+}
+
+function backupPayload() {
+  return {
+    orcamento: STATE.orcamento,
+    planejamento: STATE.planejamento,
+    medicoes: STATE.medicoes,
+    quantitativos: STATE.quantitativos,
+    documentos: STATE.documentos,
+    bdi: STATE.bdi,
+    bdiComponents: STATE.bdiComponents,
+    config: STATE.config
+  };
+}
+
+function backupCriar() {
+  const desc = document.getElementById('backup-desc')?.value?.trim() || 'Ponto de restauração';
+  STATE.backups.unshift({ id: makeId('bkp'), desc, criadoEm: new Date().toLocaleString('pt-BR'), payload: backupPayload() });
+  STATE.backups = STATE.backups.slice(0, 20);
+  saveState();
+  backupRender();
+  toast('Backup criado.', 'success');
+}
+
+function backupRestaurar(id) {
+  const b = STATE.backups.find(x => x.id === id);
+  if (!b || !confirm('Restaurar este ponto? O estado atual será substituído.')) return;
+  Object.assign(STATE, b.payload);
+  STATE.backups = [b, ...STATE.backups.filter(x => x.id !== id)];
+  normalizeState();
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  backupRender();
+  toast('Backup restaurado.', 'success');
+}
+
+function backupRemover(id) {
+  STATE.backups = STATE.backups.filter(b => b.id !== id);
+  saveState();
+  backupRender();
+}
+
+function backupRender() {
+  const el = document.getElementById('backup-lista');
+  if (!el) return;
+  el.innerHTML = STATE.backups.length ? `<div class="op-list">${STATE.backups.map(b => `<div class="op-row">
+    <div class="op-row-main"><div class="op-title">${escapeHtml(b.desc)}</div><div class="op-meta">${b.criadoEm} · ${b.payload?.orcamento?.length || 0} itens · ${b.payload?.planejamento?.length || 0} tarefas</div></div>
+    <button class="btn btn-outline btn-sm" onclick="backupRestaurar('${b.id}')">Restaurar</button>
+    <button class="btn btn-danger btn-sm" onclick="backupRemover('${b.id}')">×</button>
+  </div>`).join('')}</div>` : '<div class="empty-state" style="padding:24px">Nenhum backup criado.</div>';
+}
+
+function backupExportarEstado() {
+  downloadJSON({ exportadoEm: new Date().toISOString(), ...backupPayload() }, 'tlplanly_estado_completo.json');
+}
 
 // ═══════════════════════════════════════════════════════════
 // FASE 2A — IMPORTADOR DE EDITAL
@@ -1509,7 +2048,7 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
 
     // Use suggested SINAPI code if partial match and no original code
     const cod = r.cod || r.sugestao || 'IMP';
-    return { cod, desc: r.desc, unid: r.unid, qtd: r.qtd, preco: preco||0, ref: r.refSinapi||0, cat, origemArquivo: r.origemArquivo || '', origemMetodo: r.origemMetodo || '' };
+    return { id: makeId('orc'), cod, desc: r.desc, unid: r.unid, qtd: r.qtd, preco: preco||0, ref: r.refSinapi||0, cat, capitulo: cat, origemArquivo: r.origemArquivo || '', origemMetodo: r.origemMetodo || '' };
   });
 
   if (acao === 'substituir') STATE.orcamento = novos;
@@ -1518,6 +2057,7 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
   saveState();
   renderElaborar();
   renderDashboard();
+  preencherSelectsOperacionais();
 
   const alvo = destino === 'auditoria' ? 'auditoria' : 'elaborar';
   const destinoLabel = alvo === 'auditoria' ? 'Auditoria' : 'Elaboração';
@@ -2381,7 +2921,7 @@ function exportarExcelProfissional() {
     ['ART/RRT:', meta.art, '', 'Data Base:', meta.data],
     ['Fonte de Preços:', meta.fonte, '', 'Emissão:', new Date().toLocaleDateString('pt-BR')],
     [],
-    ['Item','Código SINAPI','Descrição','Un','Qtd','P.Unit (R$)','Ref.SINAPI (R$)','Desvio %','BDI %','P.Unit c/BDI (R$)','Total c/BDI (R$)','Categoria'],
+    ['Item','Capítulo','Código SINAPI','Descrição','Un','Qtd','P.Unit (R$)','Ref.SINAPI (R$)','Desvio %','BDI %','P.Unit c/BDI (R$)','Total c/BDI (R$)','Categoria'],
   ];
   let sub = 0;
   items.forEach((it, i) => {
@@ -2389,7 +2929,7 @@ function exportarExcelProfissional() {
     sub += v;
     const desv = it.ref > 0 ? ((it.preco - it.ref)/it.ref*100).toFixed(2) : '';
     planData.push([
-      i+1, it.cod, it.desc, it.unid,
+      i+1, it.capitulo || it.cat || 'Serviços', it.cod, it.desc, it.unid,
       it.qtd, it.preco, it.ref > 0 ? it.ref : '',
       desv !== '' ? parseFloat(desv) : '',
       parseFloat(bdi.toFixed(2)),
@@ -2405,7 +2945,7 @@ function exportarExcelProfissional() {
 
   const ws1 = XLSX.utils.aoa_to_sheet(planData);
   ws1['!cols'] = [
-    {wch:5},{wch:12},{wch:45},{wch:6},{wch:10},{wch:14},{wch:14},{wch:10},{wch:8},{wch:16},{wch:16},{wch:12}
+    {wch:5},{wch:22},{wch:12},{wch:45},{wch:6},{wch:10},{wch:14},{wch:14},{wch:10},{wch:8},{wch:16},{wch:16},{wch:12}
   ];
   XLSX.utils.book_append_sheet(wb, ws1, 'Planilha Orçamentária');
 
@@ -2466,6 +3006,49 @@ function exportarExcelProfissional() {
   const ws4 = XLSX.utils.aoa_to_sheet(encData);
   ws4['!cols'] = [{wch:40},{wch:12}];
   XLSX.utils.book_append_sheet(wb, ws4, 'Encargos Sociais');
+
+  // ── Aba 5: Planejamento ──
+  const planObraData = [['PLANEJAMENTO FÍSICO-FINANCEIRO'], ['Obra:', meta.obra], [], ['ID','Tarefa','Serviço vinculado','Início','Fim','Dias','Dependências','Valor (R$)','Progresso (%)']];
+  STATE.planejamento.forEach(t => {
+    const item = getItemById(t.itemId);
+    planObraData.push([t.code, t.desc, itemLabel(item), t.inicio, t.fim, daysBetween(t.inicio, t.fim), (t.deps || []).join(', '), itemValor(item), t.progresso || 0]);
+  });
+  const ws5 = XLSX.utils.aoa_to_sheet(planObraData);
+  ws5['!cols'] = [{wch:8},{wch:38},{wch:42},{wch:12},{wch:12},{wch:8},{wch:18},{wch:14},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws5, 'Planejamento');
+
+  // ── Aba 6: Medições ──
+  const medData = [['MEDIÇÕES E ACOMPANHAMENTO'], ['Obra:', meta.obra], [], ['Período','Data','Código','Descrição','Qtd contratada','Qtd medida','Qtd acumulada','Valor medido (R$)','Status']];
+  STATE.medicoes.forEach(m => {
+    STATE.orcamento.forEach(it => {
+      const qtdMed = Number(m.itens?.[it.id]) || 0;
+      const acumMed = medicoesAcumulado(it.id);
+      medData.push([m.nome, m.data, it.cod, it.desc, it.qtd, qtdMed, acumMed, qtdMed * (Number(it.preco) || 0), acumMed > it.qtd ? 'EXCEDIDO' : acumMed >= it.qtd ? 'CONCLUÍDO' : 'EM EXECUÇÃO']);
+    });
+  });
+  const ws6 = XLSX.utils.aoa_to_sheet(medData);
+  ws6['!cols'] = [{wch:20},{wch:12},{wch:12},{wch:45},{wch:14},{wch:12},{wch:14},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws6, 'Medições');
+
+  // ── Aba 7: Quantitativos ──
+  const qtData = [['MEMÓRIAS QUANTITATIVAS'], ['Obra:', meta.obra], [], ['Código','Serviço','Linha','Fórmula','Resultado']];
+  Object.entries(STATE.quantitativos).forEach(([itemId, linhas]) => {
+    const item = getItemById(itemId);
+    (linhas || []).forEach(l => qtData.push([item?.cod || '', item?.desc || '', l.desc, l.formula, l.resultado]));
+  });
+  const ws7 = XLSX.utils.aoa_to_sheet(qtData);
+  ws7['!cols'] = [{wch:12},{wch:45},{wch:30},{wch:24},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws7, 'Quantitativos');
+
+  // ── Aba 8: Anexos e especificações ──
+  const docData = [['ANEXOS E ESPECIFICAÇÕES'], ['Obra:', meta.obra], [], ['Tipo','Título','Vínculo','Texto','Arquivos','Criado em']];
+  STATE.documentos.forEach(d => {
+    const item = d.targetId === 'obra' ? null : getItemById(d.targetId);
+    docData.push([d.tipo, d.titulo, d.targetId === 'obra' ? 'Obra / Geral' : itemLabel(item), d.texto || '', (d.files || []).map(f => f.name).join(', '), d.criadoEm]);
+  });
+  const ws8 = XLSX.utils.aoa_to_sheet(docData);
+  ws8['!cols'] = [{wch:20},{wch:32},{wch:42},{wch:60},{wch:32},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws8, 'Anexos');
 
   // Save
   const fname = (meta.obra || 'orcamento').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'') + '_TLPlanly.xlsx';
@@ -2775,12 +3358,14 @@ function cpuEnviarParaOrcamento() {
   const { custoTotal } = cpuCalcPrecoUnitario();
   if (!CPU.cod) { toast('Defina um código para a composição', 'error'); return; }
   STATE.orcamento.push({
+    id: makeId('orc'),
     cod: CPU.cod, desc: CPU.desc, unid: CPU.unid,
-    qtd: 1, preco: custoTotal, ref: 0, cat: CPU.tipo
+    qtd: 1, preco: custoTotal, ref: 0, cat: CPU.tipo, capitulo: CPU.tipo, ordem: STATE.orcamento.length + 1
   });
   saveState();
   renderElaborar();
   renderDashboard();
+  preencherSelectsOperacionais();
   toast('CPU "' + CPU.cod + '" adicionada ao orçamento (qtd=1, ajuste a quantidade)', 'success');
   showView('elaborar');
 }
@@ -2864,8 +3449,8 @@ function cpuVerFicha(id) {
 function cpuUsarDaBiblioteca() {
   if (!_cpuFichaSelecionada) return;
   const c = _cpuFichaSelecionada;
-  STATE.orcamento.push({ cod: c.cod, desc: c.desc, unid: c.unid, qtd: 1, preco: c.precoUnitario, ref: 0, cat: c.tipo });
-  saveState(); renderElaborar(); renderDashboard();
+  STATE.orcamento.push({ id: makeId('orc'), cod: c.cod, desc: c.desc, unid: c.unid, qtd: 1, preco: c.precoUnitario, ref: 0, cat: c.tipo, capitulo: c.tipo, ordem: STATE.orcamento.length + 1 });
+  saveState(); renderElaborar(); renderDashboard(); preencherSelectsOperacionais();
   toast('CPU "' + c.cod + '" enviada ao orçamento', 'success');
   showView('elaborar');
 }
@@ -3014,8 +3599,14 @@ const COPILOT_KB = {
   // ── EXPORTAÇÃO ────────────────────────────────────────
   exportar: {
     q: ['exportar','gerar planilha','relatório','gerar excel','planilha excel','pdf edital','imprimir'],
-    r: `**Como exportar a planilha orçamentária:** 📤\n\n1. Acesse **Exportar / Relatório** no menu\n2. Preencha os dados da obra (nome, órgão, RT, CREA, ART/RRT)\n3. Escolha a aba desejada:\n   📋 **Planilha Orçamentária** — tabela completa com BDI\n   ⚙️ **Composição BDI** — justificativa do BDI (exigida em licitações)\n   📈 **Curva ABC** — análise de representatividade\n   📃 **Resumo Executivo** — síntese para gestores\n4. Clique **"Excel (.xlsx) Profissional"** — gera arquivo com 4 abas\n5. Ou **"Imprimir / PDF"** para impressão em A4 paisagem\n\n✅ O formato segue padrão exigido pelo **TCU/CGU/editais públicos**.`,
+    r: `**Como exportar a planilha orçamentária:** 📤\n\n1. Acesse **Exportar / Relatório** no menu\n2. Preencha os dados da obra (nome, órgão, RT, CREA, ART/RRT)\n3. Escolha a aba desejada para pré-visualizar\n4. Clique **"Excel (.xlsx) Profissional"**\n\nO Excel agora leva: Planilha Orçamentária, BDI, Curva ABC, Encargos, Planejamento, Medições, Quantitativos e Anexos.\n\n✅ O formato segue padrão exigido pelo **TCU/CGU/editais públicos** e também serve para acompanhamento de obra.`,
     chips: ['Ir para Relatório','O que é ART?','O que é ART?']
+  },
+
+  gestao_obra: {
+    q: ['planejamento','medição','medicao','gantt','curva s','quantitativos','anexos','backup','acompanhamento'],
+    r: `**Gestão da Obra no TLPlanly**\n\nAgora o orçamento não fica isolado. Você pode:\n\n• Gerar **Planejamento** a partir dos itens do orçamento\n• Registrar **Medições** por período\n• Criar **Quantitativos vinculados** com fórmulas\n• Vincular **anexos e especificações** por item\n• Criar **backups/pontos de restauração**\n\nFluxo recomendado: orçamento → quantitativos → planejamento → medições → relatório completo.`,
+    chips: ['Ir para Planejamento','Ir para Medições','Ir para Quantitativos','Ir para Anexos','Ir para Backups']
   },
 
   art: {
@@ -3056,6 +3647,11 @@ const VIEW_CONTEXT = {
   bdi:          { nome: 'BDI & Encargos', dica: 'Configure os componentes do BDI conforme o Decreto 7983/2013 e escolha o regime de encargos.' },
   curvaABC:     { nome: 'Curva ABC', dica: 'Gere a análise de Pareto do orçamento para identificar os itens de maior impacto financeiro.' },
   memoria:      { nome: 'Memória de Cálculo', dica: 'Veja o detalhamento de cada item com encargos sociais, BDI e referência SINAPI.' },
+  planejamento: { nome: 'Planejamento', dica: 'Gere tarefas do orçamento, ajuste datas, dependências, Gantt e Curva S.' },
+  medicoes:     { nome: 'Medições', dica: 'Registre quantidades executadas por período e acompanhe saldo, avanço e excedentes.' },
+  quantitativos:{ nome: 'Quantitativos', dica: 'Crie fórmulas auxiliares vinculadas aos serviços e aplique o resultado à quantidade contratada.' },
+  documentos:   { nome: 'Anexos / Especificações', dica: 'Registre especificações, fotos e documentos vinculados à obra ou a itens do orçamento.' },
+  backups:      { nome: 'Backups', dica: 'Crie pontos de restauração locais para orçamento, planejamento, medições e anexos.' },
   auditoria:    { nome: 'Análise SINAPI', dica: 'Compare os preços do orçamento com a tabela SINAPI e identifique desvios acima da tolerância.' },
   conformidade: { nome: 'Conformidade BDI', dica: 'Verifique se o BDI calculado está dentro dos limites do TCU Acórdão 2622/2013.' },
   relatorio:    { nome: 'Exportar / Relatório', dica: 'Preencha os dados da obra e exporte a planilha profissional em Excel (4 abas) ou PDF.' },
@@ -3094,6 +3690,11 @@ function copilotDetectPendingAction(txt) {
   if (/(upload|arquivo|pdf|excel|planilha|edital|import)/.test(norm)) return copilotActionForView('importar');
   if (/(bdi|encargo)/.test(norm)) return copilotActionForView('bdi');
   if (/(curva abc|abc|pareto)/.test(norm)) return copilotActionForView('curvaABC');
+  if (/(planejamento|gantt|curva s|cronograma)/.test(norm)) return copilotActionForView('planejamento');
+  if (/(medicao|medicoes|medir|executado|acompanhamento)/.test(norm)) return copilotActionForView('medicoes');
+  if (/(quantitativo|quantitativos|formula|memoria quantitativa)/.test(norm)) return copilotActionForView('quantitativos');
+  if (/(anexo|anexos|documento|especificacao|foto)/.test(norm)) return copilotActionForView('documentos');
+  if (/(backup|restaurar|restauracao|versao)/.test(norm)) return copilotActionForView('backups');
   if (/(orcamento|elaborar|insumo)/.test(norm)) return copilotActionForView('elaborar');
   if (/(auditoria|auditar|conformidade|sinapi)/.test(norm)) return copilotActionForView('auditoria');
   if (/(cpu|composicao)/.test(norm)) return copilotActionForView('cpu');
@@ -3491,12 +4092,16 @@ async function copilotResponder(txt) {
             'preco acima','preco abaixo','desvio preco','conformidade preco',
             'tcu auditoria','cgu auditoria','fiscal obra','checar preco'],
       entry:'auditoria' },
+    { keys:['planejamento','cronograma','gantt','curva s','medicao','medicoes','acompanhamento',
+            'quantitativo','quantitativos','anexo','anexos','especificacao','backup','restauracao',
+            'gestao da obra','executado','previsto realizado'],
+      entry:'gestao_obra' },
   ];
 
   // ══ NAVEGAÇÃO DIRETA ══════════════════════════════════════
   if (/^ir para( o)? modulo$|^abrir( o)? modulo$|^acessar( o)? modulo$/.test(norm)) {
     copilotBotMsg('Claro. Qual módulo você quer abrir?');
-    copilotSetChips(['Ir para Elaborar','Ir para BDI','Ir para ABC','Ir para Auditoria','Ir para Importar','Ir para CPU']);
+    copilotSetChips(['Ir para Elaborar','Ir para Planejamento','Ir para Medições','Ir para Quantitativos','Ir para Importar','Ir para Relatório']);
     return;
   }
 
@@ -3505,6 +4110,11 @@ async function copilotResponder(txt) {
     { keys:['ir para curva','ir para abc','abrir abc','curva abc'], view:'curvaABC' },
     { keys:['ir para elaborar','ir para orcamento','abrir orcamento'], view:'elaborar' },
     { keys:['ir para memoria','ir para memoria calculo'], view:'memoria' },
+    { keys:['ir para planejamento','abrir planejamento','ir para cronograma','abrir gantt','ir para gantt'], view:'planejamento' },
+    { keys:['ir para medicoes','ir para medicao','abrir medicoes','abrir medicao','ir para acompanhamento'], view:'medicoes' },
+    { keys:['ir para quantitativos','ir para quantitativo','abrir quantitativos','abrir quantitativo'], view:'quantitativos' },
+    { keys:['ir para anexos','ir para documentos','ir para especificacoes','abrir anexos'], view:'documentos' },
+    { keys:['ir para backups','ir para backup','abrir backups','restaurar backup'], view:'backups' },
     { keys:['ir para auditoria','ir para analise sinapi'], view:'auditoria' },
     { keys:['ir para relatorio','ir para exportar'], view:'relatorio' },
     { keys:['ir para bases','ir para base','abrir bases'], view:'bases' },
@@ -3558,7 +4168,7 @@ async function copilotResponder(txt) {
   // ══ FALLBACK CONTEXTUAL ═══════════════════════════════════
   const ctx = VIEW_CONTEXT[COP.currentView];
   copilotBotMsg(`Não reconheci "*${txt}*" como um tópico específico.\n\n${ctx ? `Você está em **${ctx.nome}** — ${ctx.dica}\n\n` : ''}Escolha um tópico:`);
-  copilotSetChips(['O que é BDI?','O que é SINAPI?','Como importar edital?','Legislação obras','Meu orçamento atual']);
+  copilotSetChips(['O que é BDI?','Como importar edital?','Ir para Planejamento','Ir para Medições','Meu orçamento atual']);
 }
 
 // ── Detecta view atual para contexto ──────────────────

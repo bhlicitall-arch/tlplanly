@@ -41,6 +41,12 @@
   <div class="nav-item" onclick="showView('bdi')"><span class="nav-icon">&#9881;</span>BDI / Encargos</div>
   <div class="nav-item" onclick="showView('curvaABC')"><span class="nav-icon">&#128200;</span>Curva ABC</div>
   <div class="nav-item" onclick="showView('memoria')"><span class="nav-icon">&#128203;</span>Memória de Cálculo</div>
+  <div class="nav-section" style="margin-top:8px">Gestão da Obra</div>
+  <div class="nav-item" onclick="showView('planejamento')"><span class="nav-icon">&#128197;</span>Planejamento</div>
+  <div class="nav-item" onclick="showView('medicoes')"><span class="nav-icon">&#128202;</span>Medições</div>
+  <div class="nav-item" onclick="showView('quantitativos')"><span class="nav-icon">&#128290;</span>Quantitativos</div>
+  <div class="nav-item" onclick="showView('documentos')"><span class="nav-icon">&#128451;</span>Anexos / Especificações</div>
+  <div class="nav-item" onclick="showView('backups')"><span class="nav-icon">&#128190;</span>Backups</div>
   <div class="nav-section" style="margin-top:8px">Auditoria</div>
   <div class="nav-item" id="nav-auditoria" onclick="showView('auditoria')"><span class="nav-icon">&#128269;</span>Análise SINAPI<span class="nav-badge" id="auditBadge" style="display:none">!</span></div>
   <div class="nav-item" onclick="showView('conformidade')"><span class="nav-icon">&#10003;</span>Conformidade BDI</div>
@@ -128,8 +134,8 @@
     <div id="addItemPanel" style="display:none;margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius)">
       <div class="grid grid-4" style="gap:10px;align-items:flex-end">
         <div><label class="form-label">Código</label><input id="addCod" class="form-input" readonly/></div>
-        <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="addDesc" class="form-input" readonly/></div>
-        <div><label class="form-label">Unidade</label><input id="addUnid" class="form-input" readonly/></div>
+        <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="addDesc" class="form-input"/></div>
+        <div><label class="form-label">Unidade</label><input id="addUnid" class="form-input"/></div>
         <div><label class="form-label">Quantidade</label><input id="addQtd" class="form-input" type="number" min="0.001" step="0.001" value="1"/></div>
         <div><label class="form-label">Preço Unit (R$)</label><input id="addPreco" class="form-input" type="number" min="0" step="0.01"/></div>
         <div><label class="form-label">Ref. SINAPI (R$)</label><input id="addRef" class="form-input" readonly style="color:var(--gold)"/></div>
@@ -138,6 +144,7 @@
             <option>Serviços</option><option>Materiais</option><option>Mão de Obra</option><option>Equipamentos</option><option>Outros</option>
           </select>
         </div>
+        <div style="grid-column:span 2"><label class="form-label">Capítulo / Estrutura</label><input id="addCapitulo" class="form-input" placeholder="Ex: 01 - Serviços preliminares"/></div>
       </div>
       <div class="flex mt-4">
         <button class="btn btn-gold" onclick="adicionarItem()">&#43; Adicionar Item</button>
@@ -150,6 +157,7 @@
     <div class="sec-header">
       <div class="sec-title">Planilha Orçamentária</div>
       <div class="flex">
+        <button class="btn btn-outline btn-sm" onclick="novoItemProprio()">&#43; Item próprio</button>
         <button class="btn btn-outline btn-sm" onclick="limparOrcamento()">&#128465; Limpar</button>
         <button class="btn btn-gold btn-sm" onclick="exportarOrcamento()">&#128229; Exportar</button>
       </div>
@@ -165,6 +173,166 @@
       <span class="text-sm">BDI: <strong id="elab-bdi-pct" class="gold-text">0%</strong></span>
       <span class="text-sm">Total c/ BDI: <strong id="elab-total" class="gold-text">R$ 0,00</strong></span>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════════ PLANEJAMENTO ═══════════════ -->
+<div id="view-planejamento" class="view">
+  <div class="page-title">Planejamento <span class="gold-text">Físico-Financeiro</span></div>
+  <div class="page-sub">Gere tarefas a partir do orçamento, defina dependências e acompanhe Curva S</div>
+
+  <div class="grid grid-4" style="margin-bottom:16px">
+    <div class="card"><div class="card-title">Tarefas</div><div class="card-value" id="plan-kpi-tarefas">0</div><div class="card-sub">planejadas</div></div>
+    <div class="card"><div class="card-title">Duração</div><div class="card-value gold" id="plan-kpi-dias">0</div><div class="card-sub">dias corridos</div></div>
+    <div class="card"><div class="card-title">Caminho Crítico</div><div class="card-value red" id="plan-kpi-critico">0</div><div class="card-sub">tarefas críticas</div></div>
+    <div class="card"><div class="card-title">Valor Planejado</div><div class="card-value green" id="plan-kpi-valor">R$ 0,00</div><div class="card-sub">base orçamento</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-header">
+      <div class="sec-title">Comandos <span>de Planejamento</span></div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-gold btn-sm" onclick="planejamentoGerarDoOrcamento()">Gerar do orçamento</button>
+        <button class="btn btn-outline btn-sm" onclick="planejamentoAdicionarTarefa()">Adicionar tarefa</button>
+        <button class="btn btn-outline btn-sm" onclick="planejamentoExportar()">Exportar .md</button>
+      </div>
+    </div>
+    <div class="grid grid-4" style="gap:10px">
+      <div style="grid-column:span 2"><label class="form-label">Tarefa</label><input id="plan-desc" class="form-input" placeholder="Ex: Fundação bloco A"/></div>
+      <div><label class="form-label">Início</label><input id="plan-ini" class="form-input" type="date"/></div>
+      <div><label class="form-label">Fim</label><input id="plan-fim" class="form-input" type="date"/></div>
+      <div><label class="form-label">Serviço vinculado</label><select id="plan-item" class="form-select"></select></div>
+      <div><label class="form-label">Dependências</label><input id="plan-deps" class="form-input" placeholder="IDs separados por vírgula"/></div>
+      <div><label class="form-label">Produtividade diária</label><input id="plan-prod" class="form-input" type="number" min="0" step="0.01" placeholder="Opcional"/></div>
+      <div><label class="form-label">Progresso físico (%)</label><input id="plan-prog" class="form-input" type="number" min="0" max="100" step="1" value="0"/></div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Gantt <span>Operacional</span></div></div>
+      <div id="plan-gantt" class="gantt-wrap"></div>
+    </div>
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Curva <span>S</span></div></div>
+      <canvas id="chartCurvaS" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Tarefa</th><th>Serviço</th><th>Início</th><th>Fim</th><th>Dias</th><th>Deps</th><th>Valor</th><th>Progresso</th><th></th></tr></thead>
+        <tbody id="plan-tabela"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ MEDIÇÕES ═══════════════ -->
+<div id="view-medicoes" class="view">
+  <div class="page-title">Medições e <span class="gold-text">Acompanhamento</span></div>
+  <div class="page-sub">Registre executado por período, compare previsto x realizado e destaque excedentes</div>
+
+  <div class="grid grid-4" style="margin-bottom:16px">
+    <div class="card"><div class="card-title">Período Ativo</div><div class="card-value" id="med-kpi-periodo">—</div><div class="card-sub">medição selecionada</div></div>
+    <div class="card"><div class="card-title">Executado</div><div class="card-value green" id="med-kpi-exec">R$ 0,00</div><div class="card-sub">valor medido</div></div>
+    <div class="card"><div class="card-title">Avanço</div><div class="card-value gold" id="med-kpi-avanco">0%</div><div class="card-sub">financeiro acumulado</div></div>
+    <div class="card"><div class="card-title">Excedentes</div><div class="card-value red" id="med-kpi-exced">0</div><div class="card-sub">itens acima do contratado</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Período</label><input id="med-periodo" class="form-input" placeholder="Ex: Medição 01 - Junho/2026"/></div>
+      <div><label class="form-label">Data de fechamento</label><input id="med-data" class="form-input" type="date"/></div>
+      <div><label class="form-label">Selecionar medição</label><select id="med-select" class="form-select" onchange="medicoesRender()"></select></div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-gold btn-sm" onclick="medicoesCriarPeriodo()">Criar período</button>
+        <button class="btn btn-outline btn-sm" onclick="medicoesSalvarAtual()">Salvar medição</button>
+        <button class="btn btn-outline btn-sm" onclick="medicoesRemoverAtual()">Remover período</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Contratada</th><th>Executada</th><th>Saldo</th><th>Valor medido</th><th>Status</th></tr></thead>
+        <tbody id="med-tabela"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ QUANTITATIVOS ═══════════════ -->
+<div id="view-quantitativos" class="view">
+  <div class="page-title">Quantitativos <span class="gold-text">Vinculados</span></div>
+  <div class="page-sub">Crie tabelas auxiliares com fórmulas e aplique o resultado à quantidade do serviço</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Serviço</label><select id="qt-item" class="form-select" onchange="quantRenderForm()"></select></div>
+      <div><label class="form-label">Descrição da linha</label><input id="qt-desc" class="form-input" placeholder="Ex: Parede bloco A"/></div>
+      <div><label class="form-label">Fórmula</label><input id="qt-formula" class="form-input" placeholder="Ex: 12*3.2 + 8*2.7"/></div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-gold btn-sm" onclick="quantAdicionarLinha()">Adicionar</button>
+        <button class="btn btn-outline btn-sm" onclick="quantAplicarNoOrcamento()">Aplicar qtd</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Memória <span>Quantitativa</span></div><span id="qt-total" class="gold-text" style="font-weight:800">0</span></div>
+      <div id="qt-lista"></div>
+    </div>
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Serviços <span>com Vínculo</span></div></div>
+      <div id="qt-resumo"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ DOCUMENTOS / ESPECIFICAÇÕES ═══════════════ -->
+<div id="view-documentos" class="view">
+  <div class="page-title">Anexos e <span class="gold-text">Especificações</span></div>
+  <div class="page-sub">Vincule documentos, fotos e textos técnicos a serviços, insumos ou capítulos</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="grid grid-4" style="gap:10px">
+      <div><label class="form-label">Vincular a</label><select id="doc-item" class="form-select"></select></div>
+      <div><label class="form-label">Tipo</label><select id="doc-tipo" class="form-select"><option>Especificação técnica</option><option>Foto</option><option>ART/RRT</option><option>Memorial</option><option>Documento fiscal</option><option>Outro</option></select></div>
+      <div style="grid-column:span 2"><label class="form-label">Título</label><input id="doc-titulo" class="form-input" placeholder="Ex: Memorial descritivo do piso"/></div>
+      <div style="grid-column:span 3"><label class="form-label">Texto / observação técnica</label><textarea id="doc-texto" class="form-input" rows="4" placeholder="Especificação, justificativa, critério de medição ou observação de auditoria"></textarea></div>
+      <div><label class="form-label">Arquivos</label><input id="doc-files" class="form-input" type="file" multiple/></div>
+    </div>
+    <div class="flex flex-wrap mt-4">
+      <button class="btn btn-gold btn-sm" onclick="docsAdicionar()">Salvar anexo</button>
+      <button class="btn btn-outline btn-sm" onclick="docsExportarDossie()">Exportar dossiê .md</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="docs-lista"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ BACKUPS ═══════════════ -->
+<div id="view-backups" class="view">
+  <div class="page-title">Backups e <span class="gold-text">Restauração</span></div>
+  <div class="page-sub">Crie pontos de restauração do orçamento, planejamento, medições e anexos</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="grid grid-3" style="gap:10px;align-items:flex-end">
+      <div style="grid-column:span 2"><label class="form-label">Descrição do ponto</label><input id="backup-desc" class="form-input" placeholder="Ex: Antes da revisão do BDI"/></div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-gold btn-sm" onclick="backupCriar()">Criar backup</button>
+        <button class="btn btn-outline btn-sm" onclick="backupExportarEstado()">Exportar estado</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div id="backup-lista"></div>
   </div>
 </div>
 
@@ -659,7 +827,6 @@
 
 <!-- Keep old SINAPI view as alias -->
 <div id="view-sinapi" class="view">
-  <script>showView('bases');</script>
 </div>
 
 <!-- ═══════════════ BASE SINAPI (legacy) ═══════════════ -->

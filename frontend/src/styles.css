@@ -448,4 +448,22 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .file-chip .chip-remove{cursor:pointer;color:var(--text3);font-size:16px;line-height:1}
 .file-chip .chip-remove:hover{color:var(--red)}
 
+/* ── GESTÃO DA OBRA ───────────────────────────────────────── */
+.gantt-wrap{display:flex;flex-direction:column;gap:8px;min-height:180px}
+.gantt-row{display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;font-size:12px}
+.gantt-label{color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gantt-track{height:22px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;position:relative;overflow:hidden}
+.gantt-bar{height:100%;position:absolute;top:0;border-radius:5px;background:linear-gradient(90deg,var(--gold),var(--gold2));min-width:4px}
+.gantt-bar.critical{background:linear-gradient(90deg,var(--red),#ff766f)}
+.gantt-progress{height:100%;background:rgba(67,160,71,.45)}
+.op-list{display:flex;flex-direction:column;gap:8px}
+.op-row{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius)}
+.op-row-main{flex:1;min-width:0}
+.op-title{font-size:13px;font-weight:800;color:var(--text)}
+.op-meta{font-size:11px;color:var(--text3);margin-top:3px}
+.op-value{font-size:13px;font-weight:900;color:var(--gold)}
+.formula-chip{font-family:monospace;font-size:11px;color:var(--text2);background:var(--bg4);border:1px solid var(--border);border-radius:6px;padding:4px 6px;display:inline-block}
+.status-excedido{color:var(--red);font-weight:800}
+.status-ok{color:var(--green);font-weight:800}
+.status-pendente{color:var(--gold);font-weight:800}
 
