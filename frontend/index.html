@@ -37,7 +37,7 @@
   <div class="nav-item active" onclick="showView('dashboard')"><span class="nav-icon">&#9632;</span>Dashboard</div>
   <div class="nav-item" onclick="showView('elaborar')"><span class="nav-icon">&#128196;</span>Elaborar Orçamento</div>
   <div class="nav-item" onclick="showView('cpu')"><span class="nav-icon">&#9881;</span>Composições (CPU)<span class="nav-badge" style="background:var(--blue,#1976d2)">3</span></div>
-  <div class="nav-item" onclick="showView('importar')"><span class="nav-icon">&#128196;</span>Importar Edital<span class="nav-badge" style="background:var(--green);display:inline">2A</span></div>
+  <div class="nav-item" onclick="showView('importar')"><span class="nav-icon">&#128196;</span>Importar Planilha/PDF<span class="nav-badge" style="background:var(--green);display:inline">2A</span></div>
   <div class="nav-item" onclick="showView('bdi')"><span class="nav-icon">&#9881;</span>BDI / Encargos</div>
   <div class="nav-item" onclick="showView('curvaABC')"><span class="nav-icon">&#128200;</span>Curva ABC</div>
   <div class="nav-item" onclick="showView('memoria')"><span class="nav-icon">&#128203;</span>Memória de Cálculo</div>
@@ -115,10 +115,10 @@
 <!-- ═══════════════ ELABORAR ═══════════════ -->
 <div id="view-elaborar" class="view">
   <div class="page-title">Elaborar <span class="gold-text">Orçamento</span></div>
-  <div class="page-sub">Pesquise e adicione itens SINAPI ao orçamento</div>
+  <div class="page-sub">Crie do zero, importe Excel/PDF ou ajuste planilhas extraídas</div>
 
-  <div class="card" style="margin-bottom:16px">
-    <div class="grid grid-2" style="gap:12px;align-items:flex-end">
+  <div class="card" style="margin-bottom:16px" ondragover="event.preventDefault();this.classList.add('dragover-card')" ondragleave="this.classList.remove('dragover-card')" ondrop="elaborarImportDrop(event)">
+    <div class="grid grid-3" style="gap:12px;align-items:flex-end">
       <div class="form-group" style="margin:0">
         <label class="form-label">Buscar insumo SINAPI</label>
         <div class="search-wrap">
@@ -129,6 +129,11 @@
       <div class="form-group" style="margin:0">
         <label class="form-label">Nome do Orçamento</label>
         <input id="orcNome" class="form-input" placeholder="Ex: Reforma Escola Municipal" value="Orçamento SINAPI"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Importar Excel/PDF</label>
+        <button class="btn btn-gold" style="width:100%" onclick="document.getElementById('elabImportInput').click()">Importar planilha</button>
+        <input id="elabImportInput" type="file" accept=".pdf,.xlsx,.xls,.ods,.csv,.png,.jpg,.jpeg,.tif,.tiff" multiple style="display:none" onchange="elaborarImportFileSelect(event)"/>
       </div>
     </div>
     <div id="addItemPanel" style="display:none;margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius)">
@@ -905,9 +910,9 @@
 </div>
 
 
-<!-- ═══════════════ IMPORTAR EDITAL ═══════════════ -->
+<!-- ═══════════════ IMPORTAR PLANILHA / EDITAL ═══════════════ -->
 <div id="view-importar" class="view">
-  <div class="page-title">Importar <span class="gold-text">Edital</span></div>
+  <div class="page-title">Importar <span class="gold-text">Planilha / Edital</span></div>
   <div class="page-sub">Extraia itens de um lote de PDFs, imagens digitalizadas ou planilhas e revise antes de enviar ao orçamento</div>
 
   <!-- Passo 1: Upload -->

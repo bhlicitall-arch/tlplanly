@@ -348,21 +348,21 @@ function renderElaborar() {
   }
   const rows = STATE.orcamento.map((it, i) => {
     const total = it.qtd * it.preco;
-    const desv = it.ref > 0 ? ((it.preco - it.ref) / it.ref * 100) : null;
-    const desvHtml = desv !== null
-      ? `<span style="color:${desv > 5 ? 'var(--red)' : desv < -5 ? 'var(--green)' : 'var(--text2)'}">${desv > 0 ? '+' : ''}${desv.toFixed(1)}%</span>`
-      : '<span style="color:var(--text3)">N/D</span>';
+    const desvHtml = desvioHtml(it);
     return `<tr>
       <td class="td-mono">${i+1}</td>
-      <td class="td-mono">${it.cod}</td>
-      <td><div>${it.desc}</div><div style="font-size:10px;color:var(--text3);margin-top:2px">${it.capitulo || it.cat || 'Serviços'}</div></td>
-      <td>${it.unid}</td>
-      <td>${fmtNum(it.qtd)}</td>
-      <td>${fmtMoeda(it.preco)}</td>
+      <td><input class="table-input mono" value="${escapeHtml(it.cod || '')}" onchange="editarItemCampo(${i},'cod',this.value)"/></td>
+      <td>
+        <input class="table-input table-input-desc" value="${escapeHtml(it.desc || '')}" onchange="editarItemCampo(${i},'desc',this.value)"/>
+        <input class="table-input table-input-sub" value="${escapeHtml(it.capitulo || it.cat || 'Serviços')}" onchange="editarItemCampo(${i},'capitulo',this.value)" placeholder="Capítulo"/>
+      </td>
+      <td><input class="table-input compact" value="${escapeHtml(it.unid || 'UN')}" onchange="editarItemCampo(${i},'unid',this.value)"/></td>
+      <td><input class="table-input num" type="number" min="0" step="0.001" value="${Number(it.qtd || 0)}" onchange="editarItemCampo(${i},'qtd',this.value)"/></td>
+      <td><input class="table-input num" type="number" min="0" step="0.01" value="${Number(it.preco || 0)}" onchange="editarItemCampo(${i},'preco',this.value)"/></td>
       <td style="color:var(--gold)">${it.ref > 0 ? fmtMoeda(it.ref) : '—'}</td>
-      <td>${desvHtml}</td>
-      <td><strong>${fmtMoeda(total)}</strong></td>
-      <td><span class="badge badge-ok" style="font-size:10px">${it.cat}</span></td>
+      <td id="elab-desv-${i}">${desvHtml}</td>
+      <td><strong id="elab-row-total-${i}">${fmtMoeda(total)}</strong></td>
+      <td><select class="table-input compact" onchange="editarItemCampo(${i},'cat',this.value)">${categoriaOptions(it.cat)}</select></td>
       <td>
         <div class="op-actions">
           <button class="btn btn-outline btn-mini" onclick="moverItem(${i},-1)" title="Mover para cima">&#8593;</button>
@@ -381,6 +381,52 @@ function renderElaborar() {
   document.getElementById('elab-bdi-pct').textContent = STATE.bdi.toFixed(2) + '%';
 }
 
+function categoriaOptions(current) {
+  const cats = ['Serviços','Materiais','Mão de Obra','Equipamentos','Outros'];
+  return cats.map(c => `<option${c === current ? ' selected' : ''}>${c}</option>`).join('');
+}
+
+function desvioHtml(it) {
+  const ref = Number(it.ref) || 0;
+  const preco = Number(it.preco) || 0;
+  if (ref <= 0) return '<span style="color:var(--text3)">N/D</span>';
+  const desv = ((preco - ref) / ref * 100);
+  return `<span style="color:${desv > 5 ? 'var(--red)' : desv < -5 ? 'var(--green)' : 'var(--text2)'}">${desv > 0 ? '+' : ''}${desv.toFixed(1)}%</span>`;
+}
+
+function atualizarTotaisElaborar() {
+  const sub = STATE.orcamento.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.preco) || 0), 0);
+  const total = sub * (1 + STATE.bdi/100);
+  const subEl = document.getElementById('elab-sub');
+  const totalEl = document.getElementById('elab-total');
+  const bdiEl = document.getElementById('elab-bdi-pct');
+  if (subEl) subEl.textContent = fmtMoeda(sub);
+  if (totalEl) totalEl.textContent = fmtMoeda(total);
+  if (bdiEl) bdiEl.textContent = STATE.bdi.toFixed(2) + '%';
+}
+
+function atualizarLinhaElaborar(idx) {
+  const it = STATE.orcamento[idx];
+  if (!it) return;
+  const rowTotal = document.getElementById('elab-row-total-' + idx);
+  const desv = document.getElementById('elab-desv-' + idx);
+  if (rowTotal) rowTotal.textContent = fmtMoeda((Number(it.qtd) || 0) * (Number(it.preco) || 0));
+  if (desv) desv.innerHTML = desvioHtml(it);
+}
+
+function editarItemCampo(idx, campo, valor) {
+  const it = STATE.orcamento[idx];
+  if (!it) return;
+  if (['qtd','preco','ref'].includes(campo)) it[campo] = parseFloat(String(valor).replace(',', '.')) || 0;
+  else it[campo] = String(valor || '').trim();
+  if (campo === 'cat' && !it.capitulo) it.capitulo = it.cat;
+  saveState();
+  atualizarLinhaElaborar(idx);
+  atualizarTotaisElaborar();
+  preencherSelectsOperacionais();
+  if (document.getElementById('view-dashboard')?.classList.contains('active')) renderDashboard();
+}
+
 function exportarOrcamento() {
   const nome = document.getElementById('orcNome').value || 'orcamento';
   const data = {
@@ -392,6 +438,43 @@ function exportarOrcamento() {
   };
   downloadJSON(data, nome.replace(/\s+/g,'_') + '_TLPlanly.json');
   toast('Orçamento exportado', 'success');
+}
+
+function elaborarImportFileSelect(e) {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  iniciarImportacaoRapidaElaborar(files);
+  e.target.value = '';
+}
+
+function elaborarImportDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover-card');
+  const files = Array.from(e.dataTransfer?.files || []);
+  if (!files.length) return;
+  iniciarImportacaoRapidaElaborar(files);
+}
+
+function iniciarImportacaoRapidaElaborar(files) {
+  if (!files?.length) return;
+  IMP.origemRapida = 'elaborar';
+  setImportFiles(files);
+  if (!IMP.files.length) return;
+
+  const tipo = document.getElementById('imp-tipo');
+  const pagIni = document.getElementById('imp-pag-ini');
+  const pagFim = document.getElementById('imp-pag-fim');
+  const acao = document.getElementById('imp-acao');
+  const preco = document.getElementById('imp-preco-src');
+  if (tipo) tipo.value = 'auto';
+  if (pagIni) pagIni.value = '1';
+  if (pagFim) pagFim.value = '0';
+  if (acao) acao.value = STATE.orcamento.length ? 'adicionar' : 'substituir';
+  if (preco) preco.value = 'edital';
+
+  showView('importar');
+  toast('Arquivo recebido. Vou extrair e abrir a revisão para envio ao orçamento.', 'info');
+  setTimeout(() => iniciarExtracao(), 120);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1559,7 +1642,8 @@ let IMP = {
   reviewed: [],      // itens com match SINAPI
   importResults: [],
   markdown: '',
-  filtro: 'todos'
+  filtro: 'todos',
+  origemRapida: ''
 };
 
 const IMPORT_EXTS = ['pdf','xlsx','xls','ods','csv','png','jpg','jpeg','tif','tiff'];
@@ -1651,7 +1735,7 @@ function resetarImportacao() {
   document.getElementById('imp-card-progress').style.display = 'none';
   document.getElementById('imp-card-review').style.display = 'none';
   document.getElementById('imp-card-upload').style.display = 'block';
-  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = '';
+  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = ''; IMP.origemRapida = '';
 }
 
 function setStep(steps, idx, status, statusText) {
@@ -2103,6 +2187,12 @@ function matchSINAPI(item) {
 function mostrarRevisao() {
   document.getElementById('imp-card-progress').style.display = 'none';
   document.getElementById('imp-card-review').style.display = 'block';
+  if (IMP.origemRapida === 'elaborar') {
+    const acao = document.getElementById('imp-acao');
+    const preco = document.getElementById('imp-preco-src');
+    if (acao) acao.value = STATE.orcamento.length ? 'adicionar' : 'substituir';
+    if (preco) preco.value = 'edital';
+  }
   filtrarRevisao('todos');
   atualizarStatsRevisao();
 }
@@ -2205,6 +2295,7 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
   const alvo = destino === 'auditoria' ? 'auditoria' : 'elaborar';
   const destinoLabel = alvo === 'auditoria' ? 'Auditoria' : 'Elaboração';
   toast(`${novos.length} itens importados e enviados para ${destinoLabel}.`, 'success');
+  IMP.origemRapida = '';
   showView(alvo);
 }
 
@@ -3687,7 +3778,7 @@ const COPILOT_KB = {
   // ── ONBOARDING ──────────────────────────────────────────
   onboarding: {
     q: ['começar','iniciar','primeiro','como usar','tutorial','ajuda','novato','não sei','por onde'],
-    r: `**Bem-vindo ao TLPlanly!** Vou te guiar pelos primeiros passos. 🚀\n\n**Fluxo recomendado:**\n1️⃣ Configure a **UF e o tipo de obra** em Configurações\n2️⃣ Carregue ou confirme a **base SINAPI** em Bases de Referência\n3️⃣ Configure o **BDI** na aba BDI/Encargos\n4️⃣ **Elabore o orçamento** buscando insumos SINAPI\n5️⃣ Gere a **Curva ABC** para análise\n6️⃣ **Exporte** a planilha no formato edital\n\nQuer que eu te guie em algum passo específico?`,
+    r: `**Bem-vindo ao TLPlanly!** Vou te guiar pelos primeiros passos. 🚀\n\n**Fluxo recomendado:**\n1️⃣ Configure a **UF e o tipo de obra** em Configurações\n2️⃣ Carregue ou confirme a **base SINAPI** em Bases de Referência\n3️⃣ Configure o **BDI** na aba BDI/Encargos\n4️⃣ **Elabore o orçamento** do zero ou importe Excel/PDF\n5️⃣ Ajuste os itens direto na planilha editável\n6️⃣ Gere a **Curva ABC** e exporte o relatório\n\nQuer que eu te guie em algum passo específico?`,
     chips: ['Sim me guie','Como calcular BDI?','Sim me guie','Como exportar?']
   },
 
@@ -3771,14 +3862,14 @@ const COPILOT_KB = {
   // ── IMPORTAÇÃO ────────────────────────────────────────
   importar: {
     q: ['importar edital','importar planilha','importar pdf','abrir edital','ler pdf','importar excel'],
-    r: `**Como importar planilhas de editais:** 📄\n\n1. Ir em **Importar Edital** no menu\n2. Arraste **todos os arquivos do edital/planilha** de uma vez: PDF digital, PDF escaneado, imagens, Excel, ODS ou CSV\n3. Configure página inicial/final se necessário\n4. Clique **"Extrair Dados"**\n5. O sistema tenta texto digital primeiro e aciona **OCR automático** quando o arquivo for digitalizado\n6. Revise os itens, confira a origem de cada linha e baixe a **Memória .md** se quiser rastreabilidade\n7. Confirme para **Elaboração** ou **Auditoria**\n\n💡 Para orçamento, o TLPlanly usa dados estruturados. O Markdown entra como memória de conferência, não como substituto da planilha.`,
-    chips: ['Ir para Importar','OCR PDF escaneado?','Memória .md']
+    r: `**Como importar uma planilha ou PDF para o orçamento:** 📄\n\n1. Acesse **Elaborar Orçamento**\n2. Clique em **Importar planilha**\n3. Envie Excel, CSV, PDF digital, PDF escaneado ou imagem\n4. O TLPlanly extrai os itens, aplica OCR quando necessário e abre a revisão\n5. Confirme para **Elaboração**\n6. Ajuste descrição, unidade, quantidade, preço, capítulo e categoria direto na planilha editável\n\nTambém é possível usar o módulo **Importar Planilha/PDF** para processar lotes maiores.`,
+    chips: ['Ir para Elaborar','Ir para Importar','OCR PDF escaneado?']
   },
 
   ocr: {
     q: ['ocr','pdf escaneado','imagem pdf','digitalizado','reconhecimento texto'],
-    r: `**OCR — Reconhecimento de Texto em PDFs Escaneados** 🔍\n\nO TLPlanly usa **Tesseract.js** no navegador. No módulo **Importar Edital**, o OCR agora entra automaticamente quando o PDF não tem texto aproveitável ou quando você envia imagem digitalizada.\n\n✅ **Vantagens:**\n• Aceita lote com PDF + anexos + imagens\n• Mantém a origem de cada item extraído\n• Gera **Memória .md** para conferência\n\n**Passos:**\n1. Importar Edital\n2. Arraste todos os arquivos relacionados\n3. Clique **Extrair Dados**\n4. Revise os itens e confirme para Elaboração ou Auditoria\n\n⚠️ PDFs de baixa qualidade reduzem a precisão. Resolução mínima recomendada: 200 DPI.`,
-    chips: ['Ir para Importar','Como importar edital?','Dica de qualidade OCR']
+    r: `**OCR — Reconhecimento de Texto em PDFs Escaneados** 🔍\n\nO TLPlanly usa **Tesseract.js** no navegador. Ao importar pelo **Elaborar Orçamento** ou pelo módulo **Importar Planilha/PDF**, o OCR entra automaticamente quando o PDF não tem texto aproveitável ou quando você envia imagem digitalizada.\n\n✅ **Vantagens:**\n• Aceita lote com PDF + anexos + imagens\n• Mantém a origem de cada item extraído\n• Gera **Memória .md** para conferência\n• Envia os itens para ajuste direto na planilha editável\n\n⚠️ PDFs de baixa qualidade reduzem a precisão. Resolução mínima recomendada: 200 DPI.`,
+    chips: ['Ir para Elaborar','Ir para Importar','Como importar planilha?']
   },
 
   // ── EXPORTAÇÃO ────────────────────────────────────────
@@ -3834,7 +3925,7 @@ const COPILOT_KB = {
 // ── CONTEXTO DA VIEW ─────────────────────────────────────
 const VIEW_CONTEXT = {
   dashboard:    { nome: 'Dashboard', dica: 'Aqui você vê o resumo do orçamento ativo — totais, Curva ABC e itens críticos.' },
-  elaborar:     { nome: 'Elaborar Orçamento', dica: 'Pesquise insumos SINAPI pelo código ou descrição e adicione ao orçamento com quantidade e preço.' },
+  elaborar:     { nome: 'Elaborar Orçamento', dica: 'Crie itens próprios, pesquise SINAPI ou importe Excel/PDF. Depois ajuste descrição, unidade, quantidade, preço, capítulo e categoria direto na planilha.' },
   bdi:          { nome: 'BDI & Encargos', dica: 'Configure os componentes do BDI conforme o Decreto 7983/2013 e escolha o regime de encargos.' },
   curvaABC:     { nome: 'Curva ABC', dica: 'Gere a análise de Pareto do orçamento para identificar os itens de maior impacto financeiro.' },
   memoria:      { nome: 'Memória de Cálculo', dica: 'Veja o detalhamento de cada item com encargos sociais, BDI e referência SINAPI.' },
@@ -3847,7 +3938,7 @@ const VIEW_CONTEXT = {
   conformidade: { nome: 'Conformidade BDI', dica: 'Verifique se o BDI calculado está dentro dos limites do TCU Acórdão 2622/2013.' },
   relatorio:    { nome: 'Exportar / Relatório', dica: 'Preencha os dados da obra, escolha o modelo de relatório e exporte Excel/PDF com orçamento, BDI, ABC, planejamento, medições e anexos.' },
   bases:        { nome: 'Bases de Referência', dica: 'Carregue e gerencie SINAPI, SICRO 3 e bases estaduais. Use o OCR para PDFs escaneados.' },
-  importar:     { nome: 'Importar Edital', dica: 'Importe planilhas de editais em PDF ou Excel e faça o match automático com a base SINAPI.' },
+  importar:     { nome: 'Importar Planilha/PDF', dica: 'Importe Excel, CSV, PDF digital, PDF escaneado ou imagens e faça o match automático com a base SINAPI.' },
   cpu:          { nome: 'Composições (CPU)', dica: 'Crie composições analíticas próprias com insumos SINAPI, coeficientes e encargos sociais.' },
   config:       { nome: 'Configurações', dica: 'Configure UF, tolerância, encargos, tipo de obra, moeda de exibição, cotação e modelo padrão de relatório.' },
 };

@@ -89,6 +89,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .grid-3{grid-template-columns:repeat(3,1fr)}
 .grid-4{grid-template-columns:repeat(4,1fr)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;transition:all var(--transition)}
+.card.dragover-card{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,166,35,.14)}
 .card-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
 .card-value{font-size:28px;font-weight:900;color:var(--text)}
 .card-value.gold{color:var(--gold)}
@@ -126,6 +127,13 @@ tbody tr{border-top:1px solid var(--border);transition:background var(--transiti
 tbody tr:hover{background:var(--bg3)}
 tbody td{padding:10px 14px;color:var(--text);vertical-align:middle}
 .td-mono{font-family:monospace;font-size:12px}
+.table-input{width:100%;border:1px solid transparent;background:transparent;color:var(--text);font:inherit;border-radius:6px;padding:5px 6px;min-width:52px}
+.table-input:hover,.table-input:focus{border-color:var(--border);background:var(--bg3);outline:none}
+.table-input.mono{font-family:monospace;color:var(--gold);min-width:90px}
+.table-input.num{text-align:right;min-width:82px}
+.table-input.compact{min-width:58px}
+.table-input-desc{font-weight:700;min-width:240px}
+.table-input-sub{font-size:10px;color:var(--text3);margin-top:4px;padding:3px 6px}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
 .badge-A{background:rgba(229,57,53,.15);color:var(--red)}
 .badge-B{background:rgba(245,166,35,.15);color:var(--gold)}
