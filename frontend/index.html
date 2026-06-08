@@ -357,27 +357,27 @@
         <div class="grid grid-2" style="gap:12px">
           <div class="form-group" style="margin:0">
             <label class="form-label">AC — Administração Central (%)</label>
-            <input id="bdi-ac" class="form-input" type="number" value="4.00" step="0.01" oninput="calcBDI()"/>
+            <input id="bdi-ac" class="form-input" type="number" placeholder="Ex: 4.00" step="0.01" oninput="calcBDI()"/>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">S — Seguros e Garantias (%)</label>
-            <input id="bdi-s" class="form-input" type="number" value="0.50" step="0.01" oninput="calcBDI()"/>
+            <input id="bdi-s" class="form-input" type="number" placeholder="Ex: 0.50" step="0.01" oninput="calcBDI()"/>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">R — Risco (%)</label>
-            <input id="bdi-r" class="form-input" type="number" value="1.27" step="0.01" oninput="calcBDI()"/>
+            <input id="bdi-r" class="form-input" type="number" placeholder="Ex: 1.27" step="0.01" oninput="calcBDI()"/>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">DF — Despesas Financeiras (%)</label>
-            <input id="bdi-df" class="form-input" type="number" value="1.23" step="0.01" oninput="calcBDI()"/>
+            <input id="bdi-df" class="form-input" type="number" placeholder="Ex: 1.23" step="0.01" oninput="calcBDI()"/>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">L — Lucro (%)</label>
-            <input id="bdi-l" class="form-input" type="number" value="7.40" step="0.01" oninput="calcBDI()"/>
+            <input id="bdi-l" class="form-input" type="number" placeholder="Ex: 7.40" step="0.01" oninput="calcBDI()"/>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">I — Tributos (ISS+PIS+COFINS) (%)</label>
-            <input id="bdi-i" class="form-input" type="number" value="8.65" step="0.01" oninput="calcBDI()"/>
+            <input id="bdi-i" class="form-input" type="number" placeholder="Ex: 8.65" step="0.01" oninput="calcBDI()"/>
           </div>
         </div>
         <div style="margin-top:12px">
@@ -387,6 +387,7 @@
             <option value="eletrica">Instalações Elétricas (lim. TCU: 24%)</option>
             <option value="material">Fornecimento de Materiais (lim. TCU: 15%)</option>
           </select>
+          <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="aplicarPreset()">Usar modelo selecionado</button>
         </div>
         <div class="bdi-formula" style="margin-top:12px">
           BDI = [(1+AC+S+R)(1+DF)(1+L) / (1-I) - 1] × 100
@@ -398,9 +399,9 @@
     <div>
       <div class="bdi-result" style="margin-bottom:16px">
         <div class="card-title" style="color:rgba(245,166,35,.6)">BDI CALCULADO</div>
-        <div class="bdi-pct" id="bdi-result-pct">0,00%</div>
+        <div class="bdi-pct" id="bdi-result-pct">Não configurado</div>
         <div class="bdi-label">Limite TCU: <span id="bdi-limite">25%</span></div>
-        <div id="bdi-status-badge" class="bdi-status bdi-ok">&#10003; Dentro do Limite</div>
+        <div id="bdi-status-badge" class="bdi-status bdi-warn">Preencha os componentes ou escolha um modelo</div>
         <div style="margin-top:20px;width:100%">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:4px">
             <span>0%</span><span id="bdi-limite-lbl">25%</span>
@@ -409,7 +410,7 @@
             <div id="bdi-progress" class="progress-fill" style="background:var(--green);width:0%"></div>
           </div>
         </div>
-        <button class="btn btn-gold" style="margin-top:16px;width:100%" onclick="aplicarBDIaOrcamento()">&#10003; Aplicar ao Orçamento</button>
+        <button id="bdi-apply-btn" class="btn btn-gold" style="margin-top:16px;width:100%" onclick="aplicarBDIaOrcamento()" disabled>&#10003; Aplicar ao Orçamento</button>
       </div>
 
       <div class="card">

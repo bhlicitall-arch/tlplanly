@@ -5,8 +5,11 @@
 let STATE = {
   mode: 'construtor',
   theme: 'dark',
-  bdi: 24.46,
-  bdiComponents: { ac:4, s:0.5, r:1.27, df:1.23, l:7.4, i:8.65 },
+  bdi: 0,
+  bdiConfigured: false,
+  bdiComponents: { ac:0, s:0, r:0, df:0, l:0, i:0 },
+  bdiDraft: null,
+  bdiDraftComponents: null,
   orcamento: [],      // { cod, desc, unid, qtd, preco, ref, cat }
   planejamento: [],
   medicoes: [],
@@ -49,14 +52,83 @@ try {
     STATE.quantitativos = p.quantitativos || {};
     STATE.documentos = p.documentos || [];
     STATE.backups = p.backups || [];
-    STATE.bdi = p.bdi || 24.46;
-    STATE.bdiComponents = p.bdiComponents || STATE.bdiComponents;
+    const legacyDefaultBDI = isLegacyDefaultBDI(p);
+    STATE.bdiConfigured = !legacyDefaultBDI
+      && Number.isFinite(Number(p.bdi))
+      && (p.bdiConfigured === true || (p.bdiConfigured === undefined && Number(p.bdi) > 0 && !!p.bdiComponents));
+    STATE.bdi = STATE.bdiConfigured ? Number(p.bdi) : 0;
+    STATE.bdiComponents = STATE.bdiConfigured && p.bdiComponents ? p.bdiComponents : STATE.bdiComponents;
     STATE.config = { ...STATE.config, ...(p.config || {}) };
   }
 } catch(e) {}
 
 function makeId(prefix='id') {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+}
+
+function isLegacyDefaultBDI(payload) {
+  if (!payload || payload.bdiConfigured === true) return false;
+  const c = payload.bdiComponents || {};
+  const defaults =
+    Number(c.ac) === 4 &&
+    Number(c.s) === 0.5 &&
+    Number(c.r) === 1.27 &&
+    Number(c.df) === 1.23 &&
+    Number(c.l) === 7.4 &&
+    Number(c.i) === 8.65;
+  const bdi = Number(payload.bdi);
+  return defaults && (Math.abs(bdi - 25.88) < 0.05 || Math.abs(bdi - 24.46) < 0.05);
+}
+
+function hasBDI() {
+  return STATE.bdiConfigured === true && Number.isFinite(Number(STATE.bdi)) && Number(STATE.bdi) > 0;
+}
+
+function isFilledNumber(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
+function bdiValue() {
+  return hasBDI() ? Number(STATE.bdi) : 0;
+}
+
+function bdiText(emptyText='Não configurado') {
+  return hasBDI() ? bdiValue().toFixed(2) + '%' : emptyText;
+}
+
+function totalComBDI(subtotal) {
+  return subtotal * (1 + bdiValue() / 100);
+}
+
+function bdiComponentValues(source) {
+  const c = source || {};
+  return {
+    ac: Number(c.ac) || 0,
+    s: Number(c.s) || 0,
+    r: Number(c.r) || 0,
+    df: Number(c.df) || 0,
+    l: Number(c.l) || 0,
+    i: Number(c.i) || 0
+  };
+}
+
+function readBDIInputs() {
+  const ids = ['ac','s','r','df','l','i'];
+  const result = {};
+  let complete = true;
+  ids.forEach(key => {
+    const el = document.getElementById('bdi-' + key);
+    const raw = el?.value?.trim() || '';
+    if (raw === '') complete = false;
+    const value = Number(raw.replace(',', '.'));
+    if (!Number.isFinite(value)) complete = false;
+    result[key] = Number.isFinite(value) ? value : 0;
+  });
+  return { values: result, complete };
+}
+
+function calcularBDIComponents(c) {
+  return ((1+c.ac/100+c.s/100+c.r/100)*(1+c.df/100)*(1+c.l/100) / (1-c.i/100) - 1) * 100;
 }
 
 function normalizeState() {
@@ -75,6 +147,17 @@ function normalizeState() {
     moedaCotacao:1,
     relatorioModelo:'publico',
     ...(STATE.config || {})
+  };
+  STATE.bdi = Number.isFinite(Number(STATE.bdi)) ? Number(STATE.bdi) : 0;
+  STATE.bdiConfigured = STATE.bdiConfigured === true && STATE.bdi > 0;
+  STATE.bdiComponents = {
+    ac:0,
+    s:0,
+    r:0,
+    df:0,
+    l:0,
+    i:0,
+    ...(STATE.bdiComponents || {})
   };
   if (!Number.isFinite(Number(STATE.config.moedaCotacao)) || Number(STATE.config.moedaCotacao) <= 0) {
     STATE.config.moedaCotacao = 1;
@@ -105,6 +188,7 @@ function persistedState() {
     documentos: STATE.documentos,
     backups: STATE.backups,
     bdi: STATE.bdi,
+    bdiConfigured: STATE.bdiConfigured,
     bdiComponents: STATE.bdiComponents,
     config: STATE.config
   };
@@ -119,8 +203,14 @@ function applyPersistedState(payload) {
   STATE.quantitativos = payload.quantitativos && typeof payload.quantitativos === 'object' ? payload.quantitativos : {};
   STATE.documentos = Array.isArray(payload.documentos) ? payload.documentos : [];
   STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
-  STATE.bdi = Number.isFinite(Number(payload.bdi)) ? Number(payload.bdi) : STATE.bdi;
-  STATE.bdiComponents = payload.bdiComponents || STATE.bdiComponents;
+  const legacyDefaultBDI = isLegacyDefaultBDI(payload);
+  STATE.bdiConfigured = !legacyDefaultBDI
+    && Number.isFinite(Number(payload.bdi))
+    && (payload.bdiConfigured === true || (payload.bdiConfigured === undefined && Number(payload.bdi) > 0 && !!payload.bdiComponents));
+  STATE.bdi = STATE.bdiConfigured ? Number(payload.bdi) : 0;
+  STATE.bdiComponents = STATE.bdiConfigured && payload.bdiComponents ? payload.bdiComponents : { ac:0, s:0, r:0, df:0, l:0, i:0 };
+  STATE.bdiDraft = null;
+  STATE.bdiDraftComponents = null;
   STATE.config = { ...STATE.config, ...(payload.config || {}) };
   normalizeState();
   localStorage.setItem('tlplanly_state', JSON.stringify(persistedState()));
@@ -142,7 +232,8 @@ function refreshAppFromState() {
   setVal('bdi-i', c.i);
   setVal('orcNome', STATE.config.nome || document.getElementById('orcNome')?.value || 'Orcamento SINAPI');
   if (typeof syncConfigForm === 'function') syncConfigForm();
-  if (typeof calcBDI === 'function') calcBDI();
+  if (typeof syncBDIInputsFromState === 'function') syncBDIInputsFromState();
+  if (typeof renderBDIState === 'function') renderBDIState();
   if (typeof renderElaborar === 'function') renderElaborar();
   if (typeof renderDashboard === 'function') renderDashboard();
   if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
@@ -418,7 +509,7 @@ function showView(id) {
   if (id==='relatorio') renderRelatorioPreview();
   if (id==='config') syncConfigForm();
   if (id==='sinapi') renderSinapiBase();
-  if (id==='bdi') { calcBDI(); showEncargos('nd'); renderBDIComp(); }
+  if (id==='bdi') { syncBDIInputsFromState(); renderBDIState(); showEncargos('nd'); renderBDIComp(); }
   if (id==='auditoria') executarAuditoria();
   if (id==='conformidade') verificarConformidade();
 }
@@ -615,7 +706,7 @@ function renderElaborar() {
     tb.innerHTML = '<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text3)">Pesquise insumos SINAPI acima para adicionar itens</td></tr>';
     document.getElementById('elab-sub').textContent = fmtMoeda(0);
     document.getElementById('elab-total').textContent = fmtMoeda(0);
-    document.getElementById('elab-bdi-pct').textContent = STATE.bdi.toFixed(2) + '%';
+    document.getElementById('elab-bdi-pct').textContent = bdiText('Não configurado');
     return;
   }
   const rows = STATE.orcamento.map((it, i) => {
@@ -647,10 +738,10 @@ function renderElaborar() {
   });
   tb.innerHTML = rows.join('');
   const sub = STATE.orcamento.reduce((s, it) => s + it.qtd * it.preco, 0);
-  const total = sub * (1 + STATE.bdi/100);
+  const total = totalComBDI(sub);
   document.getElementById('elab-sub').textContent = fmtMoeda(sub);
   document.getElementById('elab-total').textContent = fmtMoeda(total);
-  document.getElementById('elab-bdi-pct').textContent = STATE.bdi.toFixed(2) + '%';
+  document.getElementById('elab-bdi-pct').textContent = bdiText('Não configurado');
 }
 
 function categoriaOptions(current) {
@@ -668,13 +759,13 @@ function desvioHtml(it) {
 
 function atualizarTotaisElaborar() {
   const sub = STATE.orcamento.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.preco) || 0), 0);
-  const total = sub * (1 + STATE.bdi/100);
+  const total = totalComBDI(sub);
   const subEl = document.getElementById('elab-sub');
   const totalEl = document.getElementById('elab-total');
   const bdiEl = document.getElementById('elab-bdi-pct');
   if (subEl) subEl.textContent = fmtMoeda(sub);
   if (totalEl) totalEl.textContent = fmtMoeda(total);
-  if (bdiEl) bdiEl.textContent = STATE.bdi.toFixed(2) + '%';
+  if (bdiEl) bdiEl.textContent = bdiText('Não configurado');
 }
 
 function atualizarLinhaElaborar(idx) {
@@ -704,6 +795,7 @@ function exportarOrcamento() {
   const data = {
     nome, data: new Date().toLocaleDateString('pt-BR'),
     bdi: STATE.bdi,
+    bdiConfigured: STATE.bdiConfigured,
     moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
     itens: STATE.orcamento,
     subtotal: STATE.orcamento.reduce((s, it)=>s+it.qtd*it.preco, 0)
@@ -754,37 +846,68 @@ function iniciarImportacaoRapidaElaborar(files) {
 // ═══════════════════════════════════════════════════════════
 const BDI_LIMITES = { civil: 25, eletrica: 24, material: 15 };
 
+function syncBDIInputsFromState() {
+  const source = hasBDI() ? STATE.bdiComponents : null;
+  const ids = ['ac','s','r','df','l','i'];
+  ids.forEach(key => {
+    const el = document.getElementById('bdi-' + key);
+    if (!el) return;
+    el.value = source ? String(source[key] ?? '') : '';
+  });
+}
+
 function calcBDI() {
-  const ac = parseFloat(document.getElementById('bdi-ac').value)||0;
-  const s  = parseFloat(document.getElementById('bdi-s').value)||0;
-  const r  = parseFloat(document.getElementById('bdi-r').value)||0;
-  const df = parseFloat(document.getElementById('bdi-df').value)||0;
-  const l  = parseFloat(document.getElementById('bdi-l').value)||0;
-  const i  = parseFloat(document.getElementById('bdi-i').value)||0;
+  const { values, complete } = readBDIInputs();
+  if (!complete) {
+    STATE.bdiDraft = null;
+    STATE.bdiDraftComponents = null;
+    renderBDIState();
+    return null;
+  }
 
-  STATE.bdiComponents = {ac,s,r,df,l,i};
+  const bdi = calcularBDIComponents(values);
+  STATE.bdiDraft = bdi;
+  STATE.bdiDraftComponents = values;
+  renderBDIState();
+  return bdi;
+}
 
-  const bdi = ((1+ac/100+s/100+r/100)*(1+df/100)*(1+l/100) / (1-i/100) - 1) * 100;
-  STATE.bdi = bdi;
-  saveState();
-
+function renderBDIState() {
   const tipo = document.getElementById('bdi-tipo').value;
   const lim = BDI_LIMITES[tipo] || 25;
+  const draft = isFilledNumber(STATE.bdiDraft) ? Number(STATE.bdiDraft) : null;
+  const visibleBDI = draft !== null ? draft : (hasBDI() ? bdiValue() : null);
+  const isApplied = draft === null && hasBDI();
 
-  document.getElementById('bdi-result-pct').textContent = bdi.toFixed(2) + '%';
+  document.getElementById('bdi-result-pct').textContent = visibleBDI !== null ? visibleBDI.toFixed(2) + '%' : 'Não configurado';
   document.getElementById('bdi-limite').textContent = lim + '%';
   document.getElementById('bdi-limite-lbl').textContent = lim + '%';
+  const memBdi = document.getElementById('mem-bdi');
+  if (memBdi) memBdi.value = hasBDI() ? bdiValue().toFixed(2) : '';
 
-  const pct = Math.min(bdi / lim * 100, 120);
   const prog = document.getElementById('bdi-progress');
-  prog.style.width = Math.min(pct, 100) + '%';
-
   const badge = document.getElementById('bdi-status-badge');
-  if (bdi <= lim) {
+  const applyBtn = document.getElementById('bdi-apply-btn');
+
+  if (visibleBDI === null) {
+    prog.style.width = '0%';
+    prog.style.background = 'var(--gold)';
+    badge.textContent = 'Preencha os componentes ou escolha um modelo';
+    badge.className = 'bdi-status bdi-warn';
+    if (applyBtn) applyBtn.disabled = true;
+    renderBDIComp();
+    return;
+  }
+
+  const pct = Math.min(visibleBDI / lim * 100, 120);
+  prog.style.width = Math.min(pct, 100) + '%';
+  if (applyBtn) applyBtn.disabled = draft === null && !hasBDI();
+
+  if (visibleBDI <= lim) {
     prog.style.background = 'var(--green)';
-    badge.textContent = '✓ Dentro do Limite TCU';
+    badge.textContent = isApplied ? '✓ BDI aplicado ao orçamento' : '✓ Dentro do Limite TCU';
     badge.className = 'bdi-status bdi-ok';
-  } else if (bdi <= lim * 1.1) {
+  } else if (visibleBDI <= lim * 1.1) {
     prog.style.background = 'var(--gold)';
     badge.textContent = '⚠ Atenção: Próximo do Limite';
     badge.className = 'bdi-status bdi-warn';
@@ -794,15 +917,11 @@ function calcBDI() {
     badge.className = 'bdi-status bdi-bad';
   }
 
-  // Update BDI in totals
-  document.getElementById('elab-bdi-pct').textContent = bdi.toFixed(2) + '%';
-  document.getElementById('mem-bdi').value = bdi.toFixed(2);
-
   renderBDIComp();
 }
 
 function renderBDIComp() {
-  const bdi = STATE.bdi;
+  const bdi = isFilledNumber(STATE.bdiDraft) ? Number(STATE.bdiDraft) : (hasBDI() ? bdiValue() : null);
   const tipoAtual = document.getElementById('bdi-tipo')?.value || 'civil';
   const linhas = [
     {nome:'Obras Civis',          lim:25, key:'civil'},
@@ -811,10 +930,12 @@ function renderBDIComp() {
   ];
   const html = linhas.map(function(l) {
     const isSel = l.key === tipoAtual;
-    const ok    = bdi <= l.lim;
+    const ok    = bdi !== null && bdi <= l.lim;
     let badge;
     if (isSel) {
-      badge = '<span class="badge ' + (ok ? 'badge-ok' : 'badge-err') + '">' + (ok ? '✓ OK' : '✗ Excede') + '</span>';
+      badge = bdi === null
+        ? '<span class="badge" style="background:var(--bg3);color:var(--text3)">Pendente</span>'
+        : '<span class="badge ' + (ok ? 'badge-ok' : 'badge-err') + '">' + (ok ? '✓ OK' : '✗ Excede') + '</span>';
     } else {
       badge = '<span class="badge" style="background:var(--bg3);color:var(--text3)">— Ref.</span>';
     }
@@ -833,8 +954,9 @@ function renderBDIComp() {
 
 function aplicarPreset() {
   const tipo = document.getElementById('bdi-tipo').value;
-  // tipo change updates comparativo immediately
-  renderBDIComp();
+  document.getElementById('bdi-s').value = '0.50';
+  document.getElementById('bdi-r').value = '1.27';
+  document.getElementById('bdi-df').value = '1.23';
   if (tipo === 'material') {
     document.getElementById('bdi-ac').value = '3.00';
     document.getElementById('bdi-l').value = '5.00';
@@ -852,9 +974,23 @@ function aplicarPreset() {
 }
 
 function aplicarBDIaOrcamento() {
-  toast(`BDI de ${STATE.bdi.toFixed(2)}% aplicado ao orçamento`, 'success');
+  if (!isFilledNumber(STATE.bdiDraft) || !STATE.bdiDraftComponents) {
+    const calculated = calcBDI();
+    if (!isFilledNumber(calculated)) {
+      toast('Preencha todos os componentes do BDI antes de aplicar.', 'error');
+      return;
+    }
+  }
+  STATE.bdi = Number(STATE.bdiDraft);
+  STATE.bdiConfigured = true;
+  STATE.bdiComponents = bdiComponentValues(STATE.bdiDraftComponents);
+  STATE.bdiDraft = null;
+  STATE.bdiDraftComponents = null;
+  saveState();
+  renderBDIState();
   renderElaborar();
   renderDashboard();
+  toast(`BDI de ${STATE.bdi.toFixed(2)}% aplicado ao orçamento`, 'success');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1019,7 +1155,7 @@ function renderMemoria() {
     return;
   }
   const encPct = parseFloat(document.getElementById('mem-enc').value) || 127.5;
-  const bdi = STATE.bdi;
+  const bdi = bdiValue();
 
   const blocks = STATE.orcamento.map((it, i) => {
     const total = it.qtd * it.preco;
@@ -1043,7 +1179,7 @@ function renderMemoria() {
           <div class="enc-row"><span class="enc-name">Materiais (estimado)</span><span class="enc-val">${fmtMoeda(matPreco * it.qtd)}</span></div>
           <div class="enc-row"><span class="enc-name">Mão de Obra (estimado)</span><span class="enc-val">${fmtMoeda(moEnc * it.qtd)}</span></div>
           <div class="enc-row"><span class="enc-name">Encargos Sociais (${encPct}%)</span><span class="enc-val">${fmtMoeda(moEnc * encPct/100 * it.qtd)}</span></div>
-          <div class="enc-row"><span class="enc-name">BDI (${bdi.toFixed(2)}%)</span><span class="enc-val">${fmtMoeda(total * bdi/100)}</span></div>
+          <div class="enc-row"><span class="enc-name">BDI (${bdiText('Não configurado')})</span><span class="enc-val">${fmtMoeda(total * bdi/100)}</span></div>
           <div class="enc-row total"><span class="enc-name">TOTAL c/ BDI</span><span class="enc-val">${fmtMoeda(totalBDI)}</span></div>
         </div>
         <div style="margin-top:10px;font-size:12px;color:var(--text3)">
@@ -1122,7 +1258,15 @@ function filtrarAuditoria() {
 // CONFORMIDADE BDI
 // ═══════════════════════════════════════════════════════════
 function verificarConformidade() {
-  const bdi = STATE.bdi;
+  if (!hasBDI()) {
+    document.getElementById('conf-content').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">⚙</div>
+        <p>BDI ainda não configurado. Defina os componentes em BDI / Encargos e aplique ao orçamento.</p>
+      </div>`;
+    return;
+  }
+  const bdi = bdiValue();
   const tipo = document.getElementById('bdi-tipo')?.value || 'civil';
   const lim = BDI_LIMITES[tipo] || 25;
   const ok = bdi <= lim;
@@ -1166,13 +1310,13 @@ function verificarConformidade() {
 function renderDashboard() {
   const items = STATE.orcamento;
   const sub = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
-  const total = sub * (1 + STATE.bdi/100);
+  const total = totalComBDI(sub);
   const acima = items.filter(i => i.ref > 0 && i.preco > i.ref * 1.05).length;
 
   document.getElementById('dash-total').textContent = fmtMoeda(sub);
   document.getElementById('dash-itens').textContent = items.length + ' itens';
-  document.getElementById('dash-bdi').textContent = STATE.bdi.toFixed(2) + '%';
-  document.getElementById('dash-bdi-status').textContent = STATE.bdi <= 25 ? 'Dentro do limite TCU' : '⚠ Acima do limite';
+  document.getElementById('dash-bdi').textContent = bdiText('—');
+  document.getElementById('dash-bdi-status').textContent = hasBDI() ? (bdiValue() <= 25 ? 'Dentro do limite TCU' : '⚠ Acima do limite') : 'Não configurado';
   document.getElementById('dash-total-bdi').textContent = fmtMoeda(total);
   document.getElementById('dash-acima').textContent = acima;
 
@@ -1274,12 +1418,12 @@ function buscarSINAPIBase(q) {
 // ═══════════════════════════════════════════════════════════
 function renderRelatorioPreview() {
   const sub = STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0);
-  const total = sub * (1 + STATE.bdi/100);
+  const total = totalComBDI(sub);
   document.getElementById('rel-preview').innerHTML = `
     <div style="font-size:13px;color:var(--text2);line-height:1.8">
       <div><strong>Orçamento:</strong> ${document.getElementById('orcNome')?.value || '—'}</div>
       <div><strong>Itens:</strong> ${STATE.orcamento.length}</div>
-      <div><strong>BDI Aplicado:</strong> ${STATE.bdi.toFixed(2)}%</div>
+      <div><strong>BDI Aplicado:</strong> ${bdiText('Não configurado')}</div>
       <div><strong>Subtotal (sem BDI):</strong> ${fmtMoeda(sub)}</div>
       <div><strong>Total c/ BDI:</strong> <span style="color:var(--gold);font-weight:800;font-size:18px">${fmtMoeda(total)}</span></div>
       <div><strong>Referência SINAPI:</strong> MG / ${STATE.sinapiMes || '—'}</div>
@@ -1290,6 +1434,7 @@ function exportarJSON() {
   const data = {
     orcamento: STATE.orcamento,
     bdi: STATE.bdi,
+    bdiConfigured: STATE.bdiConfigured,
     moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
     total: STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0)
   };
@@ -1409,7 +1554,8 @@ function redrawAllCharts() {
 // ═══════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
   syncConfigForm();
-  calcBDI();
+  syncBDIInputsFromState();
+  renderBDIState();
   showEncargos('nd');
   renderBDIComp();
   renderElaborar();
@@ -1417,17 +1563,6 @@ window.addEventListener('DOMContentLoaded', () => {
   preencherSelectsOperacionais();
   loadSinapiBase();
   cloudInit();
-  // Sync BDI inputs from saved state
-  const c = STATE.bdiComponents;
-  if (c) {
-    document.getElementById('bdi-ac').value = c.ac;
-    document.getElementById('bdi-s').value = c.s;
-    document.getElementById('bdi-r').value = c.r;
-    document.getElementById('bdi-df').value = c.df;
-    document.getElementById('bdi-l').value = c.l;
-    document.getElementById('bdi-i').value = c.i;
-    calcBDI();
-  }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1858,6 +1993,7 @@ function backupPayload() {
     quantitativos: STATE.quantitativos,
     documentos: STATE.documentos,
     bdi: STATE.bdi,
+    bdiConfigured: STATE.bdiConfigured,
     bdiComponents: STATE.bdiComponents,
     config: STATE.config
   };
@@ -3721,8 +3857,9 @@ function renderPreviewPlanilha() {
   const modelo = relatorioModeloAtual();
   const items = STATE.orcamento;
   const sub  = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
-  const bdi  = STATE.bdi;
-  const total = sub * (1 + bdi/100);
+  const bdi  = bdiValue();
+  const total = totalComBDI(sub);
+  const bdiLabel = bdiText('Não configurado');
   const now  = new Date().toLocaleDateString('pt-BR');
 
   document.getElementById('rel-info-count').textContent = `${items.length} itens · Subtotal: ${fmtMoeda(sub)} · Total c/ BDI: ${fmtMoeda(total)}`;
@@ -3739,7 +3876,7 @@ function renderPreviewPlanilha() {
   } else {
     items.forEach((it, i) => {
       const total_it = it.qtd * it.preco;
-      const total_bdi = total_it * (1 + bdi/100);
+      const total_bdi = totalComBDI(total_it);
       const desv = it.ref > 0 ? ((it.preco - it.ref)/it.ref*100).toFixed(1)+'%' : '—';
       const desvColor = it.ref > 0 && it.preco > it.ref*1.05 ? 'color:#c00;font-weight:700' : '';
       itemRows += `<tr class="sh-row">
@@ -3751,8 +3888,8 @@ function renderPreviewPlanilha() {
         <td style="text-align:right">${fmtMoeda(it.preco)}</td>
         <td style="text-align:right;color:#666">${it.ref > 0 ? fmtMoeda(it.ref) : '—'}</td>
         <td style="text-align:right;${desvColor}">${desv}</td>
-        <td style="text-align:right">${bdi.toFixed(2)}%</td>
-        <td style="text-align:right">${fmtMoeda(total_it * (1+bdi/100)/it.qtd)}</td>
+        <td style="text-align:right">${bdiLabel}</td>
+        <td style="text-align:right">${fmtMoeda(total_bdi/it.qtd)}</td>
         <td style="text-align:right;font-weight:700">${fmtMoeda(total_bdi)}</td>
       </tr>`;
     });
@@ -3776,7 +3913,7 @@ function renderPreviewPlanilha() {
       <td style="text-align:right">${fmtMoeda(sub)}</td>
     </tr>
     <tr class="sh-bdi">
-      <td colspan="10" style="text-align:right">BDI (${bdi.toFixed(2)}%) — Decreto 7983/2013:</td>
+      <td colspan="10" style="text-align:right">BDI (${bdiLabel}) — Decreto 7983/2013:</td>
       <td style="text-align:right;color:#2a6b00;font-weight:700">${fmtMoeda(sub * bdi/100)}</td>
     </tr>
     <tr class="sh-total">
@@ -3784,7 +3921,7 @@ function renderPreviewPlanilha() {
       <td style="text-align:right;font-size:14px">${fmtMoeda(total)}</td>
     </tr>
     <tr><td colspan="11" style="padding:4px 10px;font-size:10px;color:#666;border:1px solid #ddd">
-      * Preços em conformidade com a tabela ${meta.fonte} · Data base: ${meta.data} · BDI: ${bdi.toFixed(2)}% (limite TCU Acórdão 2622/2013: 25%) · Cotação: 1 ${moedaCodigo()} = R$ ${moedaCotacao().toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4})}
+      * Preços em conformidade com a tabela ${meta.fonte} · Data base: ${meta.data} · BDI: ${bdiLabel} (limite TCU Acórdão 2622/2013: 25%) · Cotação: 1 ${moedaCodigo()} = R$ ${moedaCotacao().toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4})}
     </td></tr>
     <tr class="sh-sign">
       <td colspan="11">
@@ -3810,8 +3947,8 @@ function renderPreviewPlanilha() {
 // ─── PREVIEW BDI ───────────────────────────────────────────
 function renderPreviewBDI() {
   const meta = getMeta();
-  const c = STATE.bdiComponents;
-  const bdi = STATE.bdi;
+  const c = bdiComponentValues(STATE.bdiComponents);
+  const bdi = bdiValue();
   const tipo = document.getElementById('bdi-tipo')?.value || 'civil';
   const lim = BDI_LIMITES[tipo] || 25;
 
@@ -3829,8 +3966,9 @@ function renderPreviewBDI() {
     <td style="text-align:right;color:#666">${(val/100).toFixed(4)}</td>
   </tr>`).join('');
 
-  const status = bdi <= lim ? 'CONFORME' : 'NÃO CONFORME';
-  const statusColor = bdi <= lim ? '#2a6b00' : '#c00';
+  const status = hasBDI() ? (bdi <= lim ? 'CONFORME' : 'NÃO CONFORME') : 'NÃO CONFIGURADO';
+  const statusColor = !hasBDI() ? '#996600' : (bdi <= lim ? '#2a6b00' : '#c00');
+  const bdiLabel = bdiText('Não configurado');
 
   document.getElementById('preview-bdi-rel').innerHTML = `<table>
     <tr><td colspan="4" class="sh-header">COMPOSIÇÃO DO BDI</td></tr>
@@ -3842,13 +3980,13 @@ function renderPreviewBDI() {
     ${rows}
     <tr class="sh-total">
       <td colspan="2">BDI CALCULADO — Fórmula: [(1+AC+S+R)(1+DF)(1+L)/(1-I)-1]×100</td>
-      <td style="text-align:right;font-size:14px">${bdi.toFixed(2)}%</td>
+      <td style="text-align:right;font-size:14px">${bdiLabel}</td>
       <td style="text-align:right;color:${statusColor};font-weight:800">${status}</td>
     </tr>
     <tr class="sh-bdi">
       <td colspan="4" style="font-size:10px;color:#555;padding:8px 10px">
         Limite TCU Acórdão 2622/2013 para ${tipo==='civil'?'obras civis':tipo==='eletrica'?'instalações elétricas':'fornecimento de materiais'}: ${lim}%
-        · BDI apurado: ${bdi.toFixed(2)}% · Status: <strong style="color:${statusColor}">${status}</strong>
+        · BDI apurado: ${bdiLabel} · Status: <strong style="color:${statusColor}">${status}</strong>
       </td>
     </tr>
     <tr class="sh-sign"><td colspan="4" style="padding:20px 10px;text-align:center;border-top:1px solid #333;font-size:11px">
@@ -3917,8 +4055,9 @@ function renderPreviewResumo() {
   const modelo = relatorioModeloAtual();
   const items = STATE.orcamento;
   const sub = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
-  const bdi = STATE.bdi;
-  const total = sub * (1 + bdi/100);
+  const bdi = bdiValue();
+  const total = totalComBDI(sub);
+  const bdiLabel = bdiText('Não configurado');
 
   // Totais por categoria
   const cats = {};
@@ -3928,7 +4067,7 @@ function renderPreviewResumo() {
   const catRows = Object.entries(cats).map(([cat, val]) =>
     `<tr class="sh-row"><td>${cat}</td><td style="text-align:right">${fmtMoeda(val)}</td>
      <td style="text-align:right">${(sub > 0 ? val/sub*100 : 0).toFixed(1)}%</td>
-     <td style="text-align:right">${fmtMoeda(val*(1+bdi/100))}</td></tr>`
+     <td style="text-align:right">${fmtMoeda(totalComBDI(val))}</td></tr>`
   ).join('');
 
   // Auditoria summary
@@ -3946,7 +4085,7 @@ function renderPreviewResumo() {
     <tr><td colspan="4" style="padding:8px 10px;background:#e8f0f8;font-weight:800;font-size:12px;border:1px solid #ccc">1. RESUMO FINANCEIRO</td></tr>
     <tr class="sh-col-header"><th>Descrição</th><th colspan="3" style="text-align:right">${moedaHeader('Valor')}</th></tr>
     <tr class="sh-row"><td>Custo Direto (sem BDI)</td><td colspan="3" style="text-align:right">${fmtMoeda(sub)}</td></tr>
-    <tr class="sh-row"><td>BDI — ${bdi.toFixed(2)}% (Decreto 7983/2013)</td><td colspan="3" style="text-align:right">${fmtMoeda(sub*bdi/100)}</td></tr>
+    <tr class="sh-row"><td>BDI — ${bdiLabel} (Decreto 7983/2013)</td><td colspan="3" style="text-align:right">${fmtMoeda(sub*bdi/100)}</td></tr>
     <tr class="sh-total"><td>TOTAL GERAL COM BDI</td><td colspan="3" style="text-align:right;font-size:14px">${fmtMoeda(total)}</td></tr>
 
     <tr><td colspan="4" style="padding:8px 10px;background:#e8f0f8;font-weight:800;font-size:12px;border:1px solid #ccc">2. DISTRIBUIÇÃO POR CATEGORIA</td></tr>
@@ -3981,7 +4120,8 @@ function exportarExcelProfissional() {
   const meta = getMeta();
   const modelo = relatorioModeloAtual();
   const items = STATE.orcamento;
-  const bdi = STATE.bdi;
+  const bdi = bdiValue();
+  const bdiLabel = bdiText('Não configurado');
   const wb = XLSX.utils.book_new();
 
   // ── Aba 1: Planilha Orçamentária ──
@@ -4005,16 +4145,16 @@ function exportarExcelProfissional() {
       i+1, it.capitulo || it.cat || 'Serviços', it.cod, it.desc, it.unid,
       it.qtd, valorMoeda(it.preco), it.ref > 0 ? valorMoeda(it.ref) : '',
       desv !== '' ? parseFloat(desv) : '',
-      parseFloat(bdi.toFixed(2)),
-      parseFloat(valorMoeda(it.preco*(1+bdi/100)).toFixed(2)),
-      parseFloat(valorMoeda(v*(1+bdi/100)).toFixed(2)),
+      hasBDI() ? parseFloat(bdi.toFixed(2)) : '',
+      parseFloat(valorMoeda(totalComBDI(it.preco)).toFixed(2)),
+      parseFloat(valorMoeda(totalComBDI(v)).toFixed(2)),
       it.cat
     ]);
   });
   planData.push([]);
   planData.push(['','','','','','SUBTOTAL (sem BDI):','','','','',valorMoeda(sub)]);
-  planData.push(['','','','','','BDI ('+bdi.toFixed(2)+'%):','','','','',valorMoeda(sub*bdi/100)]);
-  planData.push(['','','','','','TOTAL GERAL c/ BDI:','','','','',valorMoeda(sub*(1+bdi/100))]);
+  planData.push(['','','','','','BDI ('+bdiLabel+'):', '', '', '', '', valorMoeda(sub*bdi/100)]);
+  planData.push(['','','','','','TOTAL GERAL c/ BDI:','','','','',valorMoeda(totalComBDI(sub))]);
 
   const ws1 = XLSX.utils.aoa_to_sheet(planData);
   ws1['!cols'] = [
@@ -4023,7 +4163,7 @@ function exportarExcelProfissional() {
   XLSX.utils.book_append_sheet(wb, ws1, 'Planilha Orçamentária');
 
   // ── Aba 2: Composição BDI ──
-  const c = STATE.bdiComponents;
+  const c = bdiComponentValues(STATE.bdiComponents);
   const bdiData = [
     ['COMPOSIÇÃO DO BDI — Decreto nº 7.983/2013, Art. 9º'],
     ['Obra:', meta.obra],
@@ -4036,10 +4176,10 @@ function exportarExcelProfissional() {
     ['L', 'Lucro', c.l],
     ['I', 'Tributos (ISS+PIS+COFINS)', c.i],
     [],
-    ['','BDI CALCULADO:', parseFloat(bdi.toFixed(2))],
+    ['','BDI CALCULADO:', hasBDI() ? parseFloat(bdi.toFixed(2)) : 'Não configurado'],
     ['','Fórmula: [(1+AC+S+R)(1+DF)(1+L)/(1-I)-1]×100',''],
     ['','Limite TCU Acórdão 2622/2013:', 25],
-    ['','Status:', bdi <= 25 ? 'CONFORME' : 'NÃO CONFORME'],
+    ['','Status:', hasBDI() ? (bdi <= 25 ? 'CONFORME' : 'NÃO CONFORME') : 'NÃO CONFIGURADO'],
   ];
   const ws2 = XLSX.utils.aoa_to_sheet(bdiData);
   ws2['!cols'] = [{wch:10},{wch:35},{wch:16}];
@@ -4132,8 +4272,8 @@ function exportarExcelProfissional() {
 function exportarExcelBDI() {
   if (!window.XLSX) return;
   const meta = getMeta();
-  const c = STATE.bdiComponents;
-  const bdi = STATE.bdi;
+  const c = bdiComponentValues(STATE.bdiComponents);
+  const bdi = bdiValue();
   const wb = XLSX.utils.book_new();
   const data = [
     ['COMPOSIÇÃO DO BDI — Decreto nº 7.983/2013, Art. 9º'],
@@ -4148,9 +4288,9 @@ function exportarExcelBDI() {
     ['L', 'Lucro', c.l],
     ['I', 'Tributos (ISS+PIS+COFINS)', c.i],
     [],
-    ['','BDI CALCULADO:', parseFloat(bdi.toFixed(2))],
+    ['','BDI CALCULADO:', hasBDI() ? parseFloat(bdi.toFixed(2)) : 'Não configurado'],
     ['','Limite TCU:', 25],
-    ['','Status:', bdi <= 25 ? 'CONFORME' : 'NÃO CONFORME'],
+    ['','Status:', hasBDI() ? (bdi <= 25 ? 'CONFORME' : 'NÃO CONFORME') : 'NÃO CONFIGURADO'],
   ];
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws['!cols'] = [{wch:10},{wch:35},{wch:14},{wch:14}];
@@ -4970,7 +5110,7 @@ async function copilotTentarAPI(userMsg) {
     view: COP.currentView || 'dashboard',
     totalItens: STATE.orcamento?.length ?? 0,
     totalOrcamento: STATE.orcamento?.reduce((s,i) => s + i.qtd * i.preco, 0) ?? 0,
-    bdi: STATE.bdi ?? 0,
+    bdi: hasBDI() ? STATE.bdi : null,
     sinapiCount: STATE.sinapiBase?.length ?? 0,
   };
 
@@ -5243,7 +5383,7 @@ async function copilotResponder(txt) {
   // ══ ESTADO DO ORÇAMENTO ═══════════════════════════════════
   if (/meu orcamento|quantos itens|total orcamento|resumo|ver orcamento/.test(norm)) {
     const sub = STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0);
-    copilotBotMsg(`**Seu orçamento atual:**\n\n• **${STATE.orcamento.length} itens** lançados\n• Subtotal (sem BDI): **${fmtMoeda(sub)}**\n• BDI configurado: **${STATE.bdi.toFixed(2)}%**\n• Total c/ BDI: **${fmtMoeda(sub*(1+STATE.bdi/100))}**\n• Base SINAPI: **${STATE.sinapiBase.length.toLocaleString('pt-BR')} insumos** carregados`);
+    copilotBotMsg(`**Seu orçamento atual:**\n\n• **${STATE.orcamento.length} itens** lançados\n• Subtotal (sem BDI): **${fmtMoeda(sub)}**\n• BDI configurado: **${bdiText('não configurado')}**\n• Total c/ BDI: **${fmtMoeda(totalComBDI(sub))}**\n• Base SINAPI: **${STATE.sinapiBase.length.toLocaleString('pt-BR')} insumos** carregados`);
     copilotSetChips(['Ir para Elaborar','Ir para ABC','Como exportar?','Ir para Auditoria']);
     return;
   }

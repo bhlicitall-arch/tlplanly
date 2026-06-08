@@ -137,6 +137,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .btn-danger{background:var(--red);color:#fff}
 .btn-danger:hover{filter:brightness(1.1)}
 .btn-green{background:var(--green);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.35);transform:none!important;box-shadow:none!important}
 /* ── INPUTS ──────────────────────────────────────────────────── */
 .form-group{margin-bottom:14px}
 .form-label{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;display:block;letter-spacing:.3px}
