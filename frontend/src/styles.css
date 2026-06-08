@@ -473,6 +473,15 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .op-actions{display:flex;gap:4px;justify-content:flex-end;align-items:center}
 .btn-mini{padding:3px 6px;font-size:10px;line-height:1.2;min-width:24px}
 .formula-chip{font-family:monospace;font-size:11px;color:var(--text2);background:var(--bg4);border:1px solid var(--border);border-radius:6px;padding:4px 6px;display:inline-block}
+.ana-text-block{font-size:13px;color:var(--text2);line-height:1.65;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:12px;min-height:70px}
+.ana-service{display:grid;grid-template-columns:26px 1.4fr 90px 90px 110px 1.2fr;gap:10px;align-items:start;padding:12px;border-bottom:1px solid var(--border)}
+.ana-service:hover{background:var(--bg3)}
+.ana-service-title{font-weight:800;color:var(--text);font-size:13px}
+.ana-service-meta{font-size:11px;color:var(--text3);margin-top:4px}
+.confidence-bar{height:8px;background:var(--bg4);border-radius:8px;overflow:hidden;margin-top:6px}
+.confidence-fill{height:100%;background:linear-gradient(90deg,var(--red),var(--gold),var(--green));border-radius:8px}
+.ana-chip{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;border-radius:10px;padding:2px 8px;background:rgba(245,166,35,.12);color:var(--gold);border:1px solid rgba(245,166,35,.25)}
+.ana-pending{font-size:11px;color:var(--red);line-height:1.45}
 .status-excedido{color:var(--red);font-weight:800}
 .status-ok{color:var(--green);font-weight:800}
 .status-pendente{color:var(--gold);font-weight:800}

@@ -143,6 +143,7 @@ function showView(id) {
   if (id==='quantitativos') quantRender();
   if (id==='documentos') docsRender();
   if (id==='backups') backupRender();
+  if (id==='analisador') analisadorRender();
   if (id==='relatorio') renderRelatorioPreview();
   if (id==='config') syncConfigForm();
   if (id==='sinapi') renderSinapiBase();
@@ -2299,6 +2300,530 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
   showView(alvo);
 }
 
+// ═══════════════════════════════════════════════════════════
+// ANALISADOR DE DOCUMENTOS DA OBRA
+// ═══════════════════════════════════════════════════════════
+let ANALISADOR = {
+  files: [],
+  docs: [],
+  services: [],
+  escopo: [],
+  especificacoes: [],
+  memoria: ''
+};
+
+const ANALISADOR_CATALOGO = [
+  { desc:'Administração local da obra', unid:'mês', cat:'Serviços', keywords:['administração local','administracao local','engenheiro residente','mestre de obras','equipe técnica'], comp:['Engenheiro civil','Mestre de obras','Técnico de segurança','Apoio administrativo'] },
+  { desc:'Canteiro de obras e serviços preliminares', unid:'m²', cat:'Serviços', keywords:['canteiro','barracão','tapume','placa de obra','instalação provisória','serviços preliminares'], comp:['Tapume','Placa de obra','Barracão provisório','Instalações provisórias'] },
+  { desc:'Demolições e remoções', unid:'m²', cat:'Serviços', keywords:['demolição','demolicao','remoção','remocao','retirada','bota fora'], comp:['Mão de obra de demolição','Caçamba','Transporte de entulho','Equipamento manual'] },
+  { desc:'Movimento de terra e escavação', unid:'m³', cat:'Serviços', keywords:['escavação','escavacao','aterro','reaterro','terraplenagem','movimento de terra'], comp:['Escavação manual/mecânica','Reaterro compactado','Transporte de material','Compactador'] },
+  { desc:'Fundações rasas em concreto', unid:'m³', cat:'Serviços', keywords:['fundação','fundacao','sapata','baldrame','bloco de fundação','radier'], comp:['Concreto','Forma','Armadura CA-50','Escavação','Lastro'] },
+  { desc:'Estrutura de concreto armado', unid:'m³', cat:'Serviços', keywords:['estrutura','concreto armado','pilar','viga','laje','armação','armacao'], comp:['Concreto usinado','Aço CA-50/CA-60','Forma de madeira','Escoramento','Mão de obra estrutural'] },
+  { desc:'Alvenaria de vedação', unid:'m²', cat:'Serviços', keywords:['alvenaria','tijolo','bloco cerâmico','bloco de concreto','parede'], comp:['Bloco cerâmico/concreto','Argamassa de assentamento','Pedreiro','Servente'] },
+  { desc:'Cobertura e telhamento', unid:'m²', cat:'Serviços', keywords:['cobertura','telha','telhamento','rufo','calha','estrutura metálica de cobertura'], comp:['Telhas','Madeiramento ou estrutura metálica','Rufos','Calhas','Fixadores'] },
+  { desc:'Revestimento de paredes e tetos', unid:'m²', cat:'Serviços', keywords:['chapisco','emboço','reboco','revestimento','argamassa','massa única'], comp:['Argamassa','Cimento','Areia','Pedreiro','Servente'] },
+  { desc:'Pisos e pavimentações internas', unid:'m²', cat:'Serviços', keywords:['piso','contrapiso','cerâmica','porcelanato','granilite','rodapé'], comp:['Contrapiso','Revestimento de piso','Argamassa colante','Rejunte','Rodapé'] },
+  { desc:'Pintura e acabamento', unid:'m²', cat:'Serviços', keywords:['pintura','tinta','selador','massa corrida','acabamento'], comp:['Selador','Massa corrida','Tinta acrílica/PVA','Pintor','Lixa'] },
+  { desc:'Esquadrias e ferragens', unid:'un', cat:'Serviços', keywords:['porta','janela','esquadria','alumínio','vidro','ferragem'], comp:['Portas','Janelas','Vidros','Ferragens','Instalação'] },
+  { desc:'Instalações elétricas', unid:'ponto', cat:'Serviços', keywords:['instalação elétrica','instalacao eletrica','tomada','interruptor','quadro de distribuição','eletroduto','luminária'], comp:['Eletroduto','Cabos','Quadro elétrico','Disjuntores','Tomadas e interruptores','Luminárias'] },
+  { desc:'Instalações hidrossanitárias', unid:'ponto', cat:'Serviços', keywords:['hidrossanitária','hidrossanitaria','água fria','agua fria','esgoto','louça sanitária','bacia sanitária','lavatório'], comp:['Tubos PVC/PPR','Conexões','Registros','Louças e metais','Mão de obra hidráulica'] },
+  { desc:'Drenagem pluvial', unid:'m', cat:'Serviços', keywords:['drenagem','águas pluviais','aguas pluviais','sarjeta','canaleta','tubo de drenagem'], comp:['Tubo de drenagem','Caixa de passagem','Canaleta','Escavação','Reaterro'] },
+  { desc:'Pavimentação externa', unid:'m²', cat:'Serviços', keywords:['pavimentação','pavimentacao','calçamento','calcamento','intertravado','asfalto','passeio'], comp:['Base compactada','Piso intertravado/asfalto','Meio-fio','Areia de assentamento','Compactação'] },
+  { desc:'Limpeza final da obra', unid:'m²', cat:'Serviços', keywords:['limpeza final','limpeza da obra','entrega da obra','desmobilização'], comp:['Servente','Material de limpeza','Remoção de resíduos'] }
+];
+
+function analisadorFileSelect(e) {
+  analisadorSetFiles(Array.from(e.target.files || []));
+  e.target.value = '';
+}
+
+function analisadorDrop(e) {
+  e.preventDefault();
+  document.getElementById('anaUploadZone')?.classList.remove('dragover');
+  analisadorSetFiles(Array.from(e.dataTransfer?.files || []));
+}
+
+function analisadorSetFiles(files) {
+  const validos = files.filter(f => IMPORT_EXTS.includes(getFileExt(f)));
+  if (!validos.length) { toast('Selecione documentos em PDF, imagem, Excel ou CSV.', 'error'); return; }
+  ANALISADOR.files = validos;
+  analisadorRenderFiles();
+  analisadorRender();
+}
+
+function analisadorRenderFiles() {
+  const el = document.getElementById('ana-file-chip');
+  if (!el) return;
+  if (!ANALISADOR.files.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${ANALISADOR.files.map((f, idx) => `<div class="file-chip">${getImportFileIcon(f)} <span>${escapeHtml(f.name)}</span> <span style="color:var(--text3)">(${(f.size/1024).toFixed(0)} KB)</span> <span class="chip-remove" onclick="analisadorRemoverArquivo(${idx})">×</span></div>`).join('')}
+    </div>
+    <small style="display:block;margin-top:4px;color:var(--text3)">${ANALISADOR.files.length} documento(s) aguardando análise.</small>`;
+}
+
+function analisadorRemoverArquivo(idx) {
+  ANALISADOR.files.splice(idx, 1);
+  analisadorRenderFiles();
+  analisadorRender();
+}
+
+function analisadorLimpar() {
+  ANALISADOR = { files: [], docs: [], services: [], escopo: [], especificacoes: [], memoria: '' };
+  const input = document.getElementById('anaFileInput');
+  if (input) input.value = '';
+  analisadorRenderFiles();
+  analisadorRender();
+}
+
+function setAnaProgress(pct, label) {
+  const card = document.getElementById('ana-progress-card');
+  if (card) card.style.display = 'block';
+  const fill = document.getElementById('ana-progress-fill');
+  const pctEl = document.getElementById('ana-progress-pct');
+  const labelEl = document.getElementById('ana-progress-label');
+  if (fill) fill.style.width = pct + '%';
+  if (pctEl) pctEl.textContent = pct + '%';
+  if (labelEl) labelEl.textContent = label;
+}
+
+async function analisadorProcessar() {
+  if (!ANALISADOR.files.length) { toast('Anexe os documentos da obra primeiro.', 'error'); return; }
+  ANALISADOR.docs = [];
+  ANALISADOR.services = [];
+  ANALISADOR.escopo = [];
+  ANALISADOR.especificacoes = [];
+  ANALISADOR.memoria = '';
+
+  try {
+    for (let i = 0; i < ANALISADOR.files.length; i++) {
+      const file = ANALISADOR.files[i];
+      setAnaProgress(Math.round((i / ANALISADOR.files.length) * 65), `Lendo ${i+1}/${ANALISADOR.files.length}: ${file.name}`);
+      const doc = await analisadorExtrairDocumento(file, i, ANALISADOR.files.length);
+      ANALISADOR.docs.push(doc);
+    }
+
+    setAnaProgress(72, 'Classificando documentos e extraindo escopo...');
+    const textos = ANALISADOR.docs.map(d => d.text).join('\n\n');
+    ANALISADOR.escopo = analisadorExtrairEscopo(textos);
+    ANALISADOR.especificacoes = analisadorExtrairEspecificacoes(textos);
+
+    setAnaProgress(84, 'Gerando serviços e composições preliminares...');
+    ANALISADOR.services = analisadorGerarServicos(ANALISADOR.docs);
+    ANALISADOR.memoria = analisadorGerarMemoria();
+
+    setAnaProgress(100, 'Análise concluída.');
+    analisadorRender();
+    toast(`${ANALISADOR.services.length} serviços sugeridos para revisão.`, 'success');
+  } catch(err) {
+    setAnaProgress(0, 'Erro: ' + err.message);
+    toast('Erro na análise: ' + err.message, 'error');
+    console.error(err);
+  }
+}
+
+async function analisadorExtrairDocumento(file, index, total) {
+  const ext = getFileExt(file);
+  let text = '';
+  let metodo = 'Texto';
+  let items = [];
+
+  if (SPREADSHEET_EXTS.includes(ext)) {
+    metodo = 'Planilha';
+    text = await analisadorTextoPlanilha(file);
+    items = await extrairDeExcel(file);
+  } else if (ext === 'pdf') {
+    metodo = 'PDF digital';
+    text = await analisadorTextoPDF(file);
+    items = parsearLinhas(text.split('\n'));
+    if (text.replace(/\s+/g, '').length < 250) {
+      metodo = 'OCR PDF';
+      const ocr = await analisadorOCR(file, index, total);
+      text = ocr;
+      items = parsearLinhas(text.split('\n'));
+    }
+  } else if (IMAGE_EXTS.includes(ext)) {
+    metodo = 'OCR imagem';
+    text = await analisadorOCR(file, index, total);
+    items = parsearLinhas(text.split('\n'));
+  } else {
+    throw new Error(`Formato não suportado: ${file.name}`);
+  }
+
+  const tipo = analisadorClassificarDocumento(file.name, text, ext);
+  return {
+    id: makeId('docana'),
+    fileName: file.name,
+    size: file.size,
+    ext,
+    metodo,
+    tipo: tipo.tipo,
+    confianca: tipo.confianca,
+    text,
+    items
+  };
+}
+
+async function analisadorTextoPDF(file) {
+  if (!window.pdfjsLib) throw new Error('PDF.js não carregou.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const ab = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  const pages = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const txt = content.items.map(i => i.str).join(' ');
+    pages.push(`--- Página ${p} ---\n${txt}`);
+    setAnaProgress(Math.min(65, Math.round((p / Math.max(1, pdf.numPages)) * 55)), `Extraindo texto PDF página ${p}/${pdf.numPages}`);
+  }
+  return pages.join('\n');
+}
+
+async function analisadorTextoPlanilha(file) {
+  if (!window.XLSX) throw new Error('SheetJS não carregou.');
+  const ab = await file.arrayBuffer();
+  const wb = XLSX.read(ab, { type:'array' });
+  return wb.SheetNames.map(name => {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, defval:'' });
+    return `--- Aba ${name} ---\n` + rows.map(r => r.join(' | ')).join('\n');
+  }).join('\n\n');
+}
+
+async function analisadorOCR(file, index, total) {
+  if (!window.Tesseract) throw new Error('OCR indisponível: Tesseract.js não carregou.');
+  const ext = getFileExt(file);
+  let fullText = '';
+  const lang = 'por';
+
+  if (ext === 'pdf') {
+    if (!window.pdfjsLib) throw new Error('PDF.js não carregou para converter o PDF escaneado.');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const ab = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 2.1 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      setAnaProgress(Math.min(75, 20 + Math.round(((index + p / pdf.numPages) / Math.max(1, total)) * 55)), `OCR ${file.name} página ${p}/${pdf.numPages}`);
+      const result = await Tesseract.recognize(canvas, lang, { tessedit_pageseg_mode:'6' });
+      fullText += `\n--- Página ${p} ---\n${result.data.text}`;
+    }
+  } else {
+    const result = await Tesseract.recognize(file, lang, {
+      tessedit_pageseg_mode:'6',
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          setAnaProgress(Math.min(75, 20 + Math.round(((index + m.progress) / Math.max(1, total)) * 55)), `OCR ${file.name}`);
+        }
+      }
+    });
+    fullText = result.data.text;
+  }
+  return fullText;
+}
+
+function analisadorClassificarDocumento(fileName, text, ext) {
+  const norm = copilotNormText(fileName + ' ' + text.slice(0, 8000));
+  const rules = [
+    ['Termo de Referência', ['termo de referencia','tr','objeto da contratacao','justificativa da contratacao']],
+    ['ETP', ['estudo tecnico preliminar','etp','necessidade da contratacao','alternativas possiveis']],
+    ['Projeto Básico', ['projeto basico','solucao escolhida','elementos tecnicos','criterios de medicao']],
+    ['Edital', ['edital','licitacao','concorrencia','pregao','habilitacao','proposta comercial']],
+    ['Memorial Descritivo', ['memorial descritivo','especificacao tecnica','acabamento','materiais empregados']],
+    ['Projetos / Pranchas', ['planta baixa','corte','fachada','prancha','escala','detalhe construtivo']],
+    ['Planilha Orçamentária', ['planilha orcamentaria','codigo','quantidade','preco unitario','bdi']]
+  ];
+  if (SPREADSHEET_EXTS.includes(ext)) return { tipo:'Planilha Orçamentária', confianca:90 };
+  let best = { tipo:'Documento Técnico', confianca:45, hits:0 };
+  rules.forEach(([tipo, keys]) => {
+    const hits = keys.filter(k => norm.includes(k)).length;
+    if (hits > best.hits) best = { tipo, confianca: Math.min(95, 50 + hits * 12), hits };
+  });
+  return best;
+}
+
+function analisadorExtrairEscopo(text) {
+  const lines = text.split(/\n|(?<=\.)\s+/).map(l => l.trim()).filter(l => l.length > 30);
+  const keys = ['objeto','escopo','execução de','execucao de','contratação de','contratacao de','obra de','reforma','construção','construcao','ampliação','ampliacao'];
+  return lines.filter(l => keys.some(k => copilotNormText(l).includes(copilotNormText(k)))).slice(0, 8);
+}
+
+function analisadorExtrairEspecificacoes(text) {
+  const lines = text.split(/\n|(?<=\.)\s+/).map(l => l.trim()).filter(l => l.length > 25);
+  const keys = ['material','acabamento','pintura','cerâmica','ceramica','concreto','argamassa','esquadria','cobertura','telha','instalação','instalacao','norma','abnt'];
+  return lines.filter(l => keys.some(k => copilotNormText(l).includes(copilotNormText(k)))).slice(0, 10);
+}
+
+function analisadorGerarServicos(docs) {
+  const allText = docs.map(d => d.text).join('\n\n');
+  const norm = copilotNormText(allText);
+  const area = analisadorExtrairArea(allText);
+  const explicit = [];
+  docs.forEach(d => {
+    (d.items || []).forEach(it => {
+      if (!it.desc || it.desc.length < 4) return;
+      const m = matchSINAPI(it);
+      explicit.push(analisadorServicoFromMatch({
+        desc: it.desc,
+        unid: it.unid || 'UN',
+        qtd: Number(it.qtd) || 1,
+        preco: Number(it.preco) || 0,
+        cod: it.cod || '',
+        cat: 'Serviços',
+        origem: d.fileName,
+        metodo: 'Item explícito na planilha/documento',
+        composicao: ['Item extraído diretamente do documento'],
+        pendencias: [],
+        baseConf: m.matchTipo === 'ok' ? 92 : 76
+      }, m));
+    });
+  });
+
+  const inferred = ANALISADOR_CATALOGO
+    .map((svc, idx) => {
+      const hits = svc.keywords.filter(k => norm.includes(copilotNormText(k)));
+      if (!hits.length) return null;
+      const qtdInfo = analisadorEstimativaQtd(svc, allText, area);
+      const m = matchSINAPI({ cod:'', desc:svc.desc, unid:svc.unid, qtd:qtdInfo.qtd, preco:0, origem:'analisador' });
+      const pendencias = [];
+      if (!qtdInfo.explicita) pendencias.push('quantidade estimada; validar por projeto/memória de cálculo');
+      if (m.matchTipo === 'nenhum') pendencias.push('sem referência SINAPI automática; escolher composição/base manualmente');
+      const baseConf = 42 + hits.length * 9 + (qtdInfo.explicita ? 18 : 0) + (m.matchTipo === 'ok' ? 22 : m.matchTipo === 'parcial' ? 12 : 0);
+      return analisadorServicoFromMatch({
+        desc: svc.desc,
+        unid: svc.unid,
+        qtd: qtdInfo.qtd,
+        preco: 0,
+        cod: '',
+        cat: svc.cat,
+        origem: hits.join(', '),
+        metodo: 'Inferido por especificação/projeto',
+        composicao: svc.comp,
+        pendencias,
+        baseConf
+      }, m, idx);
+    })
+    .filter(Boolean);
+
+  return analisadorDedupServicos([...explicit, ...inferred]).slice(0, 80);
+}
+
+function analisadorServicoFromMatch(base, match, idx = 0) {
+  const cod = base.cod || match.sugestao || '';
+  const preco = Number(base.preco) || Number(match.refSinapi) || 0;
+  const confidence = Math.max(25, Math.min(98, Math.round(base.baseConf || 50)));
+  return {
+    id: makeId('anasvc'),
+    selecionado: true,
+    cod: cod || `EST-${String(idx + 1).padStart(3,'0')}`,
+    desc: base.desc,
+    unid: match.refUnid || base.unid || 'UN',
+    qtd: base.qtd,
+    preco,
+    ref: Number(match.refSinapi) || 0,
+    refDesc: match.refDesc || '',
+    matchTipo: match.matchTipo || 'nenhum',
+    cat: base.cat || 'Serviços',
+    origem: base.origem || '',
+    metodo: base.metodo || '',
+    composicao: base.composicao || [],
+    pendencias: base.pendencias || [],
+    confidence
+  };
+}
+
+function analisadorDedupServicos(list) {
+  const seen = new Map();
+  list.forEach(s => {
+    const key = copilotNormText((s.cod && !s.cod.startsWith('EST-') ? s.cod : '') + ' ' + s.desc).slice(0, 90);
+    const current = seen.get(key);
+    if (!current || s.confidence > current.confidence) seen.set(key, s);
+  });
+  return [...seen.values()].sort((a,b) => b.confidence - a.confidence);
+}
+
+function analisadorExtrairArea(text) {
+  const nums = [...text.matchAll(/(\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:\.\d+)?)\s*(m²|m2|metros quadrados)/gi)]
+    .map(m => Number(String(m[1]).replace(/\./g,'').replace(',','.')))
+    .filter(n => n > 5 && n < 100000);
+  return nums.length ? Math.max(...nums) : 1;
+}
+
+function analisadorEstimativaQtd(svc, text, area) {
+  const norm = copilotNormText(text);
+  const explicit = svc.keywords.map(k => analisadorQtdProxima(text, k, svc.unid)).find(v => v > 0);
+  if (explicit) return { qtd: explicit, explicita:true };
+  if (['m²','m2'].includes(String(svc.unid).toLowerCase())) return { qtd: area || 1, explicita: area > 1 };
+  if (['m³','m3'].includes(String(svc.unid).toLowerCase())) return { qtd: Math.max(1, Math.round((area || 1) * 0.08 * 100) / 100), explicita:false };
+  if (svc.unid === 'mês') return { qtd: norm.includes('prazo') ? 1 : 1, explicita:false };
+  return { qtd: 1, explicita:false };
+}
+
+function analisadorQtdProxima(text, keyword, unid) {
+  const idx = copilotNormText(text).indexOf(copilotNormText(keyword));
+  if (idx < 0) return 0;
+  const trecho = text.slice(Math.max(0, idx - 160), idx + 220);
+  const unit = String(unid || '').replace('²','[²2]').replace('³','[³3]');
+  const re = new RegExp('(\\d{1,3}(?:\\.\\d{3})*(?:,\\d+)?|\\d+(?:\\.\\d+)?)\\s*(' + unit + '|m²|m2|m³|m3|m|un|ponto|mês|mes)', 'i');
+  const m = trecho.match(re);
+  if (!m) return 0;
+  const n = Number(String(m[1]).replace(/\./g,'').replace(',','.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function analisadorRender() {
+  const docs = ANALISADOR.docs || [];
+  const services = ANALISADOR.services || [];
+  const selected = services.filter(s => s.selecionado).length;
+  const avg = services.length ? Math.round(services.reduce((s,i)=>s+i.confidence,0)/services.length) : 0;
+  const pend = services.filter(s => s.pendencias?.length).length;
+  setText('ana-kpi-docs', docs.length);
+  setText('ana-kpi-serv', services.length);
+  setText('ana-kpi-conf', avg + '%');
+  setText('ana-kpi-pend', pend);
+  setText('ana-review-stats', `${selected} selecionados | ${services.length} sugeridos | ${pend} com pendência`);
+  analisadorRenderDocs();
+  analisadorRenderEscopo();
+  analisadorRenderServicos();
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function analisadorRenderDocs() {
+  const el = document.getElementById('ana-docs-list');
+  if (!el) return;
+  if (!ANALISADOR.docs.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px">Nenhum documento analisado.</div>';
+    return;
+  }
+  el.innerHTML = ANALISADOR.docs.map(d => `<div class="op-row">
+    <div class="op-row-main">
+      <div class="op-title">${escapeHtml(d.fileName)}</div>
+      <div class="op-meta">${escapeHtml(d.tipo)} · ${escapeHtml(d.metodo)} · ${(d.size/1024).toFixed(0)} KB · ${d.items.length} item(ns) explícito(s)</div>
+    </div>
+    <div class="op-value">${d.confianca}%</div>
+  </div>`).join('');
+}
+
+function analisadorRenderEscopo() {
+  const escopo = document.getElementById('ana-escopo');
+  const specs = document.getElementById('ana-especificacoes');
+  if (escopo) escopo.innerHTML = ANALISADOR.escopo.length
+    ? '<strong>Escopo identificado:</strong><br>' + ANALISADOR.escopo.map(x => '• ' + escapeHtml(x)).join('<br>')
+    : 'Aguardando análise dos documentos.';
+  if (specs) specs.innerHTML = ANALISADOR.especificacoes.length
+    ? '<strong>Especificações relevantes:</strong><br>' + ANALISADOR.especificacoes.map(x => '• ' + escapeHtml(x)).join('<br>')
+    : '';
+}
+
+function analisadorRenderServicos() {
+  const el = document.getElementById('ana-services-list');
+  if (!el) return;
+  if (!ANALISADOR.services.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px">A análise vai listar serviços sugeridos, confiança, referência SINAPI e composição preliminar.</div>';
+    return;
+  }
+  el.innerHTML = `<div class="ana-service" style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">
+    <span></span><span>Serviço</span><span>Qtd/Un</span><span>Preço</span><span>Confiança</span><span>Composição / Pendência</span>
+  </div>` + ANALISADOR.services.map((s, idx) => `<div class="ana-service">
+    <input type="checkbox" ${s.selecionado ? 'checked' : ''} onchange="analisadorEditarServico(${idx},'selecionado',this.checked)"/>
+    <div>
+      <input class="table-input table-input-desc" value="${escapeHtml(s.desc)}" onchange="analisadorEditarServico(${idx},'desc',this.value)"/>
+      <div class="ana-service-meta">${escapeHtml(s.cod)} · ${escapeHtml(s.matchTipo)} · ${escapeHtml(s.metodo)}</div>
+      ${s.refDesc ? `<div class="ana-service-meta">Ref.: ${escapeHtml(s.refDesc.substring(0,110))}</div>` : ''}
+    </div>
+    <div>
+      <input class="table-input num" type="number" min="0" step="0.001" value="${Number(s.qtd)||0}" onchange="analisadorEditarServico(${idx},'qtd',this.value)"/>
+      <input class="table-input compact" value="${escapeHtml(s.unid)}" onchange="analisadorEditarServico(${idx},'unid',this.value)"/>
+    </div>
+    <div>
+      <input class="table-input num" type="number" min="0" step="0.01" value="${Number(s.preco)||0}" onchange="analisadorEditarServico(${idx},'preco',this.value)"/>
+      <div class="ana-service-meta">${s.ref ? 'Ref. ' + fmtMoeda(s.ref) : 'Sem ref.'}</div>
+    </div>
+    <div>
+      <span class="ana-chip">${s.confidence}%</span>
+      <div class="confidence-bar"><div class="confidence-fill" style="width:${s.confidence}%"></div></div>
+    </div>
+    <div>
+      <div class="ana-service-meta">${(s.composicao || []).map(escapeHtml).join(' · ') || 'Composição a definir'}</div>
+      ${s.pendencias?.length ? `<div class="ana-pending">${s.pendencias.map(p => '• ' + escapeHtml(p)).join('<br>')}</div>` : '<div class="ana-service-meta" style="color:var(--green)">Sem pendência crítica automática</div>'}
+    </div>
+  </div>`).join('');
+}
+
+function analisadorEditarServico(idx, campo, valor) {
+  const svc = ANALISADOR.services[idx];
+  if (!svc) return;
+  if (campo === 'selecionado') svc.selecionado = !!valor;
+  else if (['qtd','preco','ref','confidence'].includes(campo)) svc[campo] = parseFloat(String(valor).replace(',','.')) || 0;
+  else svc[campo] = String(valor || '').trim();
+  analisadorRender();
+}
+
+function analisadorSelecionarTodos(flag) {
+  ANALISADOR.services.forEach(s => { s.selecionado = !!flag; });
+  analisadorRender();
+}
+
+function analisadorEnviarOrcamento() {
+  const selecionados = ANALISADOR.services.filter(s => s.selecionado);
+  if (!selecionados.length) { toast('Selecione pelo menos um serviço sugerido.', 'error'); return; }
+  const novos = selecionados.map((s, idx) => ({
+    id: makeId('orc'),
+    cod: s.cod || `EST-${String(idx+1).padStart(3,'0')}`,
+    desc: s.desc,
+    unid: s.unid || 'UN',
+    qtd: Number(s.qtd) || 1,
+    preco: Number(s.preco) || 0,
+    ref: Number(s.ref) || 0,
+    cat: s.cat || 'Serviços',
+    capitulo: 'Estimativa por documentos',
+    ordem: STATE.orcamento.length + idx + 1,
+    origemArquivo: 'Analisador de Documentos',
+    origemMetodo: s.metodo,
+    confianca: s.confidence,
+    pendencias: s.pendencias
+  }));
+  STATE.orcamento = [...STATE.orcamento, ...novos];
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  preencherSelectsOperacionais();
+  toast(`${novos.length} serviços enviados para Elaboração. Revise quantidades e composições antes de exportar.`, 'success');
+  showView('elaborar');
+}
+
+function analisadorGerarMemoria() {
+  const lines = ['# Memória do Analisador de Documentos - TLPlanly', '', `Gerado em: ${new Date().toLocaleString('pt-BR')}`, ''];
+  lines.push('## Documentos classificados', '');
+  ANALISADOR.docs.forEach(d => lines.push(`- ${d.fileName}: ${d.tipo} (${d.confianca}%) via ${d.metodo}`));
+  lines.push('', '## Escopo identificado', '');
+  (ANALISADOR.escopo || []).forEach(x => lines.push('- ' + x));
+  lines.push('', '## Especificações relevantes', '');
+  (ANALISADOR.especificacoes || []).forEach(x => lines.push('- ' + x));
+  lines.push('', '## Serviços sugeridos', '');
+  lines.push('| Serviço | Un | Qtd | Preço | Ref | Confiança | Pendências |');
+  lines.push('|---|---:|---:|---:|---:|---:|---|');
+  ANALISADOR.services.forEach(s => {
+    lines.push(`| ${mdCell(s.desc)} | ${mdCell(s.unid)} | ${s.qtd} | ${s.preco} | ${s.ref || 0} | ${s.confidence}% | ${mdCell((s.pendencias || []).join('; ') || '-')} |`);
+  });
+  lines.push('', '## Nota técnica', '', 'Esta é uma estimativa preliminar revisável. Quantidades, composições e preços devem ser confirmados por responsável técnico antes de uso em licitação, contratação ou medição.');
+  return lines.join('\n');
+}
+
+function analisadorExportarMemoria() {
+  const md = ANALISADOR.memoria || analisadorGerarMemoria();
+  downloadText(md, 'memoria_analisador_documentos_tlplanly.md', 'text/markdown');
+}
+
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
 
 
@@ -3866,6 +4391,12 @@ const COPILOT_KB = {
     chips: ['Ir para Elaborar','Ir para Importar','OCR PDF escaneado?']
   },
 
+  analisador_docs: {
+    q: ['analisar documentos','projeto básico','projeto basico','termo de referência','termo de referencia','etp','memorial descritivo','gerar orçamento pelo projeto','gerar orcamento pelo projeto','estimativa por documentos'],
+    r: `**Analisador de Documentos da Obra**\n\nUse este módulo quando você ainda não tem uma planilha pronta. Anexe edital, TR, ETP, projeto básico, memorial e projetos da obra. O TLPlanly vai:\n\n• Classificar cada documento\n• Extrair escopo e especificações\n• Identificar serviços prováveis\n• Sugerir composição preliminar\n• Mapear referências SINAPI quando possível\n• Mostrar confiança e pendências por item\n• Enviar a pré-planilha para **Elaborar Orçamento**\n\nA saída é uma estimativa revisável, com memória técnica. O responsável técnico ainda valida quantidades e composições.`,
+    chips: ['Ir para Analisar Documentos','Ir para Elaborar','Ir para Importar']
+  },
+
   ocr: {
     q: ['ocr','pdf escaneado','imagem pdf','digitalizado','reconhecimento texto'],
     r: `**OCR — Reconhecimento de Texto em PDFs Escaneados** 🔍\n\nO TLPlanly usa **Tesseract.js** no navegador. Ao importar pelo **Elaborar Orçamento** ou pelo módulo **Importar Planilha/PDF**, o OCR entra automaticamente quando o PDF não tem texto aproveitável ou quando você envia imagem digitalizada.\n\n✅ **Vantagens:**\n• Aceita lote com PDF + anexos + imagens\n• Mantém a origem de cada item extraído\n• Gera **Memória .md** para conferência\n• Envia os itens para ajuste direto na planilha editável\n\n⚠️ PDFs de baixa qualidade reduzem a precisão. Resolução mínima recomendada: 200 DPI.`,
@@ -3932,6 +4463,7 @@ const VIEW_CONTEXT = {
   planejamento: { nome: 'Planejamento', dica: 'Gere tarefas do orçamento, ajuste datas, dependências, Gantt e Curva S.' },
   medicoes:     { nome: 'Medições', dica: 'Registre quantidades executadas por período e acompanhe saldo, avanço e excedentes.' },
   quantitativos:{ nome: 'Quantitativos', dica: 'Crie fórmulas auxiliares vinculadas aos serviços e aplique o resultado à quantidade contratada.' },
+  analisador:   { nome: 'Analisador de Documentos', dica: 'Anexe edital, TR, ETP, projeto básico, memorial e projetos para gerar uma pré-planilha revisável com serviços, confiança e pendências.' },
   documentos:   { nome: 'Anexos / Especificações', dica: 'Registre especificações, fotos e documentos vinculados à obra ou a itens do orçamento.' },
   backups:      { nome: 'Backups', dica: 'Crie pontos de restauração locais para orçamento, planejamento, medições e anexos.' },
   auditoria:    { nome: 'Análise SINAPI', dica: 'Compare os preços do orçamento com a tabela SINAPI e identifique desvios acima da tolerância.' },
@@ -3969,6 +4501,7 @@ function copilotDetectPendingAction(txt) {
   if (!asksToContinue) return null;
 
   if (/(moeda|cotacao|dolar|euro|modelo padrao)/.test(norm)) return copilotActionForView('config');
+  if (/(analisar documentos|projeto basico|termo de referencia|etp|memorial|estimativa por documento|gerar orcamento pelo projeto|documentos da obra)/.test(norm)) return copilotActionForView('analisador');
   if (/(relatorio|exportar|pdf final|gerar pdf|baixar)/.test(norm)) return copilotActionForView('relatorio');
   if (/(upload|arquivo|pdf|excel|planilha|edital|import)/.test(norm)) return copilotActionForView('importar');
   if (/(bdi|encargo)/.test(norm)) return copilotActionForView('bdi');
@@ -3996,7 +4529,7 @@ function copilotExecuteAction(action) {
 
   if (action.type === 'module-menu') {
     copilotBotMsg('Perfeito. Escolha por onde vamos começar:');
-    copilotSetChips(['Ir para Configurações','Ir para Bases','Ir para BDI','Ir para Elaborar','Ir para Importar']);
+    copilotSetChips(['Ir para Analisar Documentos','Ir para Elaborar','Ir para Importar','Ir para BDI','Ir para Relatório']);
     return true;
   }
 
@@ -4339,6 +4872,12 @@ async function copilotResponder(txt) {
     { keys:['coeficiente','produtividade','indices tcpo','onde encontro coeficientes',
             'coeficiente consumo','indice producao','quanto de material','consumo por unidade'],
       entry:'coeficientes' },
+    // Analisador de documentos
+    { keys:['analisar documentos','documentos da obra','projeto basico','termo de referencia',
+            'estudo tecnico preliminar','etp','memorial descritivo','projetos da obra',
+            'gerar orcamento pelo projeto','estimativa por documentos','analisar edital',
+            'analisar tr','analisar memorial','analisar projeto'],
+      entry:'analisador_docs' },
     // Importar edital — AMPLIADO com linguagem natural
     { keys:['importar','importacao edital','ler pdf','abrir edital','importar planilha','importar excel',
             'como importar','carregar pdf','carregar planilha','carregar arquivo','abrir pdf',
@@ -4398,6 +4937,7 @@ async function copilotResponder(txt) {
     { keys:['ir para quantitativos','ir para quantitativo','abrir quantitativos','abrir quantitativo'], view:'quantitativos' },
     { keys:['ir para anexos','ir para documentos','ir para especificacoes','abrir anexos'], view:'documentos' },
     { keys:['ir para backups','ir para backup','abrir backups','restaurar backup'], view:'backups' },
+    { keys:['ir para analisar documentos','ir para analisador','abrir analisador','analisar documentos','abrir documentos da obra'], view:'analisador' },
     { keys:['ir para auditoria','ir para analise sinapi'], view:'auditoria' },
     { keys:['ir para relatorio','ir para exportar'], view:'relatorio' },
     { keys:['ir para bases','ir para base','abrir bases'], view:'bases' },
