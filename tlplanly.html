@@ -473,11 +473,12 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .op-title{font-size:13px;font-weight:800;color:var(--text)}
 .op-meta{font-size:11px;color:var(--text3);margin-top:3px}
 .op-value{font-size:13px;font-weight:900;color:var(--gold)}
+.op-actions{display:flex;gap:4px;justify-content:flex-end;align-items:center}
+.btn-mini{padding:3px 6px;font-size:10px;line-height:1.2;min-width:24px}
 .formula-chip{font-family:monospace;font-size:11px;color:var(--text2);background:var(--bg4);border:1px solid var(--border);border-radius:6px;padding:4px 6px;display:inline-block}
 .status-excedido{color:var(--red);font-weight:800}
 .status-ok{color:var(--green);font-weight:800}
 .status-pendente{color:var(--gold);font-weight:800}
-
 
 </style>
 </head>
@@ -608,8 +609,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
         <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="addDesc" class="form-input"/></div>
         <div><label class="form-label">Unidade</label><input id="addUnid" class="form-input"/></div>
         <div><label class="form-label">Quantidade</label><input id="addQtd" class="form-input" type="number" min="0.001" step="0.001" value="1"/></div>
-        <div><label class="form-label">Preço Unit (R$)</label><input id="addPreco" class="form-input" type="number" min="0" step="0.01"/></div>
-        <div><label class="form-label">Ref. SINAPI (R$)</label><input id="addRef" class="form-input" readonly style="color:var(--gold)"/></div>
+        <div><label class="form-label">Preço Unitário (base R$)</label><input id="addPreco" class="form-input" type="number" min="0" step="0.01"/></div>
+        <div><label class="form-label">Ref. SINAPI (base R$)</label><input id="addRef" class="form-input" readonly style="color:var(--gold)"/></div>
         <div><label class="form-label">Categoria</label>
           <select id="addCat" class="form-select">
             <option>Serviços</option><option>Materiais</option><option>Mão de Obra</option><option>Equipamentos</option><option>Outros</option>
@@ -629,6 +630,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       <div class="sec-title">Planilha Orçamentária</div>
       <div class="flex">
         <button class="btn btn-outline btn-sm" onclick="novoItemProprio()">&#43; Item próprio</button>
+        <button class="btn btn-outline btn-sm" onclick="zerarQuantidades()">Zerar qtd.</button>
         <button class="btn btn-outline btn-sm" onclick="limparOrcamento()">&#128465; Limpar</button>
         <button class="btn btn-gold btn-sm" onclick="exportarOrcamento()">&#128229; Exportar</button>
       </div>
@@ -1081,6 +1083,15 @@ input[type=range]{width:100%;accent-color:var(--gold)}
         <label class="form-label">Fonte de Preços</label>
         <input id="rel-fonte" class="form-input" value="SINAPI/CAIXA" placeholder="SINAPI, SICRO, etc."/>
       </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Modelo de Relatório</label>
+        <select id="rel-modelo" class="form-select" onchange="aplicarModeloRelatorio(this.value)">
+          <option value="publico">Órgão público / edital</option>
+          <option value="construtora">Construtora / proposta</option>
+          <option value="medicao">Medição / acompanhamento</option>
+          <option value="auditoria">Auditoria / conferência</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -1336,6 +1347,28 @@ input[type=range]{width:100%;accent-color:var(--gold)}
           <option value="civil">Obras Civis</option>
           <option value="eletrica">Instalações Elétricas</option>
           <option value="material">Fornecimento de Materiais</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Moeda de Exibição</label>
+        <select id="cfg-moeda" class="form-select" onchange="ajustarCotacaoMoeda()">
+          <option value="BRL">Real brasileiro (BRL)</option>
+          <option value="USD">Dólar americano (USD)</option>
+          <option value="EUR">Euro (EUR)</option>
+          <option value="GBP">Libra esterlina (GBP)</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Cotação: 1 unidade da moeda = R$</label>
+        <input id="cfg-moeda-cotacao" class="form-input" type="number" min="0.0001" step="0.0001" value="1"/>
+      </div>
+      <div>
+        <label class="form-label">Modelo de Relatório Padrão</label>
+        <select id="cfg-rel-modelo" class="form-select">
+          <option value="publico">Órgão público / edital</option>
+          <option value="construtora">Construtora / proposta</option>
+          <option value="medicao">Medição / acompanhamento</option>
+          <option value="auditoria">Auditoria / conferência</option>
         </select>
       </div>
     </div>
@@ -1726,7 +1759,15 @@ let STATE = {
   sinapiMes: '',
   auditResultados: [],
   charts: {},
-  config: { uf:'MG', tolerancia:5, enc:'nd', obra:'civil' }
+  config: {
+    uf:'MG',
+    tolerancia:5,
+    enc:'nd',
+    obra:'civil',
+    moeda:'BRL',
+    moedaCotacao:1,
+    relatorioModelo:'publico'
+  }
 };
 
 // Load from localStorage
@@ -1742,7 +1783,7 @@ try {
     STATE.backups = p.backups || [];
     STATE.bdi = p.bdi || 24.46;
     STATE.bdiComponents = p.bdiComponents || STATE.bdiComponents;
-    STATE.config = p.config || STATE.config;
+    STATE.config = { ...STATE.config, ...(p.config || {}) };
   }
 } catch(e) {}
 
@@ -1757,6 +1798,19 @@ function normalizeState() {
   STATE.quantitativos = STATE.quantitativos && typeof STATE.quantitativos === 'object' ? STATE.quantitativos : {};
   STATE.documentos = Array.isArray(STATE.documentos) ? STATE.documentos : [];
   STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
+  STATE.config = {
+    uf:'MG',
+    tolerancia:5,
+    enc:'nd',
+    obra:'civil',
+    moeda:'BRL',
+    moedaCotacao:1,
+    relatorioModelo:'publico',
+    ...(STATE.config || {})
+  };
+  if (!Number.isFinite(Number(STATE.config.moedaCotacao)) || Number(STATE.config.moedaCotacao) <= 0) {
+    STATE.config.moedaCotacao = 1;
+  }
   STATE.orcamento.forEach((it, idx) => {
     if (!it.id) it.id = makeId('orc');
     if (!it.capitulo) it.capitulo = it.cat || 'Serviços';
@@ -1832,6 +1886,7 @@ function showView(id) {
   if (id==='documentos') docsRender();
   if (id==='backups') backupRender();
   if (id==='relatorio') renderRelatorioPreview();
+  if (id==='config') syncConfigForm();
   if (id==='sinapi') renderSinapiBase();
   if (id==='bdi') { calcBDI(); showEncargos('nd'); renderBDIComp(); }
   if (id==='auditoria') executarAuditoria();
@@ -1959,11 +2014,58 @@ function adicionarItem() {
 
 function removerItem(idx) {
   STATE.orcamento.splice(idx, 1);
+  reordenarOrcamento();
   saveState();
   renderElaborar();
   renderDashboard();
   preencherSelectsOperacionais();
   toast('Item removido', 'info');
+}
+
+function reordenarOrcamento() {
+  STATE.orcamento.forEach((it, idx) => { it.ordem = idx + 1; });
+}
+
+function moverItem(idx, dir) {
+  const next = idx + dir;
+  if (next < 0 || next >= STATE.orcamento.length) return;
+  const tmp = STATE.orcamento[idx];
+  STATE.orcamento[idx] = STATE.orcamento[next];
+  STATE.orcamento[next] = tmp;
+  reordenarOrcamento();
+  saveState();
+  renderElaborar();
+  preencherSelectsOperacionais();
+}
+
+function duplicarItem(idx) {
+  const src = STATE.orcamento[idx];
+  if (!src) return;
+  const copy = {
+    ...src,
+    id: makeId('orc'),
+    cod: String(src.cod || 'ITEM') + '-C',
+    desc: String(src.desc || 'Item') + ' (cópia)',
+    ordem: idx + 2
+  };
+  STATE.orcamento.splice(idx + 1, 0, copy);
+  reordenarOrcamento();
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  preencherSelectsOperacionais();
+  toast('Item duplicado', 'success');
+}
+
+function zerarQuantidades() {
+  if (!STATE.orcamento.length) { toast('Não há itens para zerar', 'info'); return; }
+  if (!confirm('Zerar as quantidades de todos os itens mantendo a estrutura do orçamento?')) return;
+  STATE.orcamento.forEach(it => { it.qtd = 0; });
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  preencherSelectsOperacionais();
+  toast('Quantidades zeradas. A estrutura foi preservada.', 'success');
 }
 
 function limparOrcamento() {
@@ -1981,8 +2083,8 @@ function renderElaborar() {
   const tb = document.getElementById('elab-tabela');
   if (!STATE.orcamento.length) {
     tb.innerHTML = '<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text3)">Pesquise insumos SINAPI acima para adicionar itens</td></tr>';
-    document.getElementById('elab-sub').textContent = 'R$ 0,00';
-    document.getElementById('elab-total').textContent = 'R$ 0,00';
+    document.getElementById('elab-sub').textContent = fmtMoeda(0);
+    document.getElementById('elab-total').textContent = fmtMoeda(0);
     document.getElementById('elab-bdi-pct').textContent = STATE.bdi.toFixed(2) + '%';
     return;
   }
@@ -2003,7 +2105,14 @@ function renderElaborar() {
       <td>${desvHtml}</td>
       <td><strong>${fmtMoeda(total)}</strong></td>
       <td><span class="badge badge-ok" style="font-size:10px">${it.cat}</span></td>
-      <td><button class="btn btn-danger btn-sm" onclick="removerItem(${i})" style="padding:4px 8px;font-size:11px">&#215;</button></td>
+      <td>
+        <div class="op-actions">
+          <button class="btn btn-outline btn-mini" onclick="moverItem(${i},-1)" title="Mover para cima">&#8593;</button>
+          <button class="btn btn-outline btn-mini" onclick="moverItem(${i},1)" title="Mover para baixo">&#8595;</button>
+          <button class="btn btn-outline btn-mini" onclick="duplicarItem(${i})" title="Duplicar item">Dup.</button>
+          <button class="btn btn-danger btn-mini" onclick="removerItem(${i})" title="Remover item">&#215;</button>
+        </div>
+      </td>
     </tr>`;
   });
   tb.innerHTML = rows.join('');
@@ -2019,6 +2128,7 @@ function exportarOrcamento() {
   const data = {
     nome, data: new Date().toLocaleDateString('pt-BR'),
     bdi: STATE.bdi,
+    moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
     itens: STATE.orcamento,
     subtotal: STATE.orcamento.reduce((s, it)=>s+it.qtd*it.preco, 0)
   };
@@ -2564,15 +2674,20 @@ function renderRelatorioPreview() {
 }
 
 function exportarJSON() {
-  const data = { orcamento: STATE.orcamento, bdi: STATE.bdi, total: STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0) };
+  const data = {
+    orcamento: STATE.orcamento,
+    bdi: STATE.bdi,
+    moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
+    total: STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0)
+  };
   downloadJSON(data, 'tlplanly_export.json');
   toast('JSON exportado', 'success');
 }
 
 function exportarCSV() {
-  const lines = ['Código;Descrição;Un;Qtd;Preço Unit;Ref SINAPI;Total'];
+  const lines = [`Código;Descrição;Un;Qtd;Preço Unit (${moedaCodigo()});Ref SINAPI (${moedaCodigo()});Total (${moedaCodigo()})`];
   STATE.orcamento.forEach(i => {
-    lines.push([i.cod, i.desc, i.unid, i.qtd, i.preco.toFixed(2), i.ref.toFixed(2), (i.qtd*i.preco).toFixed(2)].join(';'));
+    lines.push([i.cod, i.desc, i.unid, i.qtd, valorMoeda(i.preco).toFixed(2), valorMoeda(i.ref).toFixed(2), valorMoeda(i.qtd*i.preco).toFixed(2)].join(';'));
   });
   downloadText(lines.join('\n'), 'tlplanly_export.csv', 'text/csv');
   toast('CSV exportado', 'success');
@@ -2581,18 +2696,78 @@ function exportarCSV() {
 function imprimirRelatorio() { window.print(); }
 
 function salvarConfig() {
-  STATE.config.uf = document.getElementById('cfg-uf').value;
-  STATE.config.tolerancia = parseFloat(document.getElementById('cfg-tol').value) || 5;
-  STATE.config.enc = document.getElementById('cfg-enc').value;
-  STATE.config.obra = document.getElementById('cfg-obra').value;
+  STATE.config.uf = document.getElementById('cfg-uf')?.value || STATE.config.uf || 'MG';
+  STATE.config.tolerancia = parseFloat(document.getElementById('cfg-tol')?.value) || 5;
+  STATE.config.enc = document.getElementById('cfg-enc')?.value || STATE.config.enc || 'nd';
+  STATE.config.obra = document.getElementById('cfg-obra')?.value || STATE.config.obra || 'civil';
+  STATE.config.moeda = document.getElementById('cfg-moeda')?.value || STATE.config.moeda || 'BRL';
+  STATE.config.moedaCotacao = parseFloat(document.getElementById('cfg-moeda-cotacao')?.value) || 1;
+  STATE.config.relatorioModelo = document.getElementById('cfg-rel-modelo')?.value || STATE.config.relatorioModelo || 'publico';
+  if (STATE.config.moeda === 'BRL') STATE.config.moedaCotacao = 1;
   saveState();
+  renderElaborar();
+  renderDashboard();
+  renderRelatorioPreview();
   toast('Configurações salvas', 'success');
+}
+
+function syncConfigForm() {
+  normalizeState();
+  const set = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+  set('cfg-uf', STATE.config.uf || 'MG');
+  set('cfg-tol', STATE.config.tolerancia ?? 5);
+  set('cfg-enc', STATE.config.enc || 'nd');
+  set('cfg-obra', STATE.config.obra || 'civil');
+  set('cfg-moeda', STATE.config.moeda || 'BRL');
+  set('cfg-moeda-cotacao', STATE.config.moedaCotacao || 1);
+  set('cfg-rel-modelo', STATE.config.relatorioModelo || 'publico');
+  set('rel-modelo', STATE.config.relatorioModelo || 'publico');
+}
+
+function ajustarCotacaoMoeda() {
+  const moeda = document.getElementById('cfg-moeda')?.value || 'BRL';
+  const cot = document.getElementById('cfg-moeda-cotacao');
+  if (!cot) return;
+  if (moeda === 'BRL') cot.value = '1';
+  if (moeda !== 'BRL' && (!parseFloat(cot.value) || parseFloat(cot.value) <= 1)) {
+    cot.value = moeda === 'USD' ? '5.30' : moeda === 'EUR' ? '5.80' : '6.80';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
 // UTILS
 // ═══════════════════════════════════════════════════════════
-function fmtMoeda(v) { return 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+const MOEDAS = {
+  BRL: { locale:'pt-BR', label:'BRL' },
+  USD: { locale:'en-US', label:'USD' },
+  EUR: { locale:'de-DE', label:'EUR' },
+  GBP: { locale:'en-GB', label:'GBP' }
+};
+
+function moedaCodigo() {
+  return MOEDAS[STATE.config?.moeda] ? STATE.config.moeda : 'BRL';
+}
+
+function moedaCotacao() {
+  if (moedaCodigo() === 'BRL') return 1;
+  const v = Number(STATE.config?.moedaCotacao) || 1;
+  return v > 0 ? v : 1;
+}
+
+function valorMoeda(v) {
+  return (Number(v) || 0) / moedaCotacao();
+}
+
+function fmtMoeda(v) {
+  const code = moedaCodigo();
+  const cfg = MOEDAS[code] || MOEDAS.BRL;
+  return new Intl.NumberFormat(cfg.locale, { style:'currency', currency:code }).format(valorMoeda(v));
+}
+
+function moedaHeader(rotulo) {
+  return `${rotulo} (${moedaCodigo()})`;
+}
+
 function fmtNum(v) { return (v||0).toLocaleString('pt-BR',{maximumFractionDigits:3}); }
 function fmtMilhar(v) { return (v/1000).toLocaleString('pt-BR',{maximumFractionDigits:0})+'k'; }
 
@@ -2620,6 +2795,7 @@ function redrawAllCharts() {
 // INIT
 // ═══════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
+  syncConfigForm();
   calcBDI();
   showEncargos('nd');
   renderBDIComp();
@@ -4327,6 +4503,43 @@ function selecionarInsumo(cod) {
 // FASE 2C — EXPORTAÇÃO PROFISSIONAL
 // ═══════════════════════════════════════════════════════════
 
+const RELATORIO_MODELOS = {
+  publico: {
+    titulo:'PLANILHA ORÇAMENTÁRIA',
+    subtitulo:'Decreto nº 7.983/2013 · TCU Acórdão 2622/2013 · Base de preços pública',
+    resumo:'RESUMO EXECUTIVO DO ORÇAMENTO'
+  },
+  construtora: {
+    titulo:'ORÇAMENTO EXECUTIVO DA OBRA',
+    subtitulo:'Proposta técnica e comercial · Custos, BDI, quantitativos e planejamento',
+    resumo:'RESUMO EXECUTIVO DA PROPOSTA'
+  },
+  medicao: {
+    titulo:'BOLETIM DE MEDIÇÃO E ACOMPANHAMENTO',
+    subtitulo:'Previsto x executado · Saldos contratuais · Curva S e medições',
+    resumo:'RESUMO DE MEDIÇÃO'
+  },
+  auditoria: {
+    titulo:'RELATÓRIO DE AUDITORIA ORÇAMENTÁRIA',
+    subtitulo:'Conformidade de preços · SINAPI/SICRO/ORSE/DNIT · BDI e desvios',
+    resumo:'RESUMO DE AUDITORIA'
+  }
+};
+
+function relatorioModeloAtual() {
+  const id = document.getElementById('rel-modelo')?.value || STATE.config.relatorioModelo || 'publico';
+  return RELATORIO_MODELOS[id] || RELATORIO_MODELOS.publico;
+}
+
+function aplicarModeloRelatorio(id) {
+  STATE.config.relatorioModelo = id || 'publico';
+  const cfg = document.getElementById('cfg-rel-modelo');
+  if (cfg) cfg.value = STATE.config.relatorioModelo;
+  saveState();
+  renderRelatorioPreview();
+  toast('Modelo de relatório aplicado', 'success');
+}
+
 function abrirExpTab(id) {
   document.querySelectorAll('.exp-tab').forEach((t,i)=>{
     const ids = ['planilha','bdi-rel','abc-rel','resumo-rel'];
@@ -4352,12 +4565,14 @@ function getMeta() {
     local:  document.getElementById('rel-local')?.value || '',
     data:   document.getElementById('rel-data')?.value  || new Date().toLocaleDateString('pt-BR',{month:'2-digit',year:'numeric'}),
     fonte:  document.getElementById('rel-fonte')?.value || 'SINAPI/CAIXA',
+    modelo: document.getElementById('rel-modelo')?.value || STATE.config.relatorioModelo || 'publico',
   };
 }
 
 // ─── PREVIEW PLANILHA ORÇAMENTÁRIA ────────────────────────
 function renderPreviewPlanilha() {
   const meta = getMeta();
+  const modelo = relatorioModeloAtual();
   const items = STATE.orcamento;
   const sub  = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
   const bdi  = STATE.bdi;
@@ -4398,15 +4613,15 @@ function renderPreviewPlanilha() {
   }
 
   const html = `<table>
-    <tr><td colspan="11" class="sh-header">PLANILHA ORÇAMENTÁRIA</td></tr>
-    <tr><td colspan="11" class="sh-sub">Decreto nº 7.983/2013 · TCU Acórdão 2622/2013 · Base de preços: ${meta.fonte}</td></tr>
+    <tr><td colspan="11" class="sh-header">${modelo.titulo}</td></tr>
+    <tr><td colspan="11" class="sh-sub">${modelo.subtitulo} · Base de preços: ${meta.fonte} · Moeda: ${moedaCodigo()}</td></tr>
     ${metaRows}
     <tr class="sh-col-header">
       <th style="width:35px">Item</th><th style="width:80px">Código</th><th>Descrição do Serviço/Insumo</th>
       <th style="width:40px">Un</th><th style="width:60px">Qtd</th>
-      <th style="width:90px">P.Unit (R$)</th><th style="width:90px">Ref.SINAPI</th>
+      <th style="width:90px">${moedaHeader('P.Unit')}</th><th style="width:90px">Ref.SINAPI</th>
       <th style="width:60px">Desvio</th><th style="width:55px">BDI%</th>
-      <th style="width:100px">P.Unit c/BDI</th><th style="width:100px">Total c/BDI (R$)</th>
+      <th style="width:100px">P.Unit c/BDI</th><th style="width:100px">${moedaHeader('Total c/BDI')}</th>
     </tr>
     ${itemRows}
     <tr class="sh-total">
@@ -4423,7 +4638,7 @@ function renderPreviewPlanilha() {
       <td style="text-align:right;font-size:14px">${fmtMoeda(total)}</td>
     </tr>
     <tr><td colspan="11" style="padding:4px 10px;font-size:10px;color:#666;border:1px solid #ddd">
-      * Preços em conformidade com a tabela ${meta.fonte} · Data base: ${meta.data} · BDI: ${bdi.toFixed(2)}% (limite TCU Acórdão 2622/2013: 25%)
+      * Preços em conformidade com a tabela ${meta.fonte} · Data base: ${meta.data} · BDI: ${bdi.toFixed(2)}% (limite TCU Acórdão 2622/2013: 25%) · Cotação: 1 ${moedaCodigo()} = R$ ${moedaCotacao().toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4})}
     </td></tr>
     <tr class="sh-sign">
       <td colspan="11">
@@ -4465,7 +4680,7 @@ function renderPreviewBDI() {
     <td style="font-weight:700;text-align:center">${sigla}</td>
     <td>${nome}</td>
     <td style="text-align:right">${val.toFixed(2)}%</td>
-    <td style="text-align:right;color:#666">R$ ${(val/100).toFixed(4)}</td>
+    <td style="text-align:right;color:#666">${(val/100).toFixed(4)}</td>
   </tr>`).join('');
 
   const status = bdi <= lim ? 'CONFORME' : 'NÃO CONFORME';
@@ -4539,7 +4754,7 @@ function renderPreviewABC() {
     <tr><td colspan="11" class="sh-sub">Obra: ${meta.obra} · Data: ${new Date().toLocaleDateString('pt-BR')}</td></tr>
     <tr class="sh-col-header">
       <th>#</th><th>Código</th><th>Descrição</th><th>Un</th><th>Qtd</th>
-      <th>P.Unit</th><th>Total (R$)</th><th>% Item</th><th>% Acum.</th><th style="width:80px">Participação</th><th>Classe</th>
+      <th>P.Unit</th><th>${moedaHeader('Total')}</th><th>% Item</th><th>% Acum.</th><th style="width:80px">Participação</th><th>Classe</th>
     </tr>
     ${rows}
     <tr class="sh-total">
@@ -4553,6 +4768,7 @@ function renderPreviewABC() {
 // ─── PREVIEW RESUMO EXECUTIVO ──────────────────────────────
 function renderPreviewResumo() {
   const meta = getMeta();
+  const modelo = relatorioModeloAtual();
   const items = STATE.orcamento;
   const sub = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
   const bdi = STATE.bdi;
@@ -4565,7 +4781,7 @@ function renderPreviewResumo() {
   });
   const catRows = Object.entries(cats).map(([cat, val]) =>
     `<tr class="sh-row"><td>${cat}</td><td style="text-align:right">${fmtMoeda(val)}</td>
-     <td style="text-align:right">${(val/sub*100).toFixed(1)}%</td>
+     <td style="text-align:right">${(sub > 0 ? val/sub*100 : 0).toFixed(1)}%</td>
      <td style="text-align:right">${fmtMoeda(val*(1+bdi/100))}</td></tr>`
   ).join('');
 
@@ -4575,14 +4791,14 @@ function renderPreviewResumo() {
   const nf = items.filter(i => !i.ref || i.ref === 0).length;
 
   document.getElementById('preview-resumo-rel').innerHTML = `<table>
-    <tr><td colspan="4" class="sh-header">RESUMO EXECUTIVO DO ORÇAMENTO</td></tr>
-    <tr><td colspan="4" class="sh-sub">Obra: ${meta.obra} | ${meta.orgao} | Processo: ${meta.edital}</td></tr>
+    <tr><td colspan="4" class="sh-header">${modelo.resumo}</td></tr>
+    <tr><td colspan="4" class="sh-sub">Obra: ${meta.obra} | ${meta.orgao} | Processo: ${meta.edital} | Moeda: ${moedaCodigo()}</td></tr>
     <tr class="sh-meta"><td class="lbl">Responsável:</td><td>${meta.rt} — ${meta.crea}</td><td class="lbl">ART/RRT:</td><td>${meta.art}</td></tr>
     <tr class="sh-meta"><td class="lbl">Local:</td><td>${meta.local}</td><td class="lbl">Data Base:</td><td>${meta.data}</td></tr>
     <tr class="sh-meta"><td class="lbl">Fonte:</td><td>${meta.fonte}</td><td class="lbl">Emissão:</td><td>${new Date().toLocaleDateString('pt-BR')}</td></tr>
 
     <tr><td colspan="4" style="padding:8px 10px;background:#e8f0f8;font-weight:800;font-size:12px;border:1px solid #ccc">1. RESUMO FINANCEIRO</td></tr>
-    <tr class="sh-col-header"><th>Descrição</th><th colspan="3" style="text-align:right">Valor (R$)</th></tr>
+    <tr class="sh-col-header"><th>Descrição</th><th colspan="3" style="text-align:right">${moedaHeader('Valor')}</th></tr>
     <tr class="sh-row"><td>Custo Direto (sem BDI)</td><td colspan="3" style="text-align:right">${fmtMoeda(sub)}</td></tr>
     <tr class="sh-row"><td>BDI — ${bdi.toFixed(2)}% (Decreto 7983/2013)</td><td colspan="3" style="text-align:right">${fmtMoeda(sub*bdi/100)}</td></tr>
     <tr class="sh-total"><td>TOTAL GERAL COM BDI</td><td colspan="3" style="text-align:right;font-size:14px">${fmtMoeda(total)}</td></tr>
@@ -4617,20 +4833,22 @@ function renderPreviewResumo() {
 function exportarExcelProfissional() {
   if (!window.XLSX) { toast('SheetJS não carregado', 'error'); return; }
   const meta = getMeta();
+  const modelo = relatorioModeloAtual();
   const items = STATE.orcamento;
   const bdi = STATE.bdi;
   const wb = XLSX.utils.book_new();
 
   // ── Aba 1: Planilha Orçamentária ──
   const planData = [
-    ['PLANILHA ORÇAMENTÁRIA — Decreto nº 7.983/2013'],
+    [modelo.titulo + ' — TLPlanly'],
     ['Obra:', meta.obra, '', 'Órgão:', meta.orgao],
     ['Edital/Processo:', meta.edital, '', 'Local:', meta.local],
     ['Resp. Técnico:', meta.rt, '', 'CREA/CAU:', meta.crea],
     ['ART/RRT:', meta.art, '', 'Data Base:', meta.data],
     ['Fonte de Preços:', meta.fonte, '', 'Emissão:', new Date().toLocaleDateString('pt-BR')],
+    ['Modelo:', meta.modelo, '', 'Moeda:', moedaCodigo(), 'Cotação:', moedaCotacao()],
     [],
-    ['Item','Capítulo','Código SINAPI','Descrição','Un','Qtd','P.Unit (R$)','Ref.SINAPI (R$)','Desvio %','BDI %','P.Unit c/BDI (R$)','Total c/BDI (R$)','Categoria'],
+    ['Item','Capítulo','Código SINAPI','Descrição','Un','Qtd',moedaHeader('P.Unit'),moedaHeader('Ref.SINAPI'),'Desvio %','BDI %',moedaHeader('P.Unit c/BDI'),moedaHeader('Total c/BDI'),'Categoria'],
   ];
   let sub = 0;
   items.forEach((it, i) => {
@@ -4639,18 +4857,18 @@ function exportarExcelProfissional() {
     const desv = it.ref > 0 ? ((it.preco - it.ref)/it.ref*100).toFixed(2) : '';
     planData.push([
       i+1, it.capitulo || it.cat || 'Serviços', it.cod, it.desc, it.unid,
-      it.qtd, it.preco, it.ref > 0 ? it.ref : '',
+      it.qtd, valorMoeda(it.preco), it.ref > 0 ? valorMoeda(it.ref) : '',
       desv !== '' ? parseFloat(desv) : '',
       parseFloat(bdi.toFixed(2)),
-      parseFloat((it.preco*(1+bdi/100)).toFixed(2)),
-      parseFloat((v*(1+bdi/100)).toFixed(2)),
+      parseFloat(valorMoeda(it.preco*(1+bdi/100)).toFixed(2)),
+      parseFloat(valorMoeda(v*(1+bdi/100)).toFixed(2)),
       it.cat
     ]);
   });
   planData.push([]);
-  planData.push(['','','','','','SUBTOTAL (sem BDI):','','','','',sub]);
-  planData.push(['','','','','','BDI ('+bdi.toFixed(2)+'%):','','','','',sub*bdi/100]);
-  planData.push(['','','','','','TOTAL GERAL c/ BDI:','','','','',sub*(1+bdi/100)]);
+  planData.push(['','','','','','SUBTOTAL (sem BDI):','','','','',valorMoeda(sub)]);
+  planData.push(['','','','','','BDI ('+bdi.toFixed(2)+'%):','','','','',valorMoeda(sub*bdi/100)]);
+  planData.push(['','','','','','TOTAL GERAL c/ BDI:','','','','',valorMoeda(sub*(1+bdi/100))]);
 
   const ws1 = XLSX.utils.aoa_to_sheet(planData);
   ws1['!cols'] = [
@@ -4689,18 +4907,18 @@ function exportarExcelProfissional() {
     ['CURVA ABC — ANÁLISE DE REPRESENTATIVIDADE'],
     ['Obra:', meta.obra],
     [],
-    ['#','Código','Descrição','Un','Qtd','P.Unit (R$)','Total (R$)','% Item','% Acumulado','Classe'],
+    ['#','Código','Descrição','Un','Qtd',moedaHeader('P.Unit'),moedaHeader('Total'),'% Item','% Acumulado','Classe'],
   ];
   abcItems.forEach((it, i) => {
     const v = it.qtd * it.preco;
     const pct = totalG > 0 ? v/totalG*100 : 0;
     acum += pct;
     const cls = acum <= 80 ? 'A' : acum <= 95 ? 'B' : 'C';
-    abcData.push([i+1, it.cod, it.desc, it.unid, it.qtd, it.preco,
-      parseFloat(v.toFixed(2)), parseFloat(pct.toFixed(2)), parseFloat(acum.toFixed(2)), cls]);
+    abcData.push([i+1, it.cod, it.desc, it.unid, it.qtd, valorMoeda(it.preco),
+      parseFloat(valorMoeda(v).toFixed(2)), parseFloat(pct.toFixed(2)), parseFloat(acum.toFixed(2)), cls]);
   });
   abcData.push([]);
-  abcData.push(['','','','','','TOTAL:', parseFloat(totalG.toFixed(2)),'100.00%','','']);
+  abcData.push(['','','','','','TOTAL:', parseFloat(valorMoeda(totalG).toFixed(2)),'100.00%','','']);
   const ws3 = XLSX.utils.aoa_to_sheet(abcData);
   ws3['!cols'] = [{wch:5},{wch:12},{wch:45},{wch:6},{wch:10},{wch:14},{wch:14},{wch:10},{wch:12},{wch:8}];
   XLSX.utils.book_append_sheet(wb, ws3, 'Curva ABC');
@@ -4717,22 +4935,22 @@ function exportarExcelProfissional() {
   XLSX.utils.book_append_sheet(wb, ws4, 'Encargos Sociais');
 
   // ── Aba 5: Planejamento ──
-  const planObraData = [['PLANEJAMENTO FÍSICO-FINANCEIRO'], ['Obra:', meta.obra], [], ['ID','Tarefa','Serviço vinculado','Início','Fim','Dias','Dependências','Valor (R$)','Progresso (%)']];
+  const planObraData = [['PLANEJAMENTO FÍSICO-FINANCEIRO'], ['Obra:', meta.obra], [], ['ID','Tarefa','Serviço vinculado','Início','Fim','Dias','Dependências',moedaHeader('Valor'),'Progresso (%)']];
   STATE.planejamento.forEach(t => {
     const item = getItemById(t.itemId);
-    planObraData.push([t.code, t.desc, itemLabel(item), t.inicio, t.fim, daysBetween(t.inicio, t.fim), (t.deps || []).join(', '), itemValor(item), t.progresso || 0]);
+    planObraData.push([t.code, t.desc, itemLabel(item), t.inicio, t.fim, daysBetween(t.inicio, t.fim), (t.deps || []).join(', '), valorMoeda(itemValor(item)), t.progresso || 0]);
   });
   const ws5 = XLSX.utils.aoa_to_sheet(planObraData);
   ws5['!cols'] = [{wch:8},{wch:38},{wch:42},{wch:12},{wch:12},{wch:8},{wch:18},{wch:14},{wch:12}];
   XLSX.utils.book_append_sheet(wb, ws5, 'Planejamento');
 
   // ── Aba 6: Medições ──
-  const medData = [['MEDIÇÕES E ACOMPANHAMENTO'], ['Obra:', meta.obra], [], ['Período','Data','Código','Descrição','Qtd contratada','Qtd medida','Qtd acumulada','Valor medido (R$)','Status']];
+  const medData = [['MEDIÇÕES E ACOMPANHAMENTO'], ['Obra:', meta.obra], [], ['Período','Data','Código','Descrição','Qtd contratada','Qtd medida','Qtd acumulada',moedaHeader('Valor medido'),'Status']];
   STATE.medicoes.forEach(m => {
     STATE.orcamento.forEach(it => {
       const qtdMed = Number(m.itens?.[it.id]) || 0;
       const acumMed = medicoesAcumulado(it.id);
-      medData.push([m.nome, m.data, it.cod, it.desc, it.qtd, qtdMed, acumMed, qtdMed * (Number(it.preco) || 0), acumMed > it.qtd ? 'EXCEDIDO' : acumMed >= it.qtd ? 'CONCLUÍDO' : 'EM EXECUÇÃO']);
+      medData.push([m.nome, m.data, it.cod, it.desc, it.qtd, qtdMed, acumMed, valorMoeda(qtdMed * (Number(it.preco) || 0)), acumMed > it.qtd ? 'EXCEDIDO' : acumMed >= it.qtd ? 'CONCLUÍDO' : 'EM EXECUÇÃO']);
     });
   });
   const ws6 = XLSX.utils.aoa_to_sheet(medData);
@@ -5309,7 +5527,13 @@ const COPILOT_KB = {
   exportar: {
     q: ['exportar','gerar planilha','relatório','gerar excel','planilha excel','pdf edital','imprimir'],
     r: `**Como exportar a planilha orçamentária:** 📤\n\n1. Acesse **Exportar / Relatório** no menu\n2. Preencha os dados da obra (nome, órgão, RT, CREA, ART/RRT)\n3. Escolha a aba desejada para pré-visualizar\n4. Clique **"Excel (.xlsx) Profissional"**\n\nO Excel agora leva: Planilha Orçamentária, BDI, Curva ABC, Encargos, Planejamento, Medições, Quantitativos e Anexos.\n\n✅ O formato segue padrão exigido pelo **TCU/CGU/editais públicos** e também serve para acompanhamento de obra.`,
-    chips: ['Ir para Relatório','O que é ART?','O que é ART?']
+    chips: ['Ir para Relatório','Modelo de relatório','Como configurar moeda']
+  },
+
+  relatorio_moeda: {
+    q: ['moeda','cotação','cotacao','dólar','dolar','euro','modelo relatório','modelo relatorio','duplicar item','mover item','zerar quantidade'],
+    r: `**Ajustes avançados do orçamento**\n\nNo TLPlanly você pode:\n\n• Alterar a **moeda de exibição** em Configurações, mantendo os custos internos em reais\n• Informar a **cotação** usada na conversão\n• Escolher o **modelo de relatório**: órgão público, construtora, medição ou auditoria\n• No orçamento, **duplicar itens**, mover a ordem e zerar quantidades sem apagar a estrutura\n\nFluxo recomendado: configure moeda/modelo → elabore ou importe itens → ajuste ordem/quantidades → exporte o Excel profissional.`,
+    chips: ['Ir para Configurações','Ir para Relatório','Ir para Elaborar']
   },
 
   gestao_obra: {
@@ -5363,11 +5587,11 @@ const VIEW_CONTEXT = {
   backups:      { nome: 'Backups', dica: 'Crie pontos de restauração locais para orçamento, planejamento, medições e anexos.' },
   auditoria:    { nome: 'Análise SINAPI', dica: 'Compare os preços do orçamento com a tabela SINAPI e identifique desvios acima da tolerância.' },
   conformidade: { nome: 'Conformidade BDI', dica: 'Verifique se o BDI calculado está dentro dos limites do TCU Acórdão 2622/2013.' },
-  relatorio:    { nome: 'Exportar / Relatório', dica: 'Preencha os dados da obra e exporte a planilha profissional em Excel (4 abas) ou PDF.' },
+  relatorio:    { nome: 'Exportar / Relatório', dica: 'Preencha os dados da obra, escolha o modelo de relatório e exporte Excel/PDF com orçamento, BDI, ABC, planejamento, medições e anexos.' },
   bases:        { nome: 'Bases de Referência', dica: 'Carregue e gerencie SINAPI, SICRO 3 e bases estaduais. Use o OCR para PDFs escaneados.' },
   importar:     { nome: 'Importar Edital', dica: 'Importe planilhas de editais em PDF ou Excel e faça o match automático com a base SINAPI.' },
   cpu:          { nome: 'Composições (CPU)', dica: 'Crie composições analíticas próprias com insumos SINAPI, coeficientes e encargos sociais.' },
-  config:       { nome: 'Configurações', dica: 'Configure UF, tolerância de desvio, regime de encargos padrão e tipo de obra.' },
+  config:       { nome: 'Configurações', dica: 'Configure UF, tolerância, encargos, tipo de obra, moeda de exibição, cotação e modelo padrão de relatório.' },
 };
 
 // ── ENGINE DO COPILOT ─────────────────────────────────────
@@ -5395,6 +5619,7 @@ function copilotDetectPendingAction(txt) {
   const asksToContinue = /\b(quer|pronto|posso|devo|deseja|avise|confirma|confirmar|agora|seguir|continuar|vamos)\b/.test(norm);
   if (!asksToContinue) return null;
 
+  if (/(moeda|cotacao|dolar|euro|modelo padrao)/.test(norm)) return copilotActionForView('config');
   if (/(relatorio|exportar|pdf final|gerar pdf|baixar)/.test(norm)) return copilotActionForView('relatorio');
   if (/(upload|arquivo|pdf|excel|planilha|edital|import)/.test(norm)) return copilotActionForView('importar');
   if (/(bdi|encargo)/.test(norm)) return copilotActionForView('bdi');
