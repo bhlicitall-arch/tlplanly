@@ -5103,9 +5103,15 @@ const COPILOT_KB = {
 
   // ── ONBOARDING ──────────────────────────────────────────
   onboarding: {
-    q: ['começar','iniciar','primeiro','como usar','tutorial','ajuda','novato','não sei','por onde'],
+    q: ['começar','iniciar','primeiro','como usar','tutorial','ajuda','novato','não sei','por onde','como operar','operar sistema'],
     r: `**Bem-vindo ao TLPlanly!** Vou te guiar pelos primeiros passos. 🚀\n\n**Fluxo recomendado:**\n1️⃣ Configure a **UF e o tipo de obra** em Configurações\n2️⃣ Carregue ou confirme a **base SINAPI** em Bases de Referência\n3️⃣ Configure o **BDI** na aba BDI/Encargos\n4️⃣ **Elabore o orçamento** do zero ou importe Excel/PDF\n5️⃣ Ajuste os itens direto na planilha editável\n6️⃣ Gere a **Curva ABC** e exporte o relatório\n\nQuer que eu te guie em algum passo específico?`,
-    chips: ['Sim me guie','Como calcular BDI?','Sim me guie','Como exportar?']
+    chips: ['Abrir Manual','Sim me guie','Como calcular BDI?','Como exportar?']
+  },
+
+  manual: {
+    q: ['manual','manual de instruções','manual de instrucoes','guia do usuário','guia do usuario','treinamento','apresentação do sistema','apresentacao do sistema','como operar o tlplanly'],
+    r: `**Manual de Operação do TLPlanly**\n\nCriei um manual prático para usuários leigos, com fluxo recomendado, explicação de todos os módulos e roteiros para construtora, órgão público e auditor.\n\nVocê pode abrir a versão visual em: [Manual TLPlanly](/manual)\n\nTambém posso te orientar por aqui. Pergunte, por exemplo:\n• Como importar uma planilha?\n• Como usar a Central de Documentos?\n• Como configurar BDI?\n• Como auditar preços?`,
+    chips: ['Abrir Manual','Como importar edital?','Central de Documentos','Como auditar?']
   },
 
   // ── BDI ────────────────────────────────────────────────
@@ -5196,6 +5202,12 @@ const COPILOT_KB = {
     q: ['analisar documentos','projeto básico','projeto basico','termo de referência','termo de referencia','etp','memorial descritivo','gerar orçamento pelo projeto','gerar orcamento pelo projeto','estimativa por documentos'],
     r: `**Analisador de Documentos da Obra**\n\nUse este módulo quando você ainda não tem uma planilha pronta. Anexe edital, TR, ETP, projeto básico, memorial e projetos da obra. O TLPlanly vai:\n\n• Classificar cada documento\n• Extrair escopo e especificações\n• Identificar serviços prováveis\n• Sugerir composição preliminar\n• Mapear referências SINAPI quando possível\n• Mostrar confiança e pendências por item\n• Enviar a pré-planilha para **Elaborar Orçamento**\n\nA saída é uma estimativa revisável, com memória técnica. O responsável técnico ainda valida quantidades e composições.`,
     chips: ['Ir para Analisar Documentos','Ir para Elaborar','Ir para Importar']
+  },
+
+  central_documentos: {
+    q: ['central de documentos','como usar central de documentos','documentos da obra','anexar documentos','revisões de extração','revisoes de extracao','dossiê técnico','dossie tecnico'],
+    r: `**Central de Documentos da Obra**\n\nUse esta tela para guardar edital, TR, ETP, projeto básico, memorial, planilhas, pranchas, fotos e ART/RRT.\n\n**Passo a passo:**\n1. Abra **Central de Documentos**\n2. Clique em **Selecionar lote**\n3. Anexe todos os arquivos relacionados à obra\n4. Clique em **Analisar agora**\n5. Revise os documentos classificados e as extrações pendentes\n6. Só depois envie itens aprovados para **Elaborar Orçamento**\n\nRegra: documento anexado não altera o orçamento automaticamente.`,
+    chips: ['Ir para Central de Documentos','Ir para Analisar Documentos','Como importar edital?','Abrir Manual']
   },
 
   ocr: {
@@ -5299,6 +5311,7 @@ function copilotActionForView(view) {
 function copilotDetectPendingAction(txt) {
   const norm = copilotNormText(txt);
   const asksToContinue = /\b(quer|pronto|posso|devo|deseja|avise|confirma|confirmar|agora|seguir|continuar|vamos)\b/.test(norm);
+  if (/(abrir manual|manual|guia do usuario|guia do sistema)/.test(norm)) return { type: 'manual' };
   if (!asksToContinue) return null;
 
   if (/(moeda|cotacao|dolar|euro|modelo padrao)/.test(norm)) return copilotActionForView('config');
@@ -5331,6 +5344,13 @@ function copilotExecuteAction(action) {
   if (action.type === 'module-menu') {
     copilotBotMsg('Perfeito. Escolha por onde vamos começar:');
     copilotSetChips(['Ir para Analisar Documentos','Ir para Elaborar','Ir para Importar','Ir para BDI','Ir para Relatório']);
+    return true;
+  }
+
+  if (action.type === 'manual') {
+    copilotBotMsg('Abrindo o **Manual de Operação do TLPlanly** em uma nova aba. Ele também fica disponível em **/manual**.');
+    setTimeout(() => window.open('/manual', '_blank'), 300);
+    copilotSetChips(['Como importar edital?','Central de Documentos','Como configurar BDI?','Como auditar?']);
     return true;
   }
 
@@ -5602,7 +5622,7 @@ async function copilotResponder(txt) {
 
   const localFirst = /^(ir|abrir|acessar)\b/.test(norm)
     || /^(meu orcamento atual|o que posso fazer aqui|sim me guie)$/.test(norm)
-    || /^(o que e bdi|como importar|como exportar|como calcular bdi|o que e sinapi|o que e curva abc|limite bdi)/.test(norm);
+    || /^(manual|abrir manual|guia|como operar|o que e bdi|como importar|como exportar|como calcular bdi|o que e sinapi|o que e curva abc|limite bdi)/.test(norm);
 
   // Comandos de navegação e chips previsíveis são locais para não prender o usuário em chamadas externas.
   if (!localFirst) {
@@ -5614,6 +5634,9 @@ async function copilotResponder(txt) {
   // Cada entrada: array de palavras/frases que disparam a resposta
   // Cobre chips gerados pelo próprio sistema + variações naturais
   const TOPICS = [
+    { keys:['manual','manual de instrucoes','manual de operacao','guia do usuario','guia do sistema',
+            'treinamento','apresentacao do sistema','como operar o tlplanly','como operar o sistema'],
+      entry:'manual' },
     // Onboarding / tutorial
     { keys:['sim me guie','como comecar','comecar','iniciar','tutorial','por onde comecar','primeiro passo',
             'como usar o sistema','me guie','ajuda','help','nao sei','nao entendo','como funciona',
@@ -5673,6 +5696,10 @@ async function copilotResponder(txt) {
     { keys:['coeficiente','produtividade','indices tcpo','onde encontro coeficientes',
             'coeficiente consumo','indice producao','quanto de material','consumo por unidade'],
       entry:'coeficientes' },
+    // Analisador de documentos
+    { keys:['central de documentos','como usar central de documentos','anexar documentos','revisoes de extracao',
+            'revisao de extracao','dossie tecnico','documentos classificados','lote de documentos'],
+      entry:'central_documentos' },
     // Analisador de documentos
     { keys:['analisar documentos','documentos da obra','projeto basico','termo de referencia',
             'estudo tecnico preliminar','etp','memorial descritivo','projetos da obra',

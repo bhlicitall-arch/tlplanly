@@ -333,8 +333,28 @@ O TLPlanly é uma plataforma SaaS de orçamentação com os seguintes módulos:
 ## Contexto dinâmico
 O frontend pode enviar um campo "context" com o estado atual do sistema (view ativa, itens do orçamento, BDI calculado). Use essas informações para personalizar a resposta.`;
 
-// System prompt final = base + skills carregados dinamicamente
-const SYSTEM_PROMPT = BASE_PROMPT + SKILLS_CONTEXT;
+const OPERATION_MANUAL_CONTEXT = `
+
+## Manual Operacional TLPlanly
+Quando o usuario perguntar como operar o sistema, use este roteiro:
+- **Central de Documentos**: anexar edital, TR, ETP, projeto basico, memorial, planilhas, pranchas e fotos; selecionar lote; analisar agora; reabrir revisoes; manter rastreabilidade.
+- **Importar Planilha/PDF**: aceitar Excel, CSV, PDF digital, PDF escaneado e imagem; OCR entra quando PDF nao tem texto util; revisar match SINAPI antes de confirmar.
+- **Analisar Documentos**: usar quando nao existe planilha pronta; classifica documentos, extrai escopo/especificacoes, sugere servicos, mostra confianca e pendencias.
+- **Elaborar Orcamento**: ajustar codigo, descricao, unidade, quantidade, preco, referencia, categoria e capitulo; criar item proprio ou usar SINAPI.
+- **BDI / Encargos**: preencher AC, S, R, DF, L e I; escolher tipo de obra; conferir limite TCU; clicar em Aplicar ao Orcamento.
+- **Composicoes (CPU)**: criar composicoes analiticas com insumos, coeficientes, encargos e custo unitario.
+- **Curva ABC**: gerar depois do orcamento para priorizar itens de maior impacto.
+- **Analise SINAPI**: comparar precos com referencia; revisar conforme, alerta, critico e nao encontrado.
+- **Conformidade BDI**: verificar BDI contra limites de referencia.
+- **Planejamento, Medicoes e Quantitativos**: transformar planilha em cronograma, acompanhar executado e criar memoria quantitativa.
+- **Exportar / Relatorio**: preencher dados da obra, responsavel, CREA/CAU e ART/RRT; exportar Excel/PDF profissional.
+- **Backups**: criar ponto de restauracao antes de importacoes ou grandes alteracoes.
+
+Regra de ouro: nada extraido de documentos, OCR ou PDF deve entrar automaticamente no orcamento sem revisao humana.
+Manual completo disponivel em /manual.`;
+
+// System prompt final = base + manual operacional + skills carregados dinamicamente
+const SYSTEM_PROMPT = BASE_PROMPT + OPERATION_MANUAL_CONTEXT + SKILLS_CONTEXT;
 
 // ── SaaS Auth + Persistencia ─────────────────────────────────────────────
 app.post('/api/auth/register', async (req: Request, res: Response) => {
@@ -626,6 +646,17 @@ app.get('/', (_req, res) => {
     if (fs.existsSync(p)) { res.sendFile(path.resolve(p)); return; }
   }
   res.status(404).send('tlplanly.html não encontrado');
+});
+app.get('/manual', (_req, res) => {
+  const manualPaths = [
+    path.join(__dirname, '../../docs/manual_usuario_tlplanly.html'),
+    path.join(__dirname, '../docs/manual_usuario_tlplanly.html'),
+    'docs/manual_usuario_tlplanly.html',
+  ];
+  for (const p of manualPaths) {
+    if (fs.existsSync(p)) { res.sendFile(path.resolve(p)); return; }
+  }
+  res.status(404).send('manual_usuario_tlplanly.html nao encontrado');
 });
 app.use(express.static(path.join(__dirname, '../..')));
 

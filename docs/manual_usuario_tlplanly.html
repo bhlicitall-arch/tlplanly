@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual de Operação TLPlanly</title>
+  <style>
+    :root{
+      --ink:#171717;--muted:#61656d;--line:#e4e7ec;--panel:#ffffff;
+      --soft:#f6f7f9;--gold:#d99a16;--gold2:#f5b332;--green:#238636;
+      --red:#c33d35;--blue:#1d5ea8;--dark:#111827;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Segoe UI,Arial,sans-serif;color:var(--ink);background:#f2f3f5;line-height:1.55}
+    .cover{
+      min-height:86vh;background:
+        linear-gradient(130deg,rgba(17,24,39,.96),rgba(20,18,12,.92)),
+        radial-gradient(circle at 80% 10%,rgba(245,179,50,.28),transparent 30%);
+      color:#fff;padding:56px 7vw 38px;display:flex;flex-direction:column;justify-content:space-between;
+    }
+    .brand{display:flex;align-items:center;gap:14px;font-weight:900;letter-spacing:.3px}
+    .brand-mark{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--gold),var(--gold2));display:grid;place-items:center;color:#111;font-weight:900}
+    .hero{max-width:980px;margin-top:70px}
+    .eyebrow{color:var(--gold2);font-size:13px;text-transform:uppercase;font-weight:800;letter-spacing:1.4px;margin-bottom:18px}
+    h1{font-size:clamp(36px,6vw,76px);line-height:.98;margin:0 0 24px;font-weight:900;letter-spacing:0}
+    .hero p{font-size:clamp(18px,2.2vw,25px);color:#d8dbe2;max-width:820px;margin:0 0 32px}
+    .hero-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:920px}
+    .hero-card{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);border-radius:8px;padding:16px}
+    .hero-card strong{display:block;font-size:22px;color:var(--gold2)}
+    .hero-card span{font-size:12px;color:#c9ced8;text-transform:uppercase;font-weight:800;letter-spacing:.6px}
+    .doc{max-width:1180px;margin:-46px auto 80px;padding:0 22px}
+    .toolbar{position:sticky;top:0;z-index:5;background:rgba(242,243,245,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 0;margin-bottom:18px}
+    .toolbar-inner{max-width:1180px;margin:auto;padding:0 22px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+    .btn{display:inline-flex;align-items:center;gap:8px;text-decoration:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;padding:10px 14px;font-size:13px;font-weight:800}
+    .btn.primary{background:var(--dark);color:#fff;border-color:var(--dark)}
+    .layout{display:grid;grid-template-columns:280px 1fr;gap:22px;align-items:start}
+    aside{position:sticky;top:78px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;box-shadow:0 8px 24px rgba(16,24,40,.06)}
+    aside h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;margin:0 0 10px;color:var(--muted)}
+    aside a{display:block;color:#30343b;text-decoration:none;font-size:13px;font-weight:700;padding:7px 8px;border-radius:6px}
+    aside a:hover{background:#f4eddf;color:#8a5d00}
+    main{display:flex;flex-direction:column;gap:18px}
+    section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:28px;box-shadow:0 8px 24px rgba(16,24,40,.05)}
+    h2{font-size:28px;line-height:1.15;margin:0 0 14px;letter-spacing:0}
+    h3{font-size:18px;margin:20px 0 8px}
+    p{margin:8px 0;color:#333842}
+    ul,ol{margin:10px 0 0 22px;padding:0}
+    li{margin:7px 0}
+    .lead{font-size:18px;color:#3b3f47}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+    .card{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:16px}
+    .card strong{display:block;margin-bottom:5px;color:#15171a}
+    .tag{display:inline-flex;border-radius:999px;padding:4px 9px;background:#fff4d7;color:#8a5d00;border:1px solid #f0cf85;font-size:11px;text-transform:uppercase;font-weight:900;letter-spacing:.5px;margin:0 6px 6px 0}
+    .flow{counter-reset:step;display:grid;gap:10px;margin-top:14px}
+    .flow div{position:relative;padding:12px 14px 12px 48px;background:#fbfbfc;border:1px solid var(--line);border-radius:8px}
+    .flow div:before{counter-increment:step;content:counter(step);position:absolute;left:14px;top:12px;width:24px;height:24px;border-radius:50%;background:var(--gold);color:#111;display:grid;place-items:center;font-weight:900;font-size:12px}
+    .warn{border-left:4px solid var(--gold);background:#fff9ea;padding:14px 16px;border-radius:8px;margin-top:14px;color:#4d390b}
+    .ok{border-left:4px solid var(--green);background:#eef9f0;padding:14px 16px;border-radius:8px;margin-top:14px}
+    .danger{border-left:4px solid var(--red);background:#fff0ef;padding:14px 16px;border-radius:8px;margin-top:14px}
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
+    th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    th{background:#f7f8fa;font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.5px}
+    code{background:#f1f3f5;border:1px solid #dde1e6;border-radius:6px;padding:2px 6px}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    footer{max-width:1180px;margin:40px auto;padding:0 22px 60px;color:var(--muted);font-size:13px}
+    @media(max-width:920px){.layout{grid-template-columns:1fr}aside{position:relative;top:auto}.hero-grid,.cards,.two{grid-template-columns:1fr}.cover{padding:34px 22px}.doc{margin-top:-28px}}
+    @media print{.cover{min-height:auto;padding:32px}.toolbar,aside{display:none}.doc{margin:0;max-width:none}.layout{display:block}section{box-shadow:none;break-inside:avoid}.btn{display:none}}
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <div class="brand"><div class="brand-mark">TL</div><div>TLPlanly<br><span style="font-weight:600;color:#c9ced8">Manual de operação</span></div></div>
+    <div class="hero">
+      <div class="eyebrow">Orçamentação, auditoria e gestão de obras</div>
+      <h1>Manual prático para operar o TLPlanly</h1>
+      <p>Um guia completo para criar orçamentos, importar documentos, rodar OCR, revisar extrações, auditar preços, calcular BDI e gerar relatórios profissionais.</p>
+      <div class="hero-grid">
+        <div class="hero-card"><strong>1</strong><span>Fluxo guiado</span></div>
+        <div class="hero-card"><strong>30</strong><span>Seções práticas</span></div>
+        <div class="hero-card"><strong>2</strong><span>Perfis de uso</span></div>
+        <div class="hero-card"><strong>100%</strong><span>Focado no usuário</span></div>
+      </div>
+    </div>
+    <div style="color:#c9ced8;font-size:13px">TechLicense • TLPlanly-Orçamentos • Manual para apresentação e treinamento</div>
+  </div>
+
+  <div class="toolbar">
+    <div class="toolbar-inner">
+      <strong>Manual TLPlanly</strong>
+      <div>
+        <a class="btn" href="#roteiros">Roteiros rápidos</a>
+        <a class="btn" href="#modulos">Módulos</a>
+        <a class="btn primary" href="javascript:window.print()">Imprimir / PDF</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="doc">
+    <div class="layout">
+      <aside>
+        <h2>Navegação</h2>
+        <a href="#visao">Visão geral</a>
+        <a href="#primeiros-passos">Primeiros passos</a>
+        <a href="#conta">Conta e salvamento</a>
+        <a href="#modulos">Módulos do sistema</a>
+        <a href="#documentos">Central de Documentos</a>
+        <a href="#importacao">Importação e OCR</a>
+        <a href="#auditoria">Auditoria</a>
+        <a href="#relatorios">Relatórios</a>
+        <a href="#roteiros">Roteiros rápidos</a>
+        <a href="#problemas">Problemas comuns</a>
+        <a href="#glossario">Glossário</a>
+      </aside>
+
+      <main>
+        <section id="visao">
+          <h2>1. Visão geral</h2>
+          <p class="lead">O TLPlanly é uma plataforma para elaborar, importar, revisar, auditar e exportar orçamentos de obras.</p>
+          <div class="cards">
+            <div class="card"><strong>Para construtoras</strong>Crie planilhas, ajuste itens, calcule BDI, monte CPUs, planeje e exporte relatórios.</div>
+            <div class="card"><strong>Para órgãos públicos</strong>Analise preços, confira BDI, identifique itens críticos e gere relatórios de conformidade.</div>
+            <div class="card"><strong>Para fiscais</strong>Acompanhe medições, documentos, quantitativos, saldo de contrato e histórico técnico.</div>
+          </div>
+          <div class="warn">Regra principal: o TLPlanly ajuda a extrair e sugerir dados, mas toda extração deve ser revisada antes de entrar no orçamento.</div>
+        </section>
+
+        <section id="primeiros-passos">
+          <h2>2. Primeiros passos</h2>
+          <div class="flow">
+            <div>Abra <strong>Configurações</strong> e confirme UF, tolerância, tipo de obra e encargos.</div>
+            <div>Confira a base em <strong>Bases de Referência</strong>.</div>
+            <div>Configure o <strong>BDI / Encargos</strong> e aplique ao orçamento.</div>
+            <div>Anexe documentos na <strong>Central de Documentos</strong> ou importe planilha/PDF.</div>
+            <div>Revise a extração e envie para <strong>Elaborar Orçamento</strong>.</div>
+            <div>Gere Curva ABC, auditoria, conformidade BDI e relatório final.</div>
+          </div>
+        </section>
+
+        <section id="conta">
+          <h2>3. Conta, obra ativa e salvamento</h2>
+          <p>O indicador no topo mostra se a obra está salva.</p>
+          <table>
+            <tr><th>Status</th><th>Significado</th></tr>
+            <tr><td><strong>Local</strong></td><td>Dados salvos apenas no navegador.</td></tr>
+            <tr><td><strong>Pendente</strong></td><td>Alterações aguardando salvamento.</td></tr>
+            <tr><td><strong>Salvando</strong></td><td>O sistema está gravando.</td></tr>
+            <tr><td><strong>Salvo</strong></td><td>A obra foi persistida.</td></tr>
+            <tr><td><strong>Erro</strong></td><td>Houve falha no salvamento.</td></tr>
+          </table>
+          <div class="ok">Boa prática: crie uma obra salva para cada edital, contratação, empreendimento ou processo.</div>
+        </section>
+
+        <section id="modulos">
+          <h2>4. Módulos do sistema</h2>
+          <div class="cards">
+            <div class="card"><strong>Dashboard</strong>Resumo da obra: itens, subtotal, BDI, total e alertas.</div>
+            <div class="card"><strong>Elaborar Orçamento</strong>Planilha editável para criar, importar e ajustar itens.</div>
+            <div class="card"><strong>Composições (CPU)</strong>Criação de serviços próprios com insumos, coeficientes e encargos.</div>
+            <div class="card"><strong>BDI / Encargos</strong>Cálculo do BDI e controle de regime desonerado/não desonerado.</div>
+            <div class="card"><strong>Curva ABC</strong>Classificação dos itens por peso financeiro.</div>
+            <div class="card"><strong>Memória de Cálculo</strong>Detalhamento técnico dos valores do orçamento.</div>
+            <div class="card"><strong>Planejamento</strong>Gantt, datas, dependências e Curva S.</div>
+            <div class="card"><strong>Medições</strong>Registro de quantidades executadas por período.</div>
+            <div class="card"><strong>Quantitativos</strong>Memórias auxiliares com fórmulas e aplicação na planilha.</div>
+          </div>
+        </section>
+
+        <section id="documentos">
+          <h2>5. Central de Documentos da Obra</h2>
+          <p>Use a Central para organizar edital, TR, ETP, projeto básico, memorial, planilhas, pranchas, fotos e ART/RRT.</p>
+          <div class="flow">
+            <div>Clique em <strong>Selecionar lote</strong>.</div>
+            <div>Envie todos os arquivos relacionados à planilha da obra.</div>
+            <div>Clique em <strong>Analisar agora</strong>.</div>
+            <div>Confira documentos classificados, OCR e revisões pendentes.</div>
+            <div>Abra a revisão e aprove apenas os itens corretos.</div>
+          </div>
+          <div class="warn">A Central guarda rastreabilidade: quais documentos geraram quais revisões e quais itens foram enviados ao orçamento.</div>
+        </section>
+
+        <section id="importacao">
+          <h2>6. Importação, PDF e OCR</h2>
+          <p>O TLPlanly aceita Excel, CSV, PDF digital, PDF escaneado e imagens.</p>
+          <div class="two">
+            <div class="card">
+              <strong>Quando usar Importar Planilha/PDF</strong>
+              Quando você já tem uma planilha ou edital com tabela de itens.
+            </div>
+            <div class="card">
+              <strong>Quando usar Analisar Documentos</strong>
+              Quando você tem edital, TR, ETP, projeto básico e memorial, mas ainda não tem planilha pronta.
+            </div>
+          </div>
+          <h3>Fluxo de importação</h3>
+          <ol>
+            <li>Selecione um ou vários arquivos.</li>
+            <li>Clique em <strong>Extrair Dados</strong>.</li>
+            <li>Aguarde leitura, OCR, normalização e match com SINAPI.</li>
+            <li>Revise os itens extraídos.</li>
+            <li>Escolha preço do edital, SINAPI ou menor valor.</li>
+            <li>Confirme e envie para Elaboração.</li>
+          </ol>
+          <div class="danger">Nunca confirme itens com match parcial ou sem match sem revisar código, unidade, quantidade e preço.</div>
+        </section>
+
+        <section>
+          <h2>7. BDI, encargos e bases</h2>
+          <p>Configure o BDI antes de fechar o orçamento. O sistema usa a fórmula do Decreto 7.983/2013 e alerta sobre limites de referência do TCU.</p>
+          <div class="cards">
+            <div class="card"><strong>BDI</strong>Preencha AC, S, R, DF, L e I. Depois clique em Aplicar ao Orçamento.</div>
+            <div class="card"><strong>Encargos</strong>Escolha desonerado ou não desonerado conforme a obra e a base usada.</div>
+            <div class="card"><strong>Bases</strong>Confirme SINAPI, SICRO ou bases complementares conforme o tipo de obra.</div>
+          </div>
+        </section>
+
+        <section id="auditoria">
+          <h2>8. Auditoria e conformidade</h2>
+          <p>Use o <strong>Modo Auditor</strong> para conferir planilhas recebidas de terceiros.</p>
+          <ol>
+            <li>Importe ou monte a planilha.</li>
+            <li>Confira UF, tolerância e base de referência.</li>
+            <li>Abra <strong>Análise SINAPI</strong> e execute a auditoria.</li>
+            <li>Revise itens conformes, alertas, críticos e não encontrados.</li>
+            <li>Abra <strong>Conformidade BDI</strong> para checar o percentual aplicado.</li>
+          </ol>
+          <div class="ok">Use a Curva ABC antes da auditoria para priorizar os itens de maior impacto financeiro.</div>
+        </section>
+
+        <section id="relatorios">
+          <h2>9. Exportar e apresentar</h2>
+          <p>Na tela <strong>Exportar / Relatório</strong>, preencha dados da obra, órgão, responsável técnico, CREA/CAU e ART/RRT.</p>
+          <p>O relatório pode reunir planilha orçamentária, BDI, Curva ABC, encargos, planejamento, medições, quantitativos e anexos.</p>
+          <div class="flow">
+            <div>Preencha os dados da obra.</div>
+            <div>Escolha o modelo de relatório.</div>
+            <div>Pré-visualize as abas.</div>
+            <div>Exporte Excel profissional ou imprima em PDF.</div>
+          </div>
+        </section>
+
+        <section id="roteiros">
+          <h2>10. Roteiros rápidos</h2>
+          <div class="two">
+            <div class="card">
+              <strong>Construtora / orçamentista</strong>
+              <ol>
+                <li>Configurações</li>
+                <li>BDI / Encargos</li>
+                <li>Elaborar ou Importar</li>
+                <li>CPU, se necessário</li>
+                <li>Curva ABC</li>
+                <li>Exportar Relatório</li>
+              </ol>
+            </div>
+            <div class="card">
+              <strong>Órgão público / auditor</strong>
+              <ol>
+                <li>Importar proposta</li>
+                <li>Conferir UF e tolerância</li>
+                <li>Análise SINAPI</li>
+                <li>Curva ABC</li>
+                <li>Conformidade BDI</li>
+                <li>Relatório de auditoria</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <section id="problemas">
+          <h2>11. Problemas comuns</h2>
+          <table>
+            <tr><th>Problema</th><th>Solução</th></tr>
+            <tr><td>PDF não extraiu itens</td><td>Use OCR ou tente arquivo com maior resolução.</td></tr>
+            <tr><td>Item sem match</td><td>Revise código/descrição e pesquise manualmente na base.</td></tr>
+            <tr><td>BDI não configurado</td><td>Preencha componentes e clique em Aplicar ao Orçamento.</td></tr>
+            <tr><td>Salvamento pendente</td><td>Aguarde o status Salvo ou abra o painel de conta.</td></tr>
+            <tr><td>Quantidade errada</td><td>Confira OCR, vírgulas, unidade e memória quantitativa.</td></tr>
+          </table>
+        </section>
+
+        <section id="glossario">
+          <h2>12. Glossário rápido</h2>
+          <p><span class="tag">BDI</span> Benefícios e Despesas Indiretas.</p>
+          <p><span class="tag">SINAPI</span> Base Caixa/IBGE para custos da construção civil.</p>
+          <p><span class="tag">SICRO</span> Base DNIT para infraestrutura e rodovias.</p>
+          <p><span class="tag">CPU</span> Composição de Preço Unitário.</p>
+          <p><span class="tag">OCR</span> Reconhecimento de texto em imagem/PDF escaneado.</p>
+          <p><span class="tag">Curva ABC</span> Classificação dos itens por relevância financeira.</p>
+          <p><span class="tag">ETP / TR</span> Estudo Técnico Preliminar e Termo de Referência.</p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <footer>
+    TLPlanly-Orçamentos • Manual de Operação • Use este material em treinamentos, demonstrações e apresentações do sistema.
+  </footer>
+</body>
+</html>
