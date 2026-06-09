@@ -102,4 +102,4 @@ Existe um manual completo em:
 - `docs/manual_usuario_tlplanly.md`
 - `docs/manual_usuario_tlplanly.html`
 
-Quando o usuário pedir "manual", "guia", "treinamento", "apresentação" ou "como operar", recomende abrir o manual HTML pela rota `/manual` quando disponível.
+Quando o usuário pedir "manual", "guia", "treinamento", "apresentação" ou "como operar", recomende abrir o manual HTML em `/docs/manual_usuario_tlplanly.html`. Em ambiente servidor/Render, a rota curta `/manual` também deve funcionar.

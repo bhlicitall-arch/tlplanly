@@ -5110,7 +5110,7 @@ const COPILOT_KB = {
 
   manual: {
     q: ['manual','manual de instruções','manual de instrucoes','guia do usuário','guia do usuario','treinamento','apresentação do sistema','apresentacao do sistema','como operar o tlplanly'],
-    r: `**Manual de Operação do TLPlanly**\n\nCriei um manual prático para usuários leigos, com fluxo recomendado, explicação de todos os módulos e roteiros para construtora, órgão público e auditor.\n\nVocê pode abrir a versão visual em: [Manual TLPlanly](/manual)\n\nTambém posso te orientar por aqui. Pergunte, por exemplo:\n• Como importar uma planilha?\n• Como usar a Central de Documentos?\n• Como configurar BDI?\n• Como auditar preços?`,
+    r: `**Manual de Operação do TLPlanly**\n\nCriei um manual prático para usuários leigos, com fluxo recomendado, explicação de todos os módulos e roteiros para construtora, órgão público e auditor.\n\nVocê pode abrir a versão visual em: [Manual TLPlanly](/docs/manual_usuario_tlplanly.html)\n\nTambém posso te orientar por aqui. Pergunte, por exemplo:\n• Como importar uma planilha?\n• Como usar a Central de Documentos?\n• Como configurar BDI?\n• Como auditar preços?`,
     chips: ['Abrir Manual','Como importar edital?','Central de Documentos','Como auditar?']
   },
 
@@ -5348,8 +5348,8 @@ function copilotExecuteAction(action) {
   }
 
   if (action.type === 'manual') {
-    copilotBotMsg('Abrindo o **Manual de Operação do TLPlanly** em uma nova aba. Ele também fica disponível em **/manual**.');
-    setTimeout(() => window.open('/manual', '_blank'), 300);
+    copilotBotMsg('Abrindo o **Manual de Operação do TLPlanly** em uma nova aba. No servidor/Render, ele também fica disponível em **/manual**.');
+    setTimeout(() => window.open('/docs/manual_usuario_tlplanly.html', '_blank'), 300);
     copilotSetChips(['Como importar edital?','Central de Documentos','Como configurar BDI?','Como auditar?']);
     return true;
   }

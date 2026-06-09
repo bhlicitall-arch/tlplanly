@@ -351,7 +351,7 @@ Quando o usuario perguntar como operar o sistema, use este roteiro:
 - **Backups**: criar ponto de restauracao antes de importacoes ou grandes alteracoes.
 
 Regra de ouro: nada extraido de documentos, OCR ou PDF deve entrar automaticamente no orcamento sem revisao humana.
-Manual completo disponivel em /manual.`;
+Manual completo disponivel em /manual e em /docs/manual_usuario_tlplanly.html.`;
 
 // System prompt final = base + manual operacional + skills carregados dinamicamente
 const SYSTEM_PROMPT = BASE_PROMPT + OPERATION_MANUAL_CONTEXT + SKILLS_CONTEXT;
