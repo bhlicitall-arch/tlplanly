@@ -30,6 +30,7 @@
 
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">&#9788;</button>
   <button class="theme-btn" id="cloudBtn" onclick="cloudOpen()" title="Conta e obras salvas">&#128274;</button>
+  <button class="cloud-save-chip" id="cloudSaveChip" onclick="cloudOpen()" title="Estado do salvamento">Local</button>
 </div>
 
 <!-- SIDEBAR -->
@@ -1357,6 +1358,16 @@
         <span id="cloud-user-email"></span>
       </div>
       <button class="btn btn-outline btn-sm" onclick="cloudLogout()">Sair</button>
+    </div>
+    <div class="cloud-sync-box">
+      <div>
+        <span>Obra ativa</span>
+        <strong id="cloud-current-name">Nenhuma obra selecionada</strong>
+      </div>
+      <div>
+        <span>Sincronização</span>
+        <strong id="cloud-last-saved">Aguardando salvamento</strong>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Obra / orcamento salvo</label>

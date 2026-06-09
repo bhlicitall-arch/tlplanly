@@ -38,6 +38,9 @@ let CLOUD = {
   timer: null,
   saving: false,
   suppress: false,
+  dirty: false,
+  lastSavedAt: null,
+  error: null,
   persistence: 'local'
 };
 
@@ -175,6 +178,7 @@ function saveState() {
   try {
     normalizeState();
     localStorage.setItem('tlplanly_state', JSON.stringify(persistedState()));
+    cloudMarkDirty();
     cloudScheduleSave();
   } catch(e) {}
 }
@@ -263,6 +267,50 @@ function cloudSetStatus(message) {
   if (el) el.textContent = message;
 }
 
+function cloudClearSaveTimer() {
+  clearTimeout(CLOUD.timer);
+  CLOUD.timer = null;
+}
+
+function cloudCurrentProject() {
+  return CLOUD.projects.find(project => project.id === CLOUD.currentProjectId) || null;
+}
+
+function cloudLastSavedText() {
+  if (CLOUD.saving) return 'Salvando agora...';
+  if (CLOUD.error) return 'Erro ao salvar';
+  if (CLOUD.dirty) return 'Alterações pendentes';
+  if (CLOUD.lastSavedAt) return 'Salvo ' + new Date(CLOUD.lastSavedAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+  return CLOUD.user ? 'Aguardando salvamento' : 'Modo local';
+}
+
+function cloudRenderSaveStatus() {
+  const chip = document.getElementById('cloudSaveChip');
+  if (chip) {
+    let label = 'Local';
+    let cls = 'cloud-save-chip';
+    if (CLOUD.user && CLOUD.saving) { label = 'Salvando'; cls += ' saving'; }
+    else if (CLOUD.user && CLOUD.error) { label = 'Erro'; cls += ' error'; }
+    else if (CLOUD.user && CLOUD.dirty) { label = 'Pendente'; cls += ' pending'; }
+    else if (CLOUD.user && CLOUD.currentProjectId) { label = 'Salvo'; cls += ' ok'; }
+    else if (CLOUD.user) { label = 'Conta'; cls += ' pending'; }
+    chip.textContent = label;
+    chip.className = cls;
+    chip.title = CLOUD.user ? cloudLastSavedText() : 'Modo local. Entre para salvar obras na nuvem.';
+  }
+  const currentName = document.getElementById('cloud-current-name');
+  if (currentName) currentName.textContent = cloudCurrentProject()?.name || 'Nenhuma obra selecionada';
+  const saved = document.getElementById('cloud-last-saved');
+  if (saved) saved.textContent = cloudLastSavedText();
+}
+
+function cloudMarkDirty() {
+  if (CLOUD.suppress || !CLOUD.user || !CLOUD.currentProjectId) return;
+  CLOUD.dirty = true;
+  CLOUD.error = null;
+  cloudRenderSaveStatus();
+}
+
 function cloudOpen() {
   document.getElementById('cloud-backdrop').style.display = 'block';
   document.getElementById('cloud-modal').style.display = 'block';
@@ -288,6 +336,7 @@ function cloudRender() {
   }
   if (!logged) {
     cloudSetStatus('Modo local ativo');
+    cloudRenderSaveStatus();
     return;
   }
   document.getElementById('cloud-user-name').textContent = CLOUD.user.name || 'Usuario';
@@ -305,7 +354,8 @@ function cloudRender() {
       select.appendChild(opt);
     });
   }
-  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo`);
+  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · ${cloudLastSavedText()}`);
+  cloudRenderSaveStatus();
 }
 
 async function cloudInit() {
@@ -319,6 +369,7 @@ async function cloudInit() {
     CLOUD.user = null;
     cloudRender();
   }
+  cloudRenderSaveStatus();
 }
 
 async function cloudLogin() {
@@ -366,10 +417,16 @@ async function cloudRegister() {
 }
 
 async function cloudLogout() {
+  if (CLOUD.dirty && !confirm('Existem alterações pendentes na nuvem. Sair mesmo assim?')) return;
+  cloudClearSaveTimer();
   try { await cloudApi('/api/auth/logout', { method: 'POST', body: '{}' }); } catch {}
   CLOUD.user = null;
   CLOUD.projects = [];
   CLOUD.currentProjectId = '';
+  CLOUD.dirty = false;
+  CLOUD.saving = false;
+  CLOUD.error = null;
+  CLOUD.lastSavedAt = null;
   localStorage.removeItem('tlplanly_cloud_project');
   cloudRender();
   toast('Conta desconectada', 'info');
@@ -383,11 +440,20 @@ async function cloudRefreshProjects() {
     CLOUD.currentProjectId = CLOUD.projects[0]?.id || '';
   }
   if (CLOUD.currentProjectId) localStorage.setItem('tlplanly_cloud_project', CLOUD.currentProjectId);
+  const current = cloudCurrentProject();
+  if (current && !CLOUD.lastSavedAt) CLOUD.lastSavedAt = current.updatedAt;
 }
 
 function cloudSelectProject(id) {
+  if (CLOUD.dirty && id !== CLOUD.currentProjectId && !confirm('A obra atual tem alterações pendentes. Trocar a seleção sem carregar/salvar?')) {
+    cloudRender();
+    return;
+  }
+  if (CLOUD.dirty && id !== CLOUD.currentProjectId) cloudClearSaveTimer();
   CLOUD.currentProjectId = id || '';
   if (CLOUD.currentProjectId) localStorage.setItem('tlplanly_cloud_project', CLOUD.currentProjectId);
+  CLOUD.error = null;
+  cloudRender();
 }
 
 function cloudProjectName() {
@@ -399,12 +465,16 @@ function cloudProjectName() {
 async function cloudCreateProject() {
   if (!CLOUD.user) return cloudOpen();
   try {
+    cloudClearSaveTimer();
     cloudSetStatus('Criando obra...');
     const data = await cloudApi('/api/projects', {
       method: 'POST',
       body: JSON.stringify({ name: cloudProjectName(), state: persistedState() })
     });
     CLOUD.currentProjectId = data.project.id;
+    CLOUD.dirty = false;
+    CLOUD.error = null;
+    CLOUD.lastSavedAt = data.project.updatedAt || new Date().toISOString();
     localStorage.setItem('tlplanly_cloud_project', CLOUD.currentProjectId);
     await cloudRefreshProjects();
     cloudRender();
@@ -420,6 +490,8 @@ async function cloudSaveNow() {
   if (CLOUD.saving) return;
   try {
     CLOUD.saving = true;
+    CLOUD.error = null;
+    cloudRenderSaveStatus();
     cloudSetStatus('Salvando...');
     const data = await cloudApi(`/api/projects/${encodeURIComponent(CLOUD.currentProjectId)}`, {
       method: 'PUT',
@@ -427,23 +499,32 @@ async function cloudSaveNow() {
     });
     const idx = CLOUD.projects.findIndex(p => p.id === data.project.id);
     if (idx >= 0) CLOUD.projects[idx] = data.project;
+    CLOUD.dirty = false;
+    CLOUD.lastSavedAt = data.project.updatedAt || new Date().toISOString();
     cloudSetStatus('Salvo agora');
-    cloudRender();
   } catch (err) {
+    CLOUD.error = err.message || 'Erro ao salvar.';
     cloudSetStatus(err.message || 'Erro ao salvar.');
     toast(err.message || 'Erro ao salvar na nuvem.', 'error');
   } finally {
     CLOUD.saving = false;
+    cloudRender();
   }
 }
 
 async function cloudLoadSelectedProject() {
   if (!CLOUD.user || !CLOUD.currentProjectId) return;
+  if (CLOUD.dirty && !confirm('Existem alterações pendentes. Carregar outra versão da obra mesmo assim?')) return;
   try {
+    cloudClearSaveTimer();
     cloudSetStatus('Carregando obra...');
     const data = await cloudApi(`/api/projects/${encodeURIComponent(CLOUD.currentProjectId)}`);
     applyPersistedState(data.project.state || {});
+    CLOUD.dirty = false;
+    CLOUD.error = null;
+    CLOUD.lastSavedAt = data.project.updatedAt || new Date().toISOString();
     cloudSetStatus('Obra carregada');
+    cloudRender();
     cloudClose();
     toast('Obra carregada', 'success');
   } catch (err) {
@@ -453,9 +534,19 @@ async function cloudLoadSelectedProject() {
 
 function cloudScheduleSave() {
   if (CLOUD.suppress || !CLOUD.user || !CLOUD.currentProjectId) return;
-  clearTimeout(CLOUD.timer);
+  cloudClearSaveTimer();
+  CLOUD.dirty = true;
+  CLOUD.error = null;
+  cloudSetStatus('Alterações pendentes. Salvando em instantes...');
+  cloudRenderSaveStatus();
   CLOUD.timer = setTimeout(() => cloudSaveNow(), 1800);
 }
+
+window.addEventListener('beforeunload', event => {
+  if (!CLOUD.dirty) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 
 // ═══════════════════════════════════════════════════════════
 // THEME
