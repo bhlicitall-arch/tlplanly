@@ -48,7 +48,7 @@
   <div class="nav-item" onclick="showView('planejamento')"><span class="nav-icon">&#128197;</span>Planejamento</div>
   <div class="nav-item" onclick="showView('medicoes')"><span class="nav-icon">&#128202;</span>Medições</div>
   <div class="nav-item" onclick="showView('quantitativos')"><span class="nav-icon">&#128290;</span>Quantitativos</div>
-  <div class="nav-item" onclick="showView('documentos')"><span class="nav-icon">&#128451;</span>Anexos / Especificações</div>
+  <div class="nav-item" onclick="showView('documentos')"><span class="nav-icon">&#128451;</span>Central de Documentos</div>
   <div class="nav-item" onclick="showView('backups')"><span class="nav-icon">&#128190;</span>Backups</div>
   <div class="nav-section" style="margin-top:8px">Auditoria</div>
   <div class="nav-item" id="nav-auditoria" onclick="showView('auditoria')"><span class="nav-icon">&#128269;</span>Análise SINAPI<span class="nav-badge" id="auditBadge" style="display:none">!</span></div>
@@ -302,12 +302,42 @@
   </div>
 </div>
 
-<!-- ═══════════════ DOCUMENTOS / ESPECIFICAÇÕES ═══════════════ -->
+<!-- ═══════════════ CENTRAL DE DOCUMENTOS DA OBRA ═══════════════ -->
 <div id="view-documentos" class="view">
-  <div class="page-title">Anexos e <span class="gold-text">Especificações</span></div>
-  <div class="page-sub">Vincule documentos, fotos e textos técnicos a serviços, insumos ou capítulos</div>
+  <div class="page-title">Central de <span class="gold-text">Documentos da Obra</span></div>
+  <div class="page-sub">Guarde edital, TR, ETP, projeto básico, memorial, planilhas e pranchas com classificação e extração rastreável</div>
+
+  <div class="grid grid-4" style="margin-bottom:16px">
+    <div class="card"><div class="card-title">Documentos</div><div class="card-value" id="docs-kpi-total">0</div><div class="card-sub">anexados à obra</div></div>
+    <div class="card"><div class="card-title">Lotes</div><div class="card-value gold" id="docs-kpi-lotes">0</div><div class="card-sub">extrações realizadas</div></div>
+    <div class="card"><div class="card-title">OCR</div><div class="card-value green" id="docs-kpi-ocr">0</div><div class="card-sub">processados por imagem</div></div>
+    <div class="card"><div class="card-title">Pendências</div><div class="card-value red" id="docs-kpi-pend">0</div><div class="card-sub">revisões abertas</div></div>
+  </div>
 
   <div class="card" style="margin-bottom:16px">
+    <div class="sec-header">
+      <div class="sec-title">Fluxo <span>Inteligente</span></div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('doc-central-files').click()">Selecionar lote</button>
+        <button class="btn btn-outline btn-sm" onclick="docsCentralAnalisar()">Analisar agora</button>
+        <button class="btn btn-outline btn-sm" onclick="showView('importar')">Importar planilha/PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="docsAbrirUltimaRevisao()">Revisar extração</button>
+      </div>
+    </div>
+    <div class="upload-zone upload-zone-compact" id="docCentralUploadZone" onclick="document.getElementById('doc-central-files').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="docsCentralDrop(event)">
+      <div class="upload-icon">&#128220;</div>
+      <p>Anexe todos os documentos relacionados à planilha da obra</p>
+      <small>PDF digitalizado, PDF pesquisável, imagens, Excel, CSV, edital, TR, ETP, projeto básico, memorial e pranchas</small>
+    </div>
+    <input id="doc-central-files" type="file" accept=".pdf,.xlsx,.xls,.ods,.csv,.png,.jpg,.jpeg,.tif,.tiff" multiple style="display:none" onchange="docsCentralFileSelect(event)"/>
+    <div id="docs-central-file-chip" style="margin-top:12px;display:none"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-header"><div class="sec-title">Registro <span>Manual</span></div></div>
     <div class="grid grid-4" style="gap:10px">
       <div><label class="form-label">Vincular a</label><select id="doc-item" class="form-select"></select></div>
       <div><label class="form-label">Tipo</label><select id="doc-tipo" class="form-select"><option>Especificação técnica</option><option>Foto</option><option>ART/RRT</option><option>Memorial</option><option>Documento fiscal</option><option>Outro</option></select></div>
@@ -321,8 +351,18 @@
     </div>
   </div>
 
-  <div class="card">
-    <div id="docs-lista"></div>
+  <div class="grid grid-2" style="align-items:start">
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Documentos <span>Classificados</span></div></div>
+      <div id="docs-lista"></div>
+    </div>
+    <div class="card">
+      <div class="sec-header">
+        <div class="sec-title">Revisões de <span>Extração</span></div>
+        <button class="btn btn-outline btn-sm" onclick="docsExportarDossie()">Exportar dossiê .md</button>
+      </div>
+      <div id="docs-extracoes-lista"></div>
+    </div>
   </div>
 </div>
 
@@ -990,6 +1030,9 @@
         <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('parcial')" id="rfilt-parcial">&#126; Parcial</button>
         <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('nenhum')" id="rfilt-nenhum">&#10007; Sem match</button>
       </div>
+      <div class="ana-text-block" style="min-height:auto;margin-bottom:12px">
+        Nada entra no orçamento automaticamente. Revise seleção, descrição, unidade, quantidade, preço e referência antes de confirmar.
+      </div>
       <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
         <div style="display:flex;background:var(--bg3);padding:8px 12px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;gap:8px">
           <span style="width:22px"></span>
@@ -1106,6 +1149,9 @@
         <button class="btn btn-outline btn-sm" onclick="analisadorExportarMemoria()">Memória .md</button>
         <button class="btn btn-gold btn-sm" onclick="analisadorEnviarOrcamento()">Enviar para Elaborar Orçamento</button>
       </div>
+    </div>
+    <div class="ana-text-block" style="min-height:auto;margin-bottom:12px">
+      Estes serviços são uma primeira versão técnica. Valide confiança, quantidades, referências e pendências antes de enviar para Elaborar Orçamento.
     </div>
     <div id="ana-services-list"><div class="empty-state" style="padding:24px">A análise vai listar serviços sugeridos, confiança, referência SINAPI e composição preliminar.</div></div>
   </div>

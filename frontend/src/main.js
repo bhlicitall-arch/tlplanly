@@ -15,6 +15,7 @@ let STATE = {
   medicoes: [],
   quantitativos: {},
   documentos: [],
+  extracoes: [],
   backups: [],
   sinapiBase: [],     // { codigoSinapi, descricao, unidade, precoMedio, ... }
   sinapiMes: '',
@@ -54,6 +55,7 @@ try {
     STATE.medicoes = p.medicoes || [];
     STATE.quantitativos = p.quantitativos || {};
     STATE.documentos = p.documentos || [];
+    STATE.extracoes = p.extracoes || [];
     STATE.backups = p.backups || [];
     const legacyDefaultBDI = isLegacyDefaultBDI(p);
     STATE.bdiConfigured = !legacyDefaultBDI
@@ -140,6 +142,7 @@ function normalizeState() {
   STATE.medicoes = Array.isArray(STATE.medicoes) ? STATE.medicoes : [];
   STATE.quantitativos = STATE.quantitativos && typeof STATE.quantitativos === 'object' ? STATE.quantitativos : {};
   STATE.documentos = Array.isArray(STATE.documentos) ? STATE.documentos : [];
+  STATE.extracoes = Array.isArray(STATE.extracoes) ? STATE.extracoes : [];
   STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
   STATE.config = {
     uf:'MG',
@@ -190,6 +193,7 @@ function persistedState() {
     medicoes: STATE.medicoes,
     quantitativos: STATE.quantitativos,
     documentos: STATE.documentos,
+    extracoes: STATE.extracoes,
     backups: STATE.backups,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
@@ -206,6 +210,7 @@ function applyPersistedState(payload) {
   STATE.medicoes = Array.isArray(payload.medicoes) ? payload.medicoes : [];
   STATE.quantitativos = payload.quantitativos && typeof payload.quantitativos === 'object' ? payload.quantitativos : {};
   STATE.documentos = Array.isArray(payload.documentos) ? payload.documentos : [];
+  STATE.extracoes = Array.isArray(payload.extracoes) ? payload.extracoes : [];
   STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
   const legacyDefaultBDI = isLegacyDefaultBDI(payload);
   STATE.bdiConfigured = !legacyDefaultBDI
@@ -2018,6 +2023,102 @@ function quantAplicarNoOrcamento() {
   toast('Quantidade aplicada ao item do orçamento.', 'success');
 }
 
+let DOCS_CENTRAL_FILES = [];
+
+function docsCentralFileSelect(e) {
+  docsCentralSetFiles(Array.from(e.target.files || []));
+  e.target.value = '';
+}
+
+function docsCentralDrop(e) {
+  e.preventDefault();
+  document.getElementById('docCentralUploadZone')?.classList.remove('dragover');
+  docsCentralSetFiles(Array.from(e.dataTransfer?.files || []));
+}
+
+function docsCentralSetFiles(files) {
+  const validos = files.filter(f => IMPORT_EXTS.includes(getFileExt(f)));
+  if (!validos.length) { toast('Selecione documentos em PDF, imagem, Excel ou CSV.', 'error'); return; }
+  if (validos.length !== files.length) toast('Alguns arquivos foram ignorados por formato não suportado.', 'info');
+  DOCS_CENTRAL_FILES = validos;
+  docsCentralRenderFiles();
+}
+
+function docsCentralRenderFiles() {
+  const el = document.getElementById('docs-central-file-chip');
+  if (!el) return;
+  if (!DOCS_CENTRAL_FILES.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${DOCS_CENTRAL_FILES.map((f, idx) => `<div class="file-chip">${getImportFileIcon(f)} <span>${escapeHtml(f.name)}</span> <span style="color:var(--text3)">(${(f.size/1024).toFixed(0)} KB)</span> <span class="chip-remove" onclick="docsCentralRemoverArquivo(${idx})">×</span></div>`).join('')}
+    </div>
+    <small style="display:block;margin-top:4px;color:var(--text3)">${DOCS_CENTRAL_FILES.length} arquivo(s) prontos para análise. O OCR entra automaticamente quando necessário.</small>`;
+}
+
+function docsCentralRemoverArquivo(idx) {
+  DOCS_CENTRAL_FILES.splice(idx, 1);
+  docsCentralRenderFiles();
+}
+
+async function docsCentralAnalisar() {
+  if (!DOCS_CENTRAL_FILES.length) { toast('Selecione um lote de documentos primeiro.', 'error'); return; }
+  ANALISADOR.files = [...DOCS_CENTRAL_FILES];
+  DOCS_CENTRAL_FILES = [];
+  docsCentralRenderFiles();
+  analisadorRenderFiles();
+  showView('analisador');
+  await analisadorProcessar();
+}
+
+function docsAbrirUltimaRevisao() {
+  normalizeState();
+  const revisao = [...STATE.extracoes].find(e => e.status === 'pendente') || STATE.extracoes[0];
+  if (!revisao) { toast('Nenhuma extração disponível para revisão.', 'info'); return; }
+  docsAbrirRevisao(revisao.id);
+}
+
+function docsAbrirRevisao(id) {
+  const ext = STATE.extracoes.find(e => e.id === id);
+  if (!ext) return;
+  if (ext.tipo === 'importacao') docsAbrirImportacao(id);
+  else docsAbrirAnalise(id);
+}
+
+function docsAbrirAnalise(id) {
+  const ext = STATE.extracoes.find(e => e.id === id);
+  if (!ext) return;
+  ANALISADOR = {
+    files: [],
+    docs: (ext.docs || []).map(d => ({ ...d, text:d.textPreview || '', items:[] })),
+    services: (ext.services || []).map(s => ({ ...s })),
+    escopo: ext.escopo || [],
+    especificacoes: ext.especificacoes || [],
+    memoria: ext.memoria || '',
+    extracaoId: ext.id
+  };
+  showView('analisador');
+  analisadorRenderFiles();
+  analisadorRender();
+  toast('Revisão carregada. Valide os itens antes de enviar ao orçamento.', 'info');
+}
+
+function docsAbrirImportacao(id) {
+  const ext = STATE.extracoes.find(e => e.id === id);
+  if (!ext) return;
+  IMP.files = [];
+  IMP.file = null;
+  IMP.rawItems = ext.items || [];
+  IMP.reviewed = (ext.reviewed || ext.items || []).map(r => ({ ...r }));
+  IMP.importResults = ext.docs || [];
+  IMP.markdown = ext.memoria || gerarMemoriaImportacao(IMP.importResults);
+  IMP.extracaoId = ext.id;
+  IMP.origemRapida = 'elaborar';
+  showView('importar');
+  mostrarRevisao();
+  toast('Revisão de importação carregada. Confirme antes de enviar ao orçamento.', 'info');
+}
+
 function docsAdicionar() {
   const targetId = document.getElementById('doc-item')?.value || 'obra';
   const titulo = document.getElementById('doc-titulo')?.value?.trim();
@@ -2030,6 +2131,8 @@ function docsAdicionar() {
     titulo,
     texto: document.getElementById('doc-texto')?.value || '',
     files,
+    origem: 'manual',
+    status: 'manual',
     criadoEm: new Date().toLocaleString('pt-BR')
   });
   saveState();
@@ -2043,20 +2146,69 @@ function docsAdicionar() {
 function docsRender() {
   normalizeState();
   preencherSelectsOperacionais();
+  docsRenderKpis();
+  docsRenderExtracoes();
   const el = document.getElementById('docs-lista');
   if (!el) return;
   el.innerHTML = STATE.documentos.length ? `<div class="op-list">${STATE.documentos.map(d => {
     const item = d.targetId === 'obra' ? null : getItemById(d.targetId);
+    const status = d.status || (d.origem === 'manual' ? 'manual' : 'pendente');
+    const statusLabel = status === 'enviado' ? 'Enviado ao orçamento' : status === 'manual' ? 'Manual' : 'Aguardando revisão';
+    const statusClass = status === 'enviado' ? 'doc-status-enviado' : status === 'manual' ? 'doc-status-manual' : 'doc-status-pendente';
+    const origem = d.origem === 'analisador' ? 'Analisador' : d.origem === 'importacao' ? 'Importação' : 'Registro manual';
     return `<div class="op-row">
       <div class="op-row-main">
         <div class="op-title">${escapeHtml(d.titulo)}</div>
-        <div class="op-meta">${escapeHtml(d.tipo)} · ${d.criadoEm} · ${d.targetId === 'obra' ? 'Obra / Geral' : escapeHtml(itemLabel(item))}</div>
-        ${d.texto ? `<div style="font-size:12px;color:var(--text2);margin-top:8px">${escapeHtml(d.texto)}</div>` : ''}
+        <div class="op-meta">${escapeHtml(d.tipo)} · ${escapeHtml(origem)} · ${d.criadoEm || '—'} · ${d.targetId === 'obra' ? 'Obra / Geral' : escapeHtml(itemLabel(item))}</div>
+        ${d.metodo ? `<div class="op-meta">Método: ${escapeHtml(d.metodo)}${d.confianca ? ` · Confiança: ${d.confianca}%` : ''}${d.itensExtraidos !== undefined ? ` · ${d.itensExtraidos} item(ns) explícito(s)` : ''}</div>` : ''}
+        ${d.texto ? `<div class="doc-preview">${escapeHtml(d.texto)}</div>` : ''}
         ${d.files?.length ? `<div class="op-meta" style="margin-top:6px">Arquivos: ${d.files.map(f => escapeHtml(f.name)).join(', ')}</div>` : ''}
       </div>
-      <button class="btn btn-danger btn-sm" onclick="docsRemover('${d.id}')">×</button>
+      <div class="doc-card-actions">
+        <span class="doc-status ${statusClass}">${statusLabel}</span>
+        ${d.extracaoId ? `<button class="btn btn-outline btn-sm" onclick="docsAbrirRevisao('${d.extracaoId}')">Revisar</button>` : ''}
+        <button class="btn btn-danger btn-sm" onclick="docsRemover('${d.id}')">×</button>
+      </div>
     </div>`;
   }).join('')}</div>` : '<div class="empty-state" style="padding:24px">Nenhum anexo ou especificação registrado.</div>';
+}
+
+function docsRenderKpis() {
+  const docs = STATE.documentos || [];
+  const ext = STATE.extracoes || [];
+  setText('docs-kpi-total', docs.length);
+  setText('docs-kpi-lotes', ext.length);
+  setText('docs-kpi-ocr', docs.filter(d => /ocr/i.test(d.metodo || '')).length);
+  setText('docs-kpi-pend', ext.filter(e => e.status === 'pendente').length);
+}
+
+function docsRenderExtracoes() {
+  const el = document.getElementById('docs-extracoes-lista');
+  if (!el) return;
+  const extracoes = STATE.extracoes || [];
+  if (!extracoes.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px">Nenhuma extração registrada. Selecione um lote ou importe uma planilha/PDF.</div>';
+    return;
+  }
+  el.innerHTML = `<div class="op-list">${extracoes.map(e => {
+    const statusClass = e.status === 'enviado' ? 'doc-status-enviado' : 'doc-status-pendente';
+    const statusLabel = e.status === 'enviado' ? 'Enviado ao orçamento' : 'Aguardando revisão';
+    const total = e.tipo === 'importacao' ? (e.reviewed?.length || e.items?.length || 0) : (e.services?.length || 0);
+    const selected = e.tipo === 'importacao'
+      ? (e.reviewed || []).filter(i => i.selecionado !== false).length
+      : (e.services || []).filter(i => i.selecionado !== false).length;
+    return `<div class="op-row">
+      <div class="op-row-main">
+        <div class="op-title">${escapeHtml(e.titulo || 'Extração de documentos')}</div>
+        <div class="op-meta">${escapeHtml(e.tipo === 'importacao' ? 'Importação de planilha/PDF' : 'Análise de documentos')} · ${escapeHtml(e.criadoEm || '—')} · ${e.docs?.length || 0} documento(s)</div>
+        <div class="op-meta">${selected}/${total} item(ns) selecionado(s) para revisão · ${e.enviadoEm ? 'Enviado em ' + escapeHtml(e.enviadoEm) : 'não enviado'}</div>
+      </div>
+      <div class="doc-card-actions">
+        <span class="doc-status ${statusClass}">${statusLabel}</span>
+        <button class="btn btn-outline btn-sm" onclick="docsAbrirRevisao('${e.id}')">Abrir revisão</button>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function docsRemover(id) {
@@ -2073,7 +2225,111 @@ function docsExportarDossie() {
     if (d.texto) lines.push(d.texto, '');
     if (d.files?.length) lines.push('Arquivos: ' + d.files.map(f => f.name).join(', '), '');
   });
+  lines.push('', '## Revisões e extrações', '');
+  (STATE.extracoes || []).forEach(e => {
+    lines.push(`### ${e.titulo || 'Extração'}`, '', `- Tipo: ${e.tipo}`, `- Status: ${e.status}`, `- Criado em: ${e.criadoEm}`, `- Documentos: ${e.docs?.length || 0}`, `- Itens/serviços: ${(e.reviewed || e.services || e.items || []).length}`, '');
+  });
   downloadText(lines.join('\n'), 'dossie_tecnico_tlplanly.md', 'text/markdown');
+}
+
+function docsCompactDoc(doc) {
+  return {
+    id: doc.id || makeId('docmeta'),
+    fileName: doc.fileName || doc.name || 'Documento da obra',
+    name: doc.fileName || doc.name || 'Documento da obra',
+    size: doc.size || 0,
+    ext: doc.ext || '',
+    metodo: doc.metodo || '',
+    tipo: doc.tipo || 'Documento Técnico',
+    confianca: doc.confianca || 0,
+    itemsCount: doc.items?.length || doc.itemsCount || 0,
+    textPreview: String(doc.text || doc.rawText || '').slice(0, 1400)
+  };
+}
+
+function docsCompactItems(list, max = 500) {
+  return (list || []).slice(0, max).map(i => ({
+    selecionado: i.selecionado !== false,
+    cod: i.cod || i.sugestao || '',
+    sugestao: i.sugestao || '',
+    desc: i.desc || '',
+    unid: i.unid || i.refUnid || 'UN',
+    qtd: Number(i.qtd) || 1,
+    preco: Number(i.preco) || 0,
+    ref: Number(i.ref || i.refSinapi) || 0,
+    refSinapi: Number(i.refSinapi || i.ref) || 0,
+    refDesc: i.refDesc || '',
+    refUnid: i.refUnid || '',
+    matchTipo: i.matchTipo || 'nenhum',
+    cat: i.cat || 'Serviços',
+    origemArquivo: i.origemArquivo || '',
+    origemMetodo: i.origemMetodo || '',
+    metodo: i.metodo || '',
+    composicao: i.composicao || [],
+    pendencias: i.pendencias || [],
+    confidence: Number(i.confidence || i.confianca) || 0
+  }));
+}
+
+function docsUpsertDocumentoFromMeta(meta, origem, extracaoId, status = 'pendente') {
+  const key = `${origem}:${meta.fileName || meta.name}:${meta.size || 0}`;
+  const idx = STATE.documentos.findIndex(d => d.docKey === key);
+  const doc = {
+    id: idx >= 0 ? STATE.documentos[idx].id : makeId('doc'),
+    docKey: key,
+    targetId: 'obra',
+    tipo: meta.tipo || 'Documento Técnico',
+    titulo: meta.fileName || meta.name || 'Documento da obra',
+    texto: meta.textPreview || '',
+    files: [{ name: meta.fileName || meta.name || 'arquivo', size: meta.size || 0, type: meta.ext || '' }],
+    origem,
+    status,
+    metodo: meta.metodo || '',
+    confianca: meta.confianca || 0,
+    itensExtraidos: meta.itemsCount || 0,
+    extracaoId,
+    criadoEm: idx >= 0 ? STATE.documentos[idx].criadoEm : new Date().toLocaleString('pt-BR')
+  };
+  if (idx >= 0) STATE.documentos[idx] = { ...STATE.documentos[idx], ...doc };
+  else STATE.documentos.unshift(doc);
+}
+
+function docsPersistirExtracao(payload) {
+  normalizeState();
+  const currentId = payload.id || makeId('ext');
+  const record = {
+    id: currentId,
+    tipo: payload.tipo || 'analisador',
+    titulo: payload.titulo || 'Extração de documentos',
+    status: payload.status || 'pendente',
+    criadoEm: payload.criadoEm || new Date().toLocaleString('pt-BR'),
+    enviadoEm: payload.enviadoEm || '',
+    docs: payload.docs || [],
+    services: docsCompactItems(payload.services || []),
+    items: docsCompactItems(payload.items || []),
+    reviewed: docsCompactItems(payload.reviewed || []),
+    escopo: payload.escopo || [],
+    especificacoes: payload.especificacoes || [],
+    memoria: String(payload.memoria || '').slice(0, 12000)
+  };
+  const idx = STATE.extracoes.findIndex(e => e.id === currentId);
+  if (idx >= 0) STATE.extracoes[idx] = { ...STATE.extracoes[idx], ...record };
+  else STATE.extracoes.unshift(record);
+  STATE.extracoes = STATE.extracoes.slice(0, 20);
+  record.docs.forEach(d => docsUpsertDocumentoFromMeta(d, record.tipo === 'importacao' ? 'importacao' : 'analisador', record.id, record.status));
+  saveState();
+  docsRender();
+  return record.id;
+}
+
+function docsMarcarExtracaoEnviada(id, servicesOrItems) {
+  const ext = STATE.extracoes.find(e => e.id === id);
+  if (!ext) return;
+  ext.status = 'enviado';
+  ext.enviadoEm = new Date().toLocaleString('pt-BR');
+  if (ext.tipo === 'importacao') ext.reviewed = docsCompactItems(servicesOrItems || ext.reviewed || ext.items || []);
+  else ext.services = docsCompactItems(servicesOrItems || ext.services || []);
+  STATE.documentos.forEach(d => { if (d.extracaoId === id) d.status = 'enviado'; });
 }
 
 function backupPayload() {
@@ -2083,6 +2339,7 @@ function backupPayload() {
     medicoes: STATE.medicoes,
     quantitativos: STATE.quantitativos,
     documentos: STATE.documentos,
+    extracoes: STATE.extracoes,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
     bdiComponents: STATE.bdiComponents,
@@ -2143,6 +2400,7 @@ let IMP = {
   importResults: [],
   markdown: '',
   filtro: 'todos',
+  extracaoId: '',
   origemRapida: ''
 };
 
@@ -2235,7 +2493,7 @@ function resetarImportacao() {
   document.getElementById('imp-card-progress').style.display = 'none';
   document.getElementById('imp-card-review').style.display = 'none';
   document.getElementById('imp-card-upload').style.display = 'block';
-  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = ''; IMP.origemRapida = '';
+  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = ''; IMP.extracaoId = ''; IMP.origemRapida = '';
 }
 
 function setStep(steps, idx, status, statusText) {
@@ -2436,7 +2694,8 @@ function gerarMemoriaImportacao(results) {
   ];
 
   results.forEach((r, idx) => {
-    linhas.push(`${idx + 1}. **${r.fileName}** - ${r.metodo} - ${r.items.length} item(ns)`);
+    const count = r.items?.length ?? r.itemsCount ?? 0;
+    linhas.push(`${idx + 1}. **${r.fileName || r.name || 'Documento'}** - ${r.metodo || 'Extração'} - ${count} item(ns)`);
     if (r.aviso) linhas.push(`   - Aviso: ${r.aviso}`);
   });
 
@@ -2445,8 +2704,8 @@ function gerarMemoriaImportacao(results) {
   linhas.push('|---|---|---:|---|---:|---:|---:|');
 
   results.forEach(r => {
-    r.items.forEach(item => {
-      linhas.push(`| ${mdCell(r.fileName)} | ${mdCell(r.metodo)} | ${mdCell(item.cod || '-')} | ${mdCell(item.desc || '-')} | ${mdCell(item.unid || 'UN')} | ${item.qtd || 0} | ${item.preco || 0} |`);
+    (r.items || []).forEach(item => {
+      linhas.push(`| ${mdCell(r.fileName || r.name)} | ${mdCell(r.metodo)} | ${mdCell(item.cod || '-')} | ${mdCell(item.desc || '-')} | ${mdCell(item.unid || 'UN')} | ${item.qtd || 0} | ${item.preco || 0} |`);
     });
   });
 
@@ -2695,6 +2954,31 @@ function mostrarRevisao() {
   }
   filtrarRevisao('todos');
   atualizarStatsRevisao();
+  persistirImportacaoComoExtracao();
+}
+
+function persistirImportacaoComoExtracao(status = '') {
+  if (!IMP.reviewed.length && !IMP.importResults.length) return;
+  const atual = STATE.extracoes.find(e => e.id === IMP.extracaoId);
+  const docs = (IMP.importResults || []).map(r => docsCompactDoc({
+    ...r,
+    fileName: r.fileName || r.name,
+    tipo: r.tipo || (SPREADSHEET_EXTS.includes(r.ext) ? 'Planilha Orçamentária' : 'Documento Técnico'),
+    confianca: r.confianca || (r.metodo && /ocr/i.test(r.metodo) ? 72 : 86),
+    itemsCount: r.items?.length || r.itemsCount || 0,
+    text: r.rawText || r.textPreview || ''
+  }));
+  IMP.extracaoId = docsPersistirExtracao({
+    id: IMP.extracaoId || '',
+    tipo: 'importacao',
+    titulo: `Importação de ${docs.length || 1} arquivo(s)`,
+    status: status || atual?.status || 'pendente',
+    enviadoEm: atual?.enviadoEm || '',
+    docs,
+    items: IMP.rawItems,
+    reviewed: IMP.reviewed,
+    memoria: IMP.markdown || gerarMemoriaImportacao(IMP.importResults)
+  });
 }
 
 function filtrarRevisao(f) {
@@ -2787,6 +3071,7 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
   if (acao === 'substituir') STATE.orcamento = novos;
   else STATE.orcamento = [...STATE.orcamento, ...novos];
 
+  if (IMP.extracaoId) docsMarcarExtracaoEnviada(IMP.extracaoId, IMP.reviewed);
   saveState();
   renderElaborar();
   renderDashboard();
@@ -2808,7 +3093,8 @@ let ANALISADOR = {
   services: [],
   escopo: [],
   especificacoes: [],
-  memoria: ''
+  memoria: '',
+  extracaoId: ''
 };
 
 const ANALISADOR_CATALOGO = [
@@ -2869,7 +3155,7 @@ function analisadorRemoverArquivo(idx) {
 }
 
 function analisadorLimpar() {
-  ANALISADOR = { files: [], docs: [], services: [], escopo: [], especificacoes: [], memoria: '' };
+  ANALISADOR = { files: [], docs: [], services: [], escopo: [], especificacoes: [], memoria: '', extracaoId: '' };
   const input = document.getElementById('anaFileInput');
   if (input) input.value = '';
   analisadorRenderFiles();
@@ -2911,6 +3197,17 @@ async function analisadorProcessar() {
     setAnaProgress(84, 'Gerando serviços e composições preliminares...');
     ANALISADOR.services = analisadorGerarServicos(ANALISADOR.docs);
     ANALISADOR.memoria = analisadorGerarMemoria();
+    ANALISADOR.extracaoId = docsPersistirExtracao({
+      id: ANALISADOR.extracaoId || '',
+      tipo: 'analisador',
+      titulo: `Análise de ${ANALISADOR.docs.length} documento(s) da obra`,
+      status: 'pendente',
+      docs: ANALISADOR.docs.map(d => docsCompactDoc(d)),
+      services: ANALISADOR.services,
+      escopo: ANALISADOR.escopo,
+      especificacoes: ANALISADOR.especificacoes,
+      memoria: ANALISADOR.memoria
+    });
 
     setAnaProgress(100, 'Análise concluída.');
     analisadorRender();
@@ -3292,6 +3589,7 @@ function analisadorEnviarOrcamento() {
     pendencias: s.pendencias
   }));
   STATE.orcamento = [...STATE.orcamento, ...novos];
+  if (ANALISADOR.extracaoId) docsMarcarExtracaoEnviada(ANALISADOR.extracaoId, ANALISADOR.services);
   saveState();
   renderElaborar();
   renderDashboard();
@@ -4921,7 +5219,7 @@ const COPILOT_KB = {
 
   gestao_obra: {
     q: ['planejamento','medição','medicao','gantt','curva s','quantitativos','anexos','backup','acompanhamento'],
-    r: `**Gestão da Obra no TLPlanly**\n\nAgora o orçamento não fica isolado. Você pode:\n\n• Gerar **Planejamento** a partir dos itens do orçamento\n• Registrar **Medições** por período\n• Criar **Quantitativos vinculados** com fórmulas\n• Vincular **anexos e especificações** por item\n• Criar **backups/pontos de restauração**\n\nFluxo recomendado: orçamento → quantitativos → planejamento → medições → relatório completo.`,
+    r: `**Gestão da Obra no TLPlanly**\n\nAgora o orçamento não fica isolado. Você pode:\n\n• Gerar **Planejamento** a partir dos itens do orçamento\n• Registrar **Medições** por período\n• Criar **Quantitativos vinculados** com fórmulas\n• Usar a **Central de Documentos** com lote, OCR, classificação e revisão\n• Criar **backups/pontos de restauração**\n\nFluxo recomendado: documentos → orçamento → quantitativos → planejamento → medições → relatório completo.`,
     chips: ['Ir para Planejamento','Ir para Medições','Ir para Quantitativos','Ir para Anexos','Ir para Backups']
   },
 
@@ -4967,7 +5265,7 @@ const VIEW_CONTEXT = {
   medicoes:     { nome: 'Medições', dica: 'Registre quantidades executadas por período e acompanhe saldo, avanço e excedentes.' },
   quantitativos:{ nome: 'Quantitativos', dica: 'Crie fórmulas auxiliares vinculadas aos serviços e aplique o resultado à quantidade contratada.' },
   analisador:   { nome: 'Analisador de Documentos', dica: 'Anexe edital, TR, ETP, projeto básico, memorial e projetos para gerar uma pré-planilha revisável com serviços, confiança e pendências.' },
-  documentos:   { nome: 'Anexos / Especificações', dica: 'Registre especificações, fotos e documentos vinculados à obra ou a itens do orçamento.' },
+  documentos:   { nome: 'Central de Documentos', dica: 'Anexe lotes de documentos da obra, rode OCR/classificação, reabra revisões e mantenha rastreabilidade até o orçamento.' },
   backups:      { nome: 'Backups', dica: 'Crie pontos de restauração locais para orçamento, planejamento, medições e anexos.' },
   auditoria:    { nome: 'Análise SINAPI', dica: 'Compare os preços do orçamento com a tabela SINAPI e identifique desvios acima da tolerância.' },
   conformidade: { nome: 'Conformidade BDI', dica: 'Verifique se o BDI calculado está dentro dos limites do TCU Acórdão 2622/2013.' },
@@ -5012,7 +5310,7 @@ function copilotDetectPendingAction(txt) {
   if (/(planejamento|gantt|curva s|cronograma)/.test(norm)) return copilotActionForView('planejamento');
   if (/(medicao|medicoes|medir|executado|acompanhamento)/.test(norm)) return copilotActionForView('medicoes');
   if (/(quantitativo|quantitativos|formula|memoria quantitativa)/.test(norm)) return copilotActionForView('quantitativos');
-  if (/(anexo|anexos|documento|especificacao|foto)/.test(norm)) return copilotActionForView('documentos');
+  if (/(central de documentos|anexo|anexos|documento|documentos|especificacao|foto|dossie|dossiê)/.test(norm)) return copilotActionForView('documentos');
   if (/(backup|restaurar|restauracao|versao)/.test(norm)) return copilotActionForView('backups');
   if (/(orcamento|elaborar|insumo)/.test(norm)) return copilotActionForView('elaborar');
   if (/(auditoria|auditar|conformidade|sinapi)/.test(norm)) return copilotActionForView('auditoria');
@@ -5438,7 +5736,7 @@ async function copilotResponder(txt) {
     { keys:['ir para planejamento','abrir planejamento','ir para cronograma','abrir gantt','ir para gantt'], view:'planejamento' },
     { keys:['ir para medicoes','ir para medicao','abrir medicoes','abrir medicao','ir para acompanhamento'], view:'medicoes' },
     { keys:['ir para quantitativos','ir para quantitativo','abrir quantitativos','abrir quantitativo'], view:'quantitativos' },
-    { keys:['ir para anexos','ir para documentos','ir para especificacoes','abrir anexos'], view:'documentos' },
+    { keys:['ir para anexos','ir para documentos','ir para central de documentos','ir para especificacoes','abrir anexos','abrir central de documentos'], view:'documentos' },
     { keys:['ir para backups','ir para backup','abrir backups','restaurar backup'], view:'backups' },
     { keys:['ir para analisar documentos','ir para analisador','abrir analisador','analisar documentos','abrir documentos da obra'], view:'analisador' },
     { keys:['ir para auditoria','ir para analise sinapi'], view:'auditoria' },
