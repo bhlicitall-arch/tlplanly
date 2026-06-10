@@ -641,11 +641,27 @@ const htmlCaminhos = [
   'frontend/index.html',
   'tlplanly.html',
 ];
-app.get('/', (_req, res) => {
-  for (const p of htmlCaminhos) {
-    if (fs.existsSync(p)) { res.sendFile(path.resolve(p)); return; }
+const standaloneHtmlCaminhos = [
+  path.join(__dirname, '../../tlplanly.html'),
+  path.join(__dirname, '../tlplanly.html'),
+  'tlplanly.html',
+];
+
+function sendFirstExisting(res: Response, pathsToTry: string[], fallbackMessage: string): void {
+  for (const p of pathsToTry) {
+    if (fs.existsSync(p)) {
+      res.sendFile(path.resolve(p));
+      return;
+    }
   }
-  res.status(404).send('tlplanly.html não encontrado');
+  res.status(404).send(fallbackMessage);
+}
+app.get('/', (_req, res) => {
+  sendFirstExisting(res, htmlCaminhos, 'tlplanly.html nao encontrado');
+});
+
+app.get('/tlplanly.html', (_req, res) => {
+  sendFirstExisting(res, standaloneHtmlCaminhos, 'tlplanly.html nao encontrado');
 });
 app.get('/manual', (_req, res) => {
   const manualPaths = [
@@ -658,7 +674,13 @@ app.get('/manual', (_req, res) => {
   }
   res.status(404).send('manual_usuario_tlplanly.html nao encontrado');
 });
-app.use(express.static(path.join(__dirname, '../..')));
+[
+  path.join(__dirname, '..'),
+  path.join(__dirname, '../..'),
+  process.cwd(),
+].forEach(root => {
+  if (fs.existsSync(root)) app.use(express.static(path.resolve(root)));
+});
 
 // ── Start ─────────────────────────────────────────────────────────────────
 async function startServer() {

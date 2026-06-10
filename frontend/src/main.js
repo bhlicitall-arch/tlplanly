@@ -806,7 +806,7 @@ function renderElaborar() {
     return;
   }
   const rows = STATE.orcamento.map((it, i) => {
-    const total = it.qtd * it.preco;
+    const total = itemValor(it);
     const desvHtml = desvioHtml(it);
     return `<tr>
       <td class="td-mono">${i+1}</td>
@@ -833,7 +833,7 @@ function renderElaborar() {
     </tr>`;
   });
   tb.innerHTML = rows.join('');
-  const sub = STATE.orcamento.reduce((s, it) => s + it.qtd * it.preco, 0);
+  const sub = STATE.orcamento.reduce((s, it) => s + itemValor(it), 0);
   const total = totalComBDI(sub);
   document.getElementById('elab-sub').textContent = fmtMoeda(sub);
   document.getElementById('elab-total').textContent = fmtMoeda(total);
@@ -854,7 +854,7 @@ function desvioHtml(it) {
 }
 
 function atualizarTotaisElaborar() {
-  const sub = STATE.orcamento.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.preco) || 0), 0);
+  const sub = STATE.orcamento.reduce((s, it) => s + itemValor(it), 0);
   const total = totalComBDI(sub);
   const subEl = document.getElementById('elab-sub');
   const totalEl = document.getElementById('elab-total');
@@ -869,14 +869,17 @@ function atualizarLinhaElaborar(idx) {
   if (!it) return;
   const rowTotal = document.getElementById('elab-row-total-' + idx);
   const desv = document.getElementById('elab-desv-' + idx);
-  if (rowTotal) rowTotal.textContent = fmtMoeda((Number(it.qtd) || 0) * (Number(it.preco) || 0));
+  if (rowTotal) rowTotal.textContent = fmtMoeda(itemValor(it));
   if (desv) desv.innerHTML = desvioHtml(it);
 }
 
 function editarItemCampo(idx, campo, valor) {
   const it = STATE.orcamento[idx];
   if (!it) return;
-  if (['qtd','preco','ref'].includes(campo)) it[campo] = parseFloat(String(valor).replace(',', '.')) || 0;
+  if (['qtd','preco','ref'].includes(campo)) {
+    it[campo] = parseFloat(String(valor).replace(',', '.')) || 0;
+    if (['qtd','preco'].includes(campo)) it.totalLinha = 0;
+  }
   else it[campo] = String(valor || '').trim();
   if (campo === 'cat' && !it.capitulo) it.capitulo = it.cat;
   saveState();
@@ -894,7 +897,7 @@ function exportarOrcamento() {
     bdiConfigured: STATE.bdiConfigured,
     moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
     itens: STATE.orcamento,
-    subtotal: STATE.orcamento.reduce((s, it)=>s+it.qtd*it.preco, 0)
+    subtotal: STATE.orcamento.reduce((s, it)=>s+itemValor(it), 0)
   };
   downloadJSON(data, nome.replace(/\s+/g,'_') + '_TLPlanly.json');
   toast('Orçamento exportado', 'success');
@@ -1144,19 +1147,23 @@ function showEncargos(tipo) {
 function gerarCurvaABC() {
   const limA = parseFloat(document.getElementById('abc-limA').value) || 80;
   const limB = parseFloat(document.getElementById('abc-limB').value) || 95;
-  const items = [...STATE.orcamento];
+  const { items: validos, bloqueados } = orcamentoAuditadoParaRelatorio();
+  const items = [...validos];
 
   if (!items.length) {
-    document.getElementById('abc-tabela').innerHTML = '<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text3)">Orçamento vazio. Adicione itens primeiro.</td></tr>';
+    const msg = bloqueados.length
+      ? `${bloqueados.length} item(ns) bloqueado(s) pela auditoria. Corrija ou reimporte antes de gerar a Curva ABC.`
+      : 'Orçamento vazio. Adicione itens primeiro.';
+    document.getElementById('abc-tabela').innerHTML = `<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text3)">${msg}</td></tr>`;
     return;
   }
 
-  items.sort((a,b) => (b.qtd*b.preco) - (a.qtd*a.preco));
-  const totalGeral = items.reduce((s,i)=>s+i.qtd*i.preco,0);
+  items.sort((a,b) => itemValor(b) - itemValor(a));
+  const totalGeral = items.reduce((s,i)=>s+itemValor(i),0);
 
   let acum = 0;
   const rows = items.map((it,idx) => {
-    const total = it.qtd * it.preco;
+    const total = itemValor(it);
     const pctItem = totalGeral > 0 ? total/totalGeral*100 : 0;
     acum += pctItem;
     const classe = acum <= limA ? 'A' : acum <= limB ? 'B' : 'C';
@@ -1184,9 +1191,9 @@ function gerarCurvaABC() {
   const cntA = items.filter(i=>i._classe==='A').length;
   const cntB = items.filter(i=>i._classe==='B').length;
   const cntC = items.filter(i=>i._classe==='C').length;
-  const valA = items.filter(i=>i._classe==='A').reduce((s,i)=>s+i.qtd*i.preco,0);
-  const valB = items.filter(i=>i._classe==='B').reduce((s,i)=>s+i.qtd*i.preco,0);
-  const valC = items.filter(i=>i._classe==='C').reduce((s,i)=>s+i.qtd*i.preco,0);
+  const valA = items.filter(i=>i._classe==='A').reduce((s,i)=>s+itemValor(i),0);
+  const valB = items.filter(i=>i._classe==='B').reduce((s,i)=>s+itemValor(i),0);
+  const valC = items.filter(i=>i._classe==='C').reduce((s,i)=>s+itemValor(i),0);
 
   document.getElementById('abc-A-pct').textContent = totalGeral > 0 ? (valA/totalGeral*100).toFixed(1)+'%' : '0%';
   document.getElementById('abc-B-pct').textContent = totalGeral > 0 ? (valB/totalGeral*100).toFixed(1)+'%' : '0%';
@@ -1254,7 +1261,7 @@ function renderMemoria() {
   const bdi = bdiValue();
 
   const blocks = STATE.orcamento.map((it, i) => {
-    const total = it.qtd * it.preco;
+    const total = itemValor(it);
     const totalBDI = total * (1 + bdi/100);
     const moEnc = it.preco / (1 + encPct/100);
     const matPreco = it.preco - moEnc;
@@ -1404,24 +1411,24 @@ function verificarConformidade() {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
 function renderDashboard() {
-  const items = STATE.orcamento;
-  const sub = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
+  const { items, bloqueados } = orcamentoAuditadoParaRelatorio();
+  const sub = items.reduce((s,i)=>s+itemValor(i), 0);
   const total = totalComBDI(sub);
   const acima = items.filter(i => i.ref > 0 && i.preco > i.ref * 1.05).length;
 
   document.getElementById('dash-total').textContent = fmtMoeda(sub);
-  document.getElementById('dash-itens').textContent = items.length + ' itens';
+  document.getElementById('dash-itens').textContent = `${items.length} válidos${bloqueados.length ? ` · ${bloqueados.length} bloqueado(s)` : ''}`;
   document.getElementById('dash-bdi').textContent = bdiText('—');
   document.getElementById('dash-bdi-status').textContent = hasBDI() ? (bdiValue() <= 25 ? 'Dentro do limite TCU' : '⚠ Acima do limite') : 'Não configurado';
   document.getElementById('dash-total-bdi').textContent = fmtMoeda(total);
   document.getElementById('dash-acima').textContent = acima;
 
   // ABC chart
-  const sorted = [...items].sort((a,b)=>(b.qtd*b.preco)-(a.qtd*a.preco));
+  const sorted = [...items].sort((a,b)=>itemValor(b)-itemValor(a));
   const tot = sub || 1;
   let acc=0; const classesCount = {A:0,B:0,C:0}; const classesVal = {A:0,B:0,C:0};
   sorted.forEach(it => {
-    const v = it.qtd*it.preco;
+    const v = itemValor(it);
     acc += v/tot*100;
     const c = acc<=80?'A':acc<=95?'B':'C';
     classesCount[c]++; classesVal[c]+=v;
@@ -1440,7 +1447,7 @@ function renderDashboard() {
 
   // Cat chart
   const cats = {};
-  items.forEach(i => { cats[i.cat] = (cats[i.cat]||0) + i.qtd*i.preco; });
+  items.forEach(i => { cats[i.cat] = (cats[i.cat]||0) + itemValor(i); });
   const ctx2 = document.getElementById('chartCat');
   if (STATE.charts.dashCat) STATE.charts.dashCat.destroy();
   STATE.charts.dashCat = new Chart(ctx2, {
@@ -1467,7 +1474,7 @@ function renderDashboard() {
   }
   let a2=0;
   tb.innerHTML = topItems.map((it,i) => {
-    const v = it.qtd*it.preco;
+    const v = itemValor(it);
     a2 += v/tot*100;
     const c = a2<=80?'A':a2<=95?'B':'C';
     return `<tr>
@@ -1513,7 +1520,7 @@ function buscarSINAPIBase(q) {
 // RELATÓRIO
 // ═══════════════════════════════════════════════════════════
 function renderRelatorioPreview() {
-  const sub = STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0);
+  const sub = STATE.orcamento.reduce((s,i)=>s+itemValor(i),0);
   const total = totalComBDI(sub);
   document.getElementById('rel-preview').innerHTML = `
     <div style="font-size:13px;color:var(--text2);line-height:1.8">
@@ -1532,7 +1539,7 @@ function exportarJSON() {
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
     moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
-    total: STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0)
+    total: STATE.orcamento.reduce((s,i)=>s+itemValor(i),0)
   };
   downloadJSON(data, 'tlplanly_export.json');
   toast('JSON exportado', 'success');
@@ -1541,7 +1548,7 @@ function exportarJSON() {
 function exportarCSV() {
   const lines = [`Código;Descrição;Un;Qtd;Preço Unit (${moedaCodigo()});Ref SINAPI (${moedaCodigo()});Total (${moedaCodigo()})`];
   STATE.orcamento.forEach(i => {
-    lines.push([i.cod, i.desc, i.unid, i.qtd, valorMoeda(i.preco).toFixed(2), valorMoeda(i.ref).toFixed(2), valorMoeda(i.qtd*i.preco).toFixed(2)].join(';'));
+    lines.push([i.cod, i.desc, i.unid, i.qtd, valorMoeda(i.preco).toFixed(2), valorMoeda(i.ref).toFixed(2), valorMoeda(itemValor(i)).toFixed(2)].join(';'));
   });
   downloadText(lines.join('\n'), 'tlplanly_export.csv', 'text/csv');
   toast('CSV exportado', 'success');
@@ -1675,7 +1682,16 @@ function itemLabel(item) {
 }
 
 function itemValor(item) {
-  return (Number(item?.qtd) || 0) * (Number(item?.preco) || 0);
+  const qtd = Number(item?.qtd) || 0;
+  const preco = Number(item?.preco) || 0;
+  const calculado = qtd * preco;
+  const totalLinha = Number(item?.totalLinha) || 0;
+  const veioDeImportacao = !!(item?.linhaOrigem || item?.origemArquivo || item?.origemMetodo || item?.certStatus);
+  if (veioDeImportacao && totalLinha > 0) {
+    const divergencia = Math.abs(totalLinha - calculado) / Math.max(totalLinha, 1);
+    if (divergencia <= 0.10) return totalLinha;
+  }
+  return calculado;
 }
 
 function todayIso() {
@@ -2095,6 +2111,7 @@ function docsAbrirAnalise(id) {
     escopo: ext.escopo || [],
     especificacoes: ext.especificacoes || [],
     memoria: ext.memoria || '',
+    audit: ext.audit || certificarItensExtraidosLocal(ext.services || [], { modo: 'estimativa', maxRodadas: 1 }).relatorio,
     extracaoId: ext.id
   };
   showView('analisador');
@@ -2112,6 +2129,7 @@ function docsAbrirImportacao(id) {
   IMP.reviewed = (ext.reviewed || ext.items || []).map(r => ({ ...r }));
   IMP.importResults = ext.docs || [];
   IMP.markdown = ext.memoria || gerarMemoriaImportacao(IMP.importResults);
+  IMP.audit = ext.audit || certificarItensExtraidosLocal(IMP.reviewed, { modo: 'planilha', maxRodadas: 1 }).relatorio;
   IMP.extracaoId = ext.id;
   IMP.origemRapida = 'elaborar';
   showView('importar');
@@ -2267,7 +2285,14 @@ function docsCompactItems(list, max = 500) {
     metodo: i.metodo || '',
     composicao: i.composicao || [],
     pendencias: i.pendencias || [],
-    confidence: Number(i.confidence || i.confianca) || 0
+    confidence: Number(i.confidence || i.confianca) || 0,
+    certStatus: i.certStatus || '',
+    certScore: Number(i.certScore) || 0,
+    certMotivos: i.certMotivos || [],
+    certCorrecoes: i.certCorrecoes || [],
+    totalLinha: Number(i.totalLinha) || 0,
+    linhaOrigem: i.linhaOrigem || '',
+    numerosOrigem: i.numerosOrigem || []
   }));
 }
 
@@ -2308,6 +2333,7 @@ function docsPersistirExtracao(payload) {
     services: docsCompactItems(payload.services || []),
     items: docsCompactItems(payload.items || []),
     reviewed: docsCompactItems(payload.reviewed || []),
+    audit: payload.audit || null,
     escopo: payload.escopo || [],
     especificacoes: payload.especificacoes || [],
     memoria: String(payload.memoria || '').slice(0, 12000)
@@ -2399,6 +2425,7 @@ let IMP = {
   reviewed: [],      // itens com match SINAPI
   importResults: [],
   markdown: '',
+  audit: null,
   filtro: 'todos',
   extracaoId: '',
   origemRapida: ''
@@ -2407,6 +2434,235 @@ let IMP = {
 const IMPORT_EXTS = ['pdf','xlsx','xls','ods','csv','png','jpg','jpeg','tif','tiff'];
 const IMAGE_EXTS = ['png','jpg','jpeg','tif','tiff'];
 const SPREADSHEET_EXTS = ['xlsx','xls','ods','csv'];
+const UNIDADES_IMPORTACAO = new Set(['UN','M','M2','M3','KG','T','L','H','HR','VG','VB','CJ','GL','MES','PONTO','KM','M2XMES']);
+const CODIGO_IMPORTACAO_RE = /(?:\b(ED-\d{3,6})\b|\b(CPU-\d+)\b|\b([A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2})\b|(?<![,.])\b(\d{3,7})(?=\s+(?:SINAPI|SICRO|SICOR|ORSE|DNIT|SUDECAP)\b)(?![,.])|(?<![,.])\b(\d{5,7})\b(?![,.]))/i;
+const NUM_IMPORT_RE_SRC = String.raw`-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?`;
+const UNIDADE_TAIL_IMPORT_RE_SRC = String.raw`M2XMES|M²|M2|M³|M3|MÊS|MES|UNID|UND|UN|KG|T|VG|VB|CJ|GL|HR|H|L|PONTO|KM|M`;
+const ITEM_TAIL_IMPORT_RE = new RegExp(String.raw`\b(${UNIDADE_TAIL_IMPORT_RE_SRC})\b\s+(${NUM_IMPORT_RE_SRC})\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?`, 'gi');
+
+function parseNumeroBR(valor) {
+  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : 0;
+  const clean = String(valor ?? '')
+    .replace(/R\$/gi, '')
+    .replace(/\s+/g, '')
+    .replace(/[^\d,.\-]/g, '');
+  if (!clean || clean === '-' || clean === ',' || clean === '.') return 0;
+  if (clean.includes(',') && clean.includes('.')) return Number(clean.replace(/\./g, '').replace(',', '.')) || 0;
+  if (clean.includes(',')) return Number(clean.replace(',', '.')) || 0;
+  if ((clean.match(/\./g) || []).length > 1) return Number(clean.replace(/\./g, '')) || 0;
+  return Number(clean) || 0;
+}
+
+function normalizarUnidadeImportacao(unid) {
+  return String(unid || 'UN').trim().toUpperCase()
+    .replace('M²','M2')
+    .replace('M³','M3')
+    .replace(/^UND$/,'UN')
+    .replace(/^UNID$/,'UN')
+    .replace(/^MÊS$/,'MES') || 'UN';
+}
+
+function linhaImportacaoIgnorada(line) {
+  const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return true;
+  const norm = cleaned.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/^(item|codigo|cod\.?|referencia|descricao|descri|unid|quant|preco|valor)\b/.test(norm)) return true;
+  if (/\b(codigo\s+referencia\s+descricao|codigo\s+servico|preco\s+unitario|valor\s+unitario)\b/.test(norm)) return true;
+  if (/\b(total\s+(sem|com)\s+bdi|subtotal|total\s+geral|valor\s+global|valor\s+total\s+do\s+orcamento)\b/.test(norm)) return true;
+  if (/\b(procv|vlookup)\s*\(/.test(norm) || norm.includes('=procv')) return true;
+  if (/^(total|subtotal)\b/.test(norm)) return true;
+  if (/^rev-\d+/.test(norm)) return true;
+  if (/^\d{2}\s+(?!de\b)[a-z]/.test(norm)) return true;
+  if (/\b(prefeitura municipal|secretaria municipal|comprasnet|uasg|cnpj|telefone|anexo|planilha de estimativa|planilha orcamentaria|data base|responsavel tecnico)\b/.test(norm)) return true;
+  if (/^(pagina|page)\s+\d+/.test(norm)) return true;
+  return false;
+}
+
+function extrairNumerosOperacionais(text) {
+  const re = /(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?/g;
+  const values = [];
+  for (const m of String(text || '').matchAll(re)) {
+    const token = m[0];
+    const index = m.index || 0;
+    const before = String(text).slice(Math.max(0, index - 8), index).toUpperCase();
+    const after = String(text).slice(index + token.length, index + token.length + 8).toUpperCase();
+    if (/AF_$/.test(before) || /^[/-]\d{2,4}/.test(after)) continue;
+    const n = parseNumeroBR(token);
+    if (Number.isFinite(n)) values.push(n);
+  }
+  return values;
+}
+
+function parsearLinhaOrcamentaria(line) {
+  const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+  if (linhaImportacaoIgnorada(cleaned)) return null;
+  const codMatch = cleaned.match(CODIGO_IMPORTACAO_RE);
+  if (!codMatch || codMatch.index === undefined) return null;
+
+  const cod = (codMatch.slice(1).find(Boolean) || '').toUpperCase();
+  const afterCode = cleaned.slice(codMatch.index + cod.length).trim();
+  let desc = afterCode;
+  let unid = 'UN';
+  let qtd = 1;
+  let preco = 0;
+  let totalLinha = 0;
+  let numeros = [];
+
+  const tails = [...afterCode.matchAll(ITEM_TAIL_IMPORT_RE)];
+  const tail = tails.length ? tails[tails.length - 1] : null;
+  if (tail && tail.index !== undefined) {
+    unid = normalizarUnidadeImportacao(tail[1]);
+    qtd = parseNumeroBR(tail[2]);
+    preco = parseNumeroBR(tail[3]);
+    totalLinha = parseNumeroBR(tail[4]);
+    numeros = [qtd, preco, totalLinha];
+    desc = afterCode.slice(0, tail.index)
+      .replace(/^(SINAPI|SICOR|SICRO|SUDECAP|ORSE|DNIT)\b/i, '')
+      .replace(/\b(AF_\d{2}\/\d{4}|SEDI|CANT|COMPOSICAO|COMPOSIÇÃO)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  } else {
+    numeros = extrairNumerosOperacionais(afterCode).filter(n => n > 0);
+    if (numeros.length >= 3) {
+      qtd = numeros[numeros.length - 3]; preco = numeros[numeros.length - 2]; totalLinha = numeros[numeros.length - 1];
+    } else if (numeros.length >= 2) {
+      qtd = numeros[numeros.length - 2]; preco = numeros[numeros.length - 1];
+    }
+    desc = afterCode
+      .replace(/\b(SINAPI|SICRO|ORSE|DNIT)\b/gi, ' ')
+      .replace(/(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  desc = desc.replace(/\bTOTAL\b.*$/i, '').replace(/\s+/g, ' ').trim();
+  if (desc.length < 3) return null;
+  return { cod, desc: desc.substring(0,240), unid, qtd: qtd > 0 ? qtd : 1, preco: preco > 0 ? preco : 0, totalLinha, linhaOrigem: cleaned, numerosOrigem: numeros, origem: 'pdf' };
+}
+
+function certAvaliarItem(item, modo = 'planilha') {
+  const motivos = [];
+  const correcoes = Array.isArray(item.certCorrecoes) ? [...item.certCorrecoes] : [];
+  const desc = String(item.desc || '').trim();
+  const origem = `${item.linhaOrigem || ''} ${desc}`;
+  const qtd = Number(item.qtd) || 0;
+  const preco = Number(item.preco) || 0;
+  const totalLinha = Number(item.totalLinha) || 0;
+  const totalCalculado = qtd * preco;
+  const unid = normalizarUnidadeImportacao(item.unid);
+  let bloqueios = 0;
+  let alertas = 0;
+
+  if (linhaImportacaoIgnorada(origem)) { motivos.push('Linha parece ser cabecalho, rodape ou total da planilha.'); bloqueios++; }
+  if (/[=]\s*procv|procv\s*\(|vlookup\s*\(|\bR\$\s*R\$/i.test(origem)) { motivos.push('Descricao contem formula, marcador monetario quebrado ou resto de extracao.'); bloqueios++; }
+  if (desc.length < 5) { motivos.push('Descricao insuficiente para validar o item.'); bloqueios++; }
+  if (!qtd || qtd <= 0) { motivos.push('Quantidade ausente ou zerada.'); bloqueios++; }
+  if (preco < 0 || (!preco && modo === 'planilha')) { motivos.push('Preco unitario ausente ou invalido.'); modo === 'planilha' ? bloqueios++ : alertas++; }
+  if (qtd > 1000000) { motivos.push('Quantidade muito alta para importacao automatica.'); bloqueios++; }
+  if (preco > 10000000) { motivos.push('Preco unitario muito alto para importacao automatica.'); bloqueios++; }
+  if (totalCalculado > 100000000 && modo === 'planilha') { motivos.push('Total calculado fora da escala esperada; exige correcao antes do orcamento.'); bloqueios++; }
+  if (totalLinha > 0 && totalCalculado > 0) {
+    const divergencia = Math.abs(totalCalculado - totalLinha) / Math.max(totalLinha, 1);
+    if (divergencia > 0.05) { motivos.push(`Quantidade x preco nao fecha com o total da linha (${Math.round(divergencia * 100)}% de divergencia).`); bloqueios++; }
+  }
+  if (!UNIDADES_IMPORTACAO.has(unid)) { motivos.push('Unidade nao reconhecida automaticamente; validar manualmente.'); alertas++; }
+  if (item.matchTipo === 'parcial') { motivos.push('Referencia encontrada por descricao; validar codigo sugerido.'); alertas++; }
+  if (item.matchTipo === 'nenhum') { motivos.push('Sem correspondencia automatica na base SINAPI carregada.'); alertas++; }
+
+  let certStatus = 'aprovado';
+  if (bloqueios > 0) certStatus = 'bloqueado';
+  else if (alertas > 0) certStatus = 'pendente';
+  else if (correcoes.length > 0) certStatus = 'corrigido';
+  return {
+    certStatus,
+    certScore: Math.max(0, Math.min(100, 100 - bloqueios * 35 - alertas * 10)),
+    certMotivos: motivos,
+    certCorrecoes: correcoes,
+    selecionado: certStatus !== 'bloqueado' && item.selecionado !== false
+  };
+}
+
+function certTentarCorrigir(item) {
+  const next = { ...item, certCorrecoes: Array.isArray(item.certCorrecoes) ? [...item.certCorrecoes] : [] };
+  const nums = Array.isArray(next.numerosOrigem) ? next.numerosOrigem.filter(n => n > 0) : [];
+  if (nums.length >= 3) {
+    const [qtd, preco, total] = nums.slice(-3);
+    const atualFecha = Math.abs((Number(next.qtd) || 0) * (Number(next.preco) || 0) - (Number(next.totalLinha) || 0));
+    const novoFecha = Math.abs(qtd * preco - total);
+    if (!next.totalLinha || novoFecha < atualFecha) {
+      next.qtd = qtd; next.preco = preco; next.totalLinha = total;
+      next.certCorrecoes.push('Recalculado pela sequencia quantidade, preco unitario e total da linha.');
+    }
+  }
+  const totalLinha = Number(next.totalLinha) || 0;
+  const preco = Number(next.preco) || 0;
+  if (totalLinha > 0 && preco > 0) {
+    const qtdCalculada = totalLinha / preco;
+    const divergencia = Math.abs((Number(next.qtd) || 0) * preco - totalLinha) / Math.max(totalLinha, 1);
+    if (divergencia > 0.05 && qtdCalculada > 0 && qtdCalculada < 1000000) {
+      next.qtd = Math.round(qtdCalculada * 10000) / 10000;
+      next.certCorrecoes.push('Quantidade recalculada a partir do total da linha.');
+    }
+  }
+  next.unid = normalizarUnidadeImportacao(next.unid);
+  return next;
+}
+
+function certificarItensExtraidosLocal(itens, options = {}) {
+  const modo = options.modo || 'planilha';
+  const maxRodadas = options.maxRodadas || 3;
+  let rodadas = 0;
+  let atuais = itens.map(i => ({ ...i, unid: normalizarUnidadeImportacao(i.unid) }));
+
+  for (let round = 1; round <= maxRodadas; round++) {
+    rodadas = round;
+    let mudou = false;
+    atuais = atuais.map(item => {
+      const aval = certAvaliarItem(item, modo);
+      if (aval.certStatus !== 'bloqueado') return { ...item, ...aval };
+      const corrigido = certTentarCorrigir(item);
+      const mudouItem = JSON.stringify(corrigido) !== JSON.stringify(item);
+      mudou = mudou || mudouItem;
+      return { ...corrigido, ...certAvaliarItem(corrigido, modo) };
+    });
+    if (!mudou || atuais.every(i => i.certStatus !== 'bloqueado')) break;
+  }
+
+  const certificados = atuais.map(item => ({ ...item, ...certAvaliarItem(item, modo) }));
+  const count = status => certificados.filter(i => i.certStatus === status).length;
+  const bloqueado = count('bloqueado');
+  const pendente = count('pendente');
+  const corrigido = count('corrigido');
+  const aprovado = count('aprovado');
+  const score = certificados.length ? Math.round(certificados.reduce((s, i) => s + i.certScore, 0) / certificados.length) : 0;
+  const status = bloqueado ? 'bloqueado' : pendente ? 'pendente' : corrigido ? 'corrigido' : 'aprovado';
+  const motivos = [...new Set(certificados.flatMap(i => i.certMotivos || []))].slice(0, 8);
+  return { itens: certificados, relatorio: { status, score, rodadas, total: certificados.length, aprovado, corrigido, pendente, bloqueado, motivos } };
+}
+
+function certBadge(status) {
+  if (status === 'bloqueado') return '<span class="cert-badge cert-bad">Bloqueado</span>';
+  if (status === 'pendente') return '<span class="cert-badge cert-warn">Revisar</span>';
+  if (status === 'corrigido') return '<span class="cert-badge cert-fix">Corrigido</span>';
+  return '<span class="cert-badge cert-ok">Certificado</span>';
+}
+
+function renderCertResumo(relatorio, targetId = 'imp-audit-summary') {
+  const el = document.getElementById(targetId);
+  if (!el || !relatorio) return;
+  const statusLabel = relatorio.status === 'bloqueado' ? 'Bloqueios encontrados'
+    : relatorio.status === 'pendente' ? 'Revisao necessaria'
+    : relatorio.status === 'corrigido' ? 'Corrigido automaticamente'
+    : 'Certificado';
+  el.innerHTML = `
+    <div class="cert-summary cert-${relatorio.status}">
+      <div>
+        <strong>Loop de auditoria da extracao: ${statusLabel}</strong>
+        <span>${relatorio.rodadas} rodada(s) · score ${relatorio.score}% · ${relatorio.aprovado} aprovado(s), ${relatorio.corrigido} corrigido(s), ${relatorio.pendente} pendente(s), ${relatorio.bloqueado} bloqueado(s)</span>
+      </div>
+      ${relatorio.motivos?.length ? `<small>${relatorio.motivos.map(escapeHtml).join(' · ')}</small>` : ''}
+    </div>`;
+}
 
 function handleFileSelect(e) {
   setImportFiles(Array.from(e.target.files || []));
@@ -2493,7 +2749,7 @@ function resetarImportacao() {
   document.getElementById('imp-card-progress').style.display = 'none';
   document.getElementById('imp-card-review').style.display = 'none';
   document.getElementById('imp-card-upload').style.display = 'block';
-  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = ''; IMP.extracaoId = ''; IMP.origemRapida = '';
+  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = ''; IMP.audit = null; IMP.extracaoId = ''; IMP.origemRapida = '';
 }
 
 function setStep(steps, idx, status, statusText) {
@@ -2527,6 +2783,7 @@ async function iniciarExtracao() {
     ['Extraindo linhas / OCR', 'Aguardando'],
     ['Normalizando itens', 'Aguardando'],
     ['Match com SINAPI', 'Aguardando'],
+    ['Auditoria em loop', 'Aguardando'],
   ].map((s, i) => `<div class="imp-step" id="imp-step-${i}">
     <div class="imp-step-num">${i+1}</div>
     <div class="imp-step-text">${s[0]}</div>
@@ -2570,9 +2827,17 @@ async function iniciarExtracao() {
     await sleep(50);
 
     // Match SINAPI
-    IMP.reviewed = items.map(it => matchSINAPI(it));
-    setStep(null, 3, 'done', `${IMP.reviewed.filter(r=>r.matchTipo==='ok').length} matches`);
-    setProgress(100, 'Concluído!');
+    const matched = items.map(it => matchSINAPI(it));
+    setStep(null, 3, 'done', `${matched.filter(r=>r.matchTipo==='ok').length} matches`);
+    setStep(null, 4, 'spin', 'Validando itens...');
+    setProgress(92, 'Rodando auditoria de extracao...');
+    await sleep(80);
+    const certified = certificarItensExtraidosLocal(matched, { modo: 'planilha', maxRodadas: 3 });
+    IMP.reviewed = certified.itens;
+    IMP.audit = certified.relatorio;
+    setStep(null, 3, 'done', `${matched.filter(r=>r.matchTipo==='ok').length} matches`);
+    setStep(null, 4, IMP.audit.bloqueado ? 'spin' : 'done', IMP.audit.bloqueado ? `${IMP.audit.bloqueado} bloqueado(s)` : 'Certificado');
+    setProgress(100, 'Concluido com auditoria.');
     await sleep(200);
 
     mostrarRevisao();
@@ -2832,13 +3097,15 @@ async function extrairDeExcel(file) {
     const unid = colMap.unid >= 0 ? String(row[colMap.unid] || '').trim() : 'UN';
     const qtdRaw = colMap.qtd >= 0 ? row[colMap.qtd] : '';
     const precoRaw = colMap.preco >= 0 ? row[colMap.preco] : '';
+    const joined = row.map(c => String(c || '')).join(' ');
+    if (linhaImportacaoIgnorada(joined)) continue;
 
-    const qtd = parseFloat(String(qtdRaw).replace(/[^\d.,]/g,'').replace(',','.')) || 0;
-    const preco = parseFloat(String(precoRaw).replace(/[^\d.,]/g,'').replace(',','.')) || 0;
+    const qtd = parseNumeroBR(qtdRaw) || 0;
+    const preco = parseNumeroBR(precoRaw) || 0;
 
     if (desc.length < 3) continue;
 
-    items.push({ cod: limparCodigo(cod), desc, unid: unid || 'UN', qtd: qtd || 1, preco, origem: 'excel' });
+    items.push({ cod: limparCodigo(cod), desc, unid: normalizarUnidadeImportacao(unid || 'UN'), qtd: qtd || 1, preco, origem: 'excel', linhaOrigem: joined });
   }
 
   setStep(null, 2, 'done', `${items.length} itens`);
@@ -2848,68 +3115,129 @@ async function extrairDeExcel(file) {
 
 // ─── PDF LINE PARSER ───────────────────────────────────────
 function parsearLinhas(lines) {
-  // Detecta padrão: linha com número de serviço SINAPI (5-7 dígitos) seguido de descrição
-  const SINAPI_RE = /\b(\d{5,7})\b/;
-  const PRECO_RE = /[\d]{1,3}(?:[.,]\d{3})*[.,]\d{2}/g;
-
   const items = [];
   let buffer = null;
 
-  lines.forEach(line => {
-    const cleaned = line.replace(/\s+/g,' ').trim();
+  const processarLinha = line => {
+    const cleaned = String(line || '').replace(/\s+/g,' ').trim();
     if (!cleaned || cleaned.length < 4) return;
-    // Skip headers/titles
-    if (/^(item|codigo|descri|unid|quant|preco|valor|total|sub)/i.test(cleaned)) return;
 
-    const codMatch = cleaned.match(SINAPI_RE);
+    if (linhaImportacaoIgnorada(cleaned)) {
+      if (buffer) {
+        const item = finalizarBuffer(buffer);
+        if (item) items.push(item);
+        buffer = null;
+      }
+      return;
+    }
+
+    const codMatch = linhaIniciaComCodigoImportacao(cleaned) ? cleaned.match(CODIGO_IMPORTACAO_RE) : null;
     if (codMatch) {
-      if (buffer) items.push(finalizarBuffer(buffer));
-      buffer = { cod: codMatch[1], desc: '', unid: 'UN', qtd: 1, preco: 0, origem: 'pdf', linhas: [cleaned] };
+      if (buffer) {
+        const item = finalizarBuffer(buffer);
+        if (item) items.push(item);
+      }
+      const cod = (codMatch.slice(1).find(Boolean) || '').toUpperCase();
+      buffer = { cod, desc: '', unid: 'UN', qtd: 1, preco: 0, origem: 'pdf', linhas: [cleaned] };
     } else if (buffer) {
       buffer.linhas.push(cleaned);
     }
-  });
-  if (buffer) items.push(finalizarBuffer(buffer));
+  };
 
-  // If no SINAPI codes found, try column-based heuristic
+  lines.forEach(line => {
+    const cleaned = String(line || '').replace(/\s+/g,' ').trim();
+    segmentarLinhaImportacao(cleaned).forEach(processarLinha);
+  });
+  if (buffer) {
+    const item = finalizarBuffer(buffer);
+    if (item) items.push(item);
+  }
+
   if (!items.length) {
     lines.forEach(line => {
+      const cleaned = String(line || '').replace(/\s+/g,' ').trim();
+      if (linhaImportacaoIgnorada(cleaned)) return;
+      const parsed = parsearLinhaOrcamentaria(cleaned);
+      if (parsed) { items.push(parsed); return; }
       const parts = line.split(/\s{2,}/);
       if (parts.length >= 3) {
         const cod = limparCodigo(parts[0]);
         const desc = parts[1] || '';
         if (desc.length > 3) {
-          const nums = line.match(PRECO_RE) || [];
-          const preco = nums.length > 0 ? parseFloat(nums[nums.length-1].replace(/\./g,'').replace(',','.')) : 0;
-          const qtd = nums.length > 1 ? parseFloat(nums[0].replace(/\./g,'').replace(',','.')) : 1;
-          items.push({ cod, desc: desc.trim(), unid: 'UN', qtd: qtd||1, preco, origem:'pdf' });
+          const nums = extrairNumerosOperacionais(line).filter(n => n > 0);
+          const preco = nums.length > 0 ? nums[nums.length-1] : 0;
+          const qtd = nums.length > 1 ? nums[0] : 1;
+          items.push({ cod, desc: desc.trim(), unid: 'UN', qtd: qtd||1, preco, origem:'pdf', linhaOrigem: cleaned, numerosOrigem: nums });
         }
       }
     });
   }
 
-  return items.filter(i => i.desc.length > 3);
+  return items.filter(i => i && i.desc && i.desc.length > 3 && !linhaImportacaoIgnorada(i.desc));
+}
+
+function segmentarLinhaImportacao(line) {
+  const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return [];
+  const re = new RegExp(CODIGO_IMPORTACAO_RE.source, 'gi');
+  const matches = [...cleaned.matchAll(re)].filter(m => m.index !== undefined && codigoImportacaoSegmentavel(cleaned, m));
+  if (matches.length <= 1) return [cleaned];
+  return matches.map((m, idx) => {
+    const start = m.index || 0;
+    const end = idx + 1 < matches.length ? (matches[idx + 1].index || cleaned.length) : cleaned.length;
+    return cleaned.slice(start, end).trim();
+  }).filter(Boolean);
+}
+
+function codigoImportacaoSegmentavel(line, match) {
+  const token = match[0] || '';
+  const index = match.index || 0;
+  if (index === 0) return true;
+  const prefix = line.slice(0, index);
+  if (/^\d{1,3}\s+$/.test(prefix) && /^[A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2}$/i.test(token)) return true;
+  if (/^[A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2}\s*$/i.test(prefix.trim()) && /^CPU-\d+$/i.test(token)) return true;
+  const before = line.slice(Math.max(0, index - 40), index);
+  return /(?:R\$\s*|\d{1,3}(?:\.\d{3})*,\d{2}\s*)$/.test(before);
+}
+
+function linhaIniciaComCodigoImportacao(line) {
+  const match = String(line || '').match(CODIGO_IMPORTACAO_RE);
+  if (!match || match.index === undefined) return false;
+  if (match.index === 0) return true;
+  const prefix = String(line || '').slice(0, match.index);
+  return /^\d{1,3}\s+$/.test(prefix) && /^[A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2}$/i.test(match[0] || '');
 }
 
 function finalizarBuffer(buf) {
-  const fullText = buf.linhas.join(' ');
-  const PRECO_RE = /[\d]{1,3}(?:[.,]\d{3})*[.,]\d{2}/g;
-  const nums = (fullText.match(PRECO_RE) || []).map(n => parseFloat(n.replace(/\./g,'').replace(',','.')));
+  const linhas = (buf.linhas || []).map(l => String(l || '').replace(/\s+/g,' ').trim()).filter(l => l && !linhaImportacaoIgnorada(l));
+  if (!linhas.length) return null;
+  const primeira = parsearLinhaOrcamentaria(linhas[0]);
+  if (primeira && primeira.preco > 0) return primeira;
 
-  // Heuristic: last number is unit price, second-last is qty (if > 0)
-  const preco = nums.length > 0 ? nums[nums.length-1] : 0;
-  const qtd   = nums.length > 1 ? nums[nums.length-2] : 1;
+  const fullText = linhas.join(' ');
+  const parsed = parsearLinhaOrcamentaria(fullText);
+  if (parsed) return parsed;
 
-  // Extract unit (m2, m3, m, kg, un, vb, etc.)
-  const unidMatch = fullText.match(/\b(m2|m²|m³|m3|m\b|kg|kgf|t\b|vb|cj|un|unid|gl|hr|h\b|l\b|litro)\b/i);
-  const unid = unidMatch ? unidMatch[1].toUpperCase().replace('²','2').replace('³','3') : 'UN';
-
-  // Description: everything between code and first number
+  const nums = extrairNumerosOperacionais(fullText).filter(n => n > 0);
+  let qtd = 1;
+  let preco = 0;
+  let totalLinha = 0;
+  if (nums.length >= 3) {
+    qtd = nums[nums.length - 3];
+    preco = nums[nums.length - 2];
+    totalLinha = nums[nums.length - 1];
+  } else if (nums.length >= 2) {
+    qtd = nums[nums.length - 2];
+    preco = nums[nums.length - 1];
+  }
+  const unidades = [...fullText.matchAll(/\b(m2xmes|m2|m²|m³|m3|kg|kgf|t|vb|cj|un|unid|gl|hr|h|l|litro|mes|mês|ponto|km|m)\b/gi)];
+  const unidMatch = unidades.length ? unidades[unidades.length - 1] : null;
+  const unid = normalizarUnidadeImportacao(unidMatch ? unidMatch[1] : 'UN');
   let desc = fullText.replace(buf.cod, '').trim();
-  desc = desc.replace(PRECO_RE, '').replace(/\s+/g,' ').trim();
-  desc = desc.replace(unid, '').trim().substring(0, 200);
-
-  return { cod: buf.cod, desc, unid, qtd: qtd > 0 && qtd < 1e7 ? qtd : 1, preco, origem: 'pdf' };
+  desc = desc.replace(/(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?/g, ' ').replace(/\s+/g,' ').trim();
+  desc = desc.replace(new RegExp(`\\b${unid}\\b`, 'i'), '').trim().substring(0, 220);
+  if (!desc || linhaImportacaoIgnorada(desc)) return null;
+  return { cod: buf.cod, desc, unid, qtd: qtd > 0 && qtd < 1e7 ? qtd : 1, preco, totalLinha, origem: 'pdf', linhaOrigem: fullText, numerosOrigem: nums };
 }
 
 function limparCodigo(s) {
@@ -2954,6 +3282,7 @@ function mostrarRevisao() {
   }
   filtrarRevisao('todos');
   atualizarStatsRevisao();
+  renderCertResumo(IMP.audit);
   persistirImportacaoComoExtracao();
 }
 
@@ -2977,13 +3306,14 @@ function persistirImportacaoComoExtracao(status = '') {
     docs,
     items: IMP.rawItems,
     reviewed: IMP.reviewed,
+    audit: IMP.audit,
     memoria: IMP.markdown || gerarMemoriaImportacao(IMP.importResults)
   });
 }
 
 function filtrarRevisao(f) {
   IMP.filtro = f;
-  ['todos','ok','parcial','nenhum'].forEach(id => {
+  ['todos','ok','parcial','nenhum','aprovado','pendente','bloqueado'].forEach(id => {
     const btn = document.getElementById('rfilt-'+id);
     if (btn) btn.style.borderColor = id === f ? 'var(--gold)' : '';
     if (btn) btn.style.color = id === f ? 'var(--gold)' : '';
@@ -2992,8 +3322,11 @@ function filtrarRevisao(f) {
 }
 
 function renderRevisao() {
+  const certFilters = ['aprovado','corrigido','pendente','bloqueado'];
   const lista = IMP.filtro === 'todos' ? IMP.reviewed
-    : IMP.reviewed.filter(r => r.matchTipo === IMP.filtro);
+    : certFilters.includes(IMP.filtro)
+      ? IMP.reviewed.filter(r => (r.certStatus || 'pendente') === IMP.filtro || (IMP.filtro === 'aprovado' && r.certStatus === 'corrigido'))
+      : IMP.reviewed.filter(r => r.matchTipo === IMP.filtro);
 
   const el = document.getElementById('imp-rev-lista');
   if (!lista.length) {
@@ -3017,26 +3350,34 @@ function renderRevisao() {
     const origemHtml = r.origemArquivo
       ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Origem: ${escapeHtml(r.origemArquivo)}${r.origemMetodo ? ' · ' + escapeHtml(r.origemMetodo) : ''}</div>`
       : '';
+    const certHtml = certBadge(r.certStatus);
+    const certMotivos = (r.certMotivos || []).slice(0, 2).map(escapeHtml).join(' ');
+    const certInfo = certMotivos
+      ? `<div style="font-size:10px;color:${r.certStatus === 'bloqueado' ? 'var(--red)' : 'var(--text3)'};margin-top:2px">${certMotivos}</div>`
+      : '';
+    const locked = r.certStatus === 'bloqueado';
 
-    return `<div class="rev-row">
-      <input type="checkbox" ${r.selecionado?'checked':''} onchange="IMP.reviewed[${globalIdx}].selecionado=this.checked;atualizarStatsRevisao()"/>
+    return `<div class="rev-row ${locked ? 'rev-row-blocked' : ''}">
+      <input type="checkbox" ${r.selecionado && !locked?'checked':''} ${locked ? 'disabled' : ''} onchange="IMP.reviewed[${globalIdx}].selecionado=this.checked;atualizarStatsRevisao()"/>
       <span style="width:80px;font-family:monospace;font-size:11px;color:var(--gold);flex-shrink:0">${r.cod||'—'}</span>
       <span style="flex:1;min-width:0">
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.desc}">${r.desc}</div>
         ${sugestaoHtml}
         ${origemHtml}
+        ${certInfo}
       </span>
       <span style="width:45px;flex-shrink:0;color:var(--text2)">${r.unid}</span>
       <span style="width:60px;flex-shrink:0;color:var(--text2)">${fmtNum(r.qtd)}</span>
       <span style="width:80px;flex-shrink:0">${r.preco > 0 ? fmtMoeda(r.preco) : '<span style="color:var(--text3)">—</span>'}</span>
       <span style="width:80px;flex-shrink:0">${refCol}</span>
       <span style="width:75px;flex-shrink:0">${matchLabel}</span>
+      <span style="width:100px;flex-shrink:0">${certHtml}</span>
     </div>`;
   }).join('');
 }
 
 function selecionarTodosRev(sel) {
-  IMP.reviewed.forEach(r => r.selecionado = sel);
+  IMP.reviewed.forEach(r => { r.selecionado = r.certStatus === 'bloqueado' ? false : sel; });
   renderRevisao();
   atualizarStatsRevisao();
 }
@@ -3046,12 +3387,24 @@ function atualizarStatsRevisao() {
   const ok = IMP.reviewed.filter(r=>r.matchTipo==='ok').length;
   const parcial = IMP.reviewed.filter(r=>r.matchTipo==='parcial').length;
   const nenhum = IMP.reviewed.filter(r=>r.matchTipo==='nenhum').length;
+  const bloqueados = IMP.reviewed.filter(r=>r.certStatus==='bloqueado').length;
   document.getElementById('imp-rev-stats').textContent =
-    `${sel} selecionados | ✓ ${ok} match | ~ ${parcial} parcial | ✗ ${nenhum} sem match`;
+    `${sel} selecionados | ${ok} match | ${parcial} parcial | ${nenhum} sem match | ${bloqueados} bloqueado(s)`;
+  renderCertResumo(IMP.audit);
 }
 
 function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 'elaborar') {
-  const selecionados = IMP.reviewed.filter(r => r.selecionado);
+  const recert = certificarItensExtraidosLocal(IMP.reviewed, { modo: 'planilha', maxRodadas: 2 });
+  IMP.reviewed = recert.itens;
+  IMP.audit = recert.relatorio;
+  const bloqueadosSelecionados = IMP.reviewed.filter(r => r.selecionado && r.certStatus === 'bloqueado');
+  if (bloqueadosSelecionados.length) {
+    renderRevisao();
+    atualizarStatsRevisao();
+    toast(`${bloqueadosSelecionados.length} item(ns) bloqueado(s). Revise os motivos antes de enviar ao orçamento.`, 'error');
+    return;
+  }
+  const selecionados = IMP.reviewed.filter(r => r.selecionado && r.certStatus !== 'bloqueado');
   if (!selecionados.length) { toast('Selecione pelo menos 1 item', 'error'); return; }
 
   const cat = document.getElementById('imp-cat').value;
@@ -3065,7 +3418,23 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
 
     // Use suggested SINAPI code if partial match and no original code
     const cod = r.cod || r.sugestao || 'IMP';
-    return { id: makeId('orc'), cod, desc: r.desc, unid: r.unid, qtd: r.qtd, preco: preco||0, ref: r.refSinapi||0, cat, capitulo: cat, origemArquivo: r.origemArquivo || '', origemMetodo: r.origemMetodo || '' };
+    return {
+      id: makeId('orc'),
+      cod,
+      desc: r.desc,
+      unid: normalizarUnidadeImportacao(r.unid),
+      qtd: r.qtd,
+      preco: preco||0,
+      ref: r.refSinapi||0,
+      cat,
+      capitulo: cat,
+      origemArquivo: r.origemArquivo || '',
+      origemMetodo: r.origemMetodo || '',
+      certStatus: r.certStatus,
+      certScore: r.certScore,
+      certMotivos: r.certMotivos || [],
+      totalLinha: r.totalLinha || 0
+    };
   });
 
   if (acao === 'substituir') STATE.orcamento = novos;
@@ -3079,7 +3448,8 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
 
   const alvo = destino === 'auditoria' ? 'auditoria' : 'elaborar';
   const destinoLabel = alvo === 'auditoria' ? 'Auditoria' : 'Elaboração';
-  toast(`${novos.length} itens importados e enviados para ${destinoLabel}.`, 'success');
+  const pendentes = selecionados.filter(r => r.certStatus === 'pendente').length;
+  toast(`${novos.length} itens importados e enviados para ${destinoLabel}.${pendentes ? ' Ha itens pendentes para validacao manual.' : ''}`, pendentes ? 'info' : 'success');
   IMP.origemRapida = '';
   showView(alvo);
 }
@@ -3094,6 +3464,7 @@ let ANALISADOR = {
   escopo: [],
   especificacoes: [],
   memoria: '',
+  audit: null,
   extracaoId: ''
 };
 
@@ -3155,7 +3526,7 @@ function analisadorRemoverArquivo(idx) {
 }
 
 function analisadorLimpar() {
-  ANALISADOR = { files: [], docs: [], services: [], escopo: [], especificacoes: [], memoria: '', extracaoId: '' };
+  ANALISADOR = { files: [], docs: [], services: [], escopo: [], especificacoes: [], memoria: '', audit: null, extracaoId: '' };
   const input = document.getElementById('anaFileInput');
   if (input) input.value = '';
   analisadorRenderFiles();
@@ -3196,6 +3567,9 @@ async function analisadorProcessar() {
 
     setAnaProgress(84, 'Gerando serviços e composições preliminares...');
     ANALISADOR.services = analisadorGerarServicos(ANALISADOR.docs);
+    const cert = certificarItensExtraidosLocal(ANALISADOR.services, { modo: 'estimativa', maxRodadas: 2 });
+    ANALISADOR.services = cert.itens;
+    ANALISADOR.audit = cert.relatorio;
     ANALISADOR.memoria = analisadorGerarMemoria();
     ANALISADOR.extracaoId = docsPersistirExtracao({
       id: ANALISADOR.extracaoId || '',
@@ -3204,6 +3578,7 @@ async function analisadorProcessar() {
       status: 'pendente',
       docs: ANALISADOR.docs.map(d => docsCompactDoc(d)),
       services: ANALISADOR.services,
+      audit: ANALISADOR.audit,
       escopo: ANALISADOR.escopo,
       especificacoes: ANALISADOR.especificacoes,
       memoria: ANALISADOR.memoria
@@ -3483,6 +3858,7 @@ function analisadorRender() {
   setText('ana-kpi-conf', avg + '%');
   setText('ana-kpi-pend', pend);
   setText('ana-review-stats', `${selected} selecionados | ${services.length} sugeridos | ${pend} com pendência`);
+  renderCertResumo(ANALISADOR.audit, 'ana-audit-summary');
   analisadorRenderDocs();
   analisadorRenderEscopo();
   analisadorRenderServicos();
@@ -3546,11 +3922,13 @@ function analisadorRenderServicos() {
     </div>
     <div>
       <span class="ana-chip">${s.confidence}%</span>
+      <div style="margin-top:5px">${certBadge(s.certStatus)}</div>
       <div class="confidence-bar"><div class="confidence-fill" style="width:${s.confidence}%"></div></div>
     </div>
     <div>
       <div class="ana-service-meta">${(s.composicao || []).map(escapeHtml).join(' · ') || 'Composição a definir'}</div>
       ${s.pendencias?.length ? `<div class="ana-pending">${s.pendencias.map(p => '• ' + escapeHtml(p)).join('<br>')}</div>` : '<div class="ana-service-meta" style="color:var(--green)">Sem pendência crítica automática</div>'}
+      ${s.certMotivos?.length ? `<div class="ana-pending">${s.certMotivos.map(p => '• ' + escapeHtml(p)).join('<br>')}</div>` : ''}
     </div>
   </div>`).join('');
 }
@@ -3565,12 +3943,21 @@ function analisadorEditarServico(idx, campo, valor) {
 }
 
 function analisadorSelecionarTodos(flag) {
-  ANALISADOR.services.forEach(s => { s.selecionado = !!flag; });
+  ANALISADOR.services.forEach(s => { s.selecionado = s.certStatus === 'bloqueado' ? false : !!flag; });
   analisadorRender();
 }
 
 function analisadorEnviarOrcamento() {
-  const selecionados = ANALISADOR.services.filter(s => s.selecionado);
+  const recert = certificarItensExtraidosLocal(ANALISADOR.services, { modo: 'estimativa', maxRodadas: 2 });
+  ANALISADOR.services = recert.itens;
+  ANALISADOR.audit = recert.relatorio;
+  const bloqueadosSelecionados = ANALISADOR.services.filter(s => s.selecionado && s.certStatus === 'bloqueado');
+  if (bloqueadosSelecionados.length) {
+    analisadorRender();
+    toast(`${bloqueadosSelecionados.length} serviço(s) bloqueado(s). Revise os motivos antes de enviar ao orçamento.`, 'error');
+    return;
+  }
+  const selecionados = ANALISADOR.services.filter(s => s.selecionado && s.certStatus !== 'bloqueado');
   if (!selecionados.length) { toast('Selecione pelo menos um serviço sugerido.', 'error'); return; }
   const novos = selecionados.map((s, idx) => ({
     id: makeId('orc'),
@@ -3586,7 +3973,10 @@ function analisadorEnviarOrcamento() {
     origemArquivo: 'Analisador de Documentos',
     origemMetodo: s.metodo,
     confianca: s.confidence,
-    pendencias: s.pendencias
+    pendencias: s.pendencias,
+    certStatus: s.certStatus,
+    certScore: s.certScore,
+    certMotivos: s.certMotivos || []
   }));
   STATE.orcamento = [...STATE.orcamento, ...novos];
   if (ANALISADOR.extracaoId) docsMarcarExtracaoEnviada(ANALISADOR.extracaoId, ANALISADOR.services);
@@ -4240,18 +4630,41 @@ function getMeta() {
   };
 }
 
+function itemOrcamentoCorrompido(it) {
+  if (!it) return true;
+  if (it.certStatus === 'bloqueado') return true;
+  const text = `${it.linhaOrigem || ''} ${it.desc || ''}`;
+  if (/[=]\s*procv|procv\s*\(|vlookup\s*\(|\bR\$\s*R\$/i.test(text)) return true;
+  if (/\b(prefeitura municipal|secretaria municipal|codigo\s+referencia\s+descricao|total\s+(sem|com)\s+bdi)\b/i.test(text.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) return true;
+  if (!String(it.desc || '').trim() || !String(it.cod || '').trim()) return true;
+  const qtd = Number(it.qtd) || 0;
+  const preco = Number(it.preco) || 0;
+  const total = qtd * preco;
+  if (qtd < 0 || preco < 0) return true;
+  if (qtd === 0 && preco > 0) return true;
+  if (total > 10000000 && /SINAPI|SICOR|SUDECAP|R\$/i.test(text)) return true;
+  return false;
+}
+
+function orcamentoAuditadoParaRelatorio() {
+  const all = Array.isArray(STATE.orcamento) ? STATE.orcamento : [];
+  const bloqueados = all.filter(itemOrcamentoCorrompido);
+  const items = all.filter(it => !itemOrcamentoCorrompido(it));
+  return { items, bloqueados };
+}
+
 // ─── PREVIEW PLANILHA ORÇAMENTÁRIA ────────────────────────
 function renderPreviewPlanilha() {
   const meta = getMeta();
   const modelo = relatorioModeloAtual();
-  const items = STATE.orcamento;
-  const sub  = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
+  const { items, bloqueados } = orcamentoAuditadoParaRelatorio();
+  const sub  = items.reduce((s,i)=>s+itemValor(i), 0);
   const bdi  = bdiValue();
   const total = totalComBDI(sub);
   const bdiLabel = bdiText('Não configurado');
   const now  = new Date().toLocaleDateString('pt-BR');
 
-  document.getElementById('rel-info-count').textContent = `${items.length} itens · Subtotal: ${fmtMoeda(sub)} · Total c/ BDI: ${fmtMoeda(total)}`;
+  document.getElementById('rel-info-count').textContent = `${items.length} itens válidos${bloqueados.length ? ` · ${bloqueados.length} bloqueado(s) pela auditoria de extração` : ''} · Subtotal: ${fmtMoeda(sub)} · Total c/ BDI: ${fmtMoeda(total)}`;
 
   let metaRows = `
     <tr class="sh-meta"><td class="lbl">Obra:</td><td colspan="3">${meta.obra}</td><td class="lbl">Órgão:</td><td colspan="3">${meta.orgao}</td></tr>
@@ -4264,7 +4677,7 @@ function renderPreviewPlanilha() {
     itemRows = '<tr class="sh-row"><td colspan="11" style="text-align:center;padding:20px;color:#999">Nenhum item no orçamento</td></tr>';
   } else {
     items.forEach((it, i) => {
-      const total_it = it.qtd * it.preco;
+      const total_it = itemValor(it);
       const total_bdi = totalComBDI(total_it);
       const desv = it.ref > 0 ? ((it.preco - it.ref)/it.ref*100).toFixed(1)+'%' : '—';
       const desvColor = it.ref > 0 && it.preco > it.ref*1.05 ? 'color:#c00;font-weight:700' : '';
@@ -4288,6 +4701,7 @@ function renderPreviewPlanilha() {
     <tr><td colspan="11" class="sh-header">${modelo.titulo}</td></tr>
     <tr><td colspan="11" class="sh-sub">${modelo.subtitulo} · Base de preços: ${meta.fonte} · Moeda: ${moedaCodigo()}</td></tr>
     ${metaRows}
+    ${bloqueados.length ? `<tr class="sh-row"><td colspan="11" style="background:#fff4e5;color:#7a3e00!important;font-weight:700;padding:8px 10px;border:1px solid #f0c27a">Auditoria de extração: ${bloqueados.length} linha(s) bloqueada(s) por indício de cabeçalho, fórmula, valor deslocado ou resto de PDF. Reimporte o arquivo para recompor estes itens.</td></tr>` : ''}
     <tr class="sh-col-header">
       <th style="width:35px">Item</th><th style="width:80px">Código</th><th>Descrição do Serviço/Insumo</th>
       <th style="width:40px">Un</th><th style="width:60px">Qtd</th>
@@ -4388,8 +4802,9 @@ function renderPreviewBDI() {
 // ─── PREVIEW CURVA ABC ─────────────────────────────────────
 function renderPreviewABC() {
   const meta = getMeta();
-  const items = [...STATE.orcamento].sort((a,b)=>(b.qtd*b.preco)-(a.qtd*a.preco));
-  const totalG = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
+  const { items: validos } = orcamentoAuditadoParaRelatorio();
+  const items = [...validos].sort((a,b)=>itemValor(b)-itemValor(a));
+  const totalG = items.reduce((s,i)=>s+itemValor(i), 0);
   let acum = 0;
 
   if (!items.length) {
@@ -4398,7 +4813,7 @@ function renderPreviewABC() {
   }
 
   const rows = items.map((it, i) => {
-    const v = it.qtd * it.preco;
+    const v = itemValor(it);
     const pct = totalG > 0 ? v/totalG*100 : 0;
     acum += pct;
     const cls = acum <= 80 ? 'A' : acum <= 95 ? 'B' : 'C';
@@ -4442,8 +4857,8 @@ function renderPreviewABC() {
 function renderPreviewResumo() {
   const meta = getMeta();
   const modelo = relatorioModeloAtual();
-  const items = STATE.orcamento;
-  const sub = items.reduce((s,i)=>s+i.qtd*i.preco, 0);
+  const { items, bloqueados } = orcamentoAuditadoParaRelatorio();
+  const sub = items.reduce((s,i)=>s+itemValor(i), 0);
   const bdi = bdiValue();
   const total = totalComBDI(sub);
   const bdiLabel = bdiText('Não configurado');
@@ -4451,7 +4866,7 @@ function renderPreviewResumo() {
   // Totais por categoria
   const cats = {};
   items.forEach(i => {
-    cats[i.cat] = (cats[i.cat]||0) + i.qtd*i.preco;
+    cats[i.cat] = (cats[i.cat]||0) + itemValor(i);
   });
   const catRows = Object.entries(cats).map(([cat, val]) =>
     `<tr class="sh-row"><td>${cat}</td><td style="text-align:right">${fmtMoeda(val)}</td>
@@ -4467,6 +4882,7 @@ function renderPreviewResumo() {
   document.getElementById('preview-resumo-rel').innerHTML = `<table>
     <tr><td colspan="4" class="sh-header">${modelo.resumo}</td></tr>
     <tr><td colspan="4" class="sh-sub">Obra: ${meta.obra} | ${meta.orgao} | Processo: ${meta.edital} | Moeda: ${moedaCodigo()}</td></tr>
+    ${bloqueados.length ? `<tr class="sh-row"><td colspan="4" style="background:#fff4e5;color:#7a3e00!important;font-weight:700;padding:8px 10px;border:1px solid #f0c27a">Auditoria de extração: ${bloqueados.length} linha(s) bloqueada(s) e fora dos totais.</td></tr>` : ''}
     <tr class="sh-meta"><td class="lbl">Responsável:</td><td>${meta.rt} — ${meta.crea}</td><td class="lbl">ART/RRT:</td><td>${meta.art}</td></tr>
     <tr class="sh-meta"><td class="lbl">Local:</td><td>${meta.local}</td><td class="lbl">Data Base:</td><td>${meta.data}</td></tr>
     <tr class="sh-meta"><td class="lbl">Fonte:</td><td>${meta.fonte}</td><td class="lbl">Emissão:</td><td>${new Date().toLocaleDateString('pt-BR')}</td></tr>
@@ -4508,7 +4924,7 @@ function exportarExcelProfissional() {
   if (!window.XLSX) { toast('SheetJS não carregado', 'error'); return; }
   const meta = getMeta();
   const modelo = relatorioModeloAtual();
-  const items = STATE.orcamento;
+  const { items, bloqueados } = orcamentoAuditadoParaRelatorio();
   const bdi = bdiValue();
   const bdiLabel = bdiText('Não configurado');
   const wb = XLSX.utils.book_new();
@@ -4522,12 +4938,12 @@ function exportarExcelProfissional() {
     ['ART/RRT:', meta.art, '', 'Data Base:', meta.data],
     ['Fonte de Preços:', meta.fonte, '', 'Emissão:', new Date().toLocaleDateString('pt-BR')],
     ['Modelo:', meta.modelo, '', 'Moeda:', moedaCodigo(), 'Cotação:', moedaCotacao()],
-    [],
+    ...(bloqueados.length ? [[`Auditoria de extração: ${bloqueados.length} linha(s) bloqueada(s) e excluída(s) dos totais.`], []] : [[]]),
     ['Item','Capítulo','Código SINAPI','Descrição','Un','Qtd',moedaHeader('P.Unit'),moedaHeader('Ref.SINAPI'),'Desvio %','BDI %',moedaHeader('P.Unit c/BDI'),moedaHeader('Total c/BDI'),'Categoria'],
   ];
   let sub = 0;
   items.forEach((it, i) => {
-    const v = it.qtd * it.preco;
+    const v = itemValor(it);
     sub += v;
     const desv = it.ref > 0 ? ((it.preco - it.ref)/it.ref*100).toFixed(2) : '';
     planData.push([
@@ -4575,8 +4991,8 @@ function exportarExcelProfissional() {
   XLSX.utils.book_append_sheet(wb, ws2, 'BDI');
 
   // ── Aba 3: Curva ABC ──
-  const abcItems = [...items].sort((a,b)=>(b.qtd*b.preco)-(a.qtd*a.preco));
-  const totalG = abcItems.reduce((s,i)=>s+i.qtd*i.preco,0);
+  const abcItems = [...items].sort((a,b)=>itemValor(b)-itemValor(a));
+  const totalG = abcItems.reduce((s,i)=>s+itemValor(i),0);
   let acum = 0;
   const abcData = [
     ['CURVA ABC — ANÁLISE DE REPRESENTATIVIDADE'],
@@ -4585,7 +5001,7 @@ function exportarExcelProfissional() {
     ['#','Código','Descrição','Un','Qtd',moedaHeader('P.Unit'),moedaHeader('Total'),'% Item','% Acumulado','Classe'],
   ];
   abcItems.forEach((it, i) => {
-    const v = it.qtd * it.preco;
+    const v = itemValor(it);
     const pct = totalG > 0 ? v/totalG*100 : 0;
     acum += pct;
     const cls = acum <= 80 ? 'A' : acum <= 95 ? 'B' : 'C';
@@ -4622,7 +5038,7 @@ function exportarExcelProfissional() {
   // ── Aba 6: Medições ──
   const medData = [['MEDIÇÕES E ACOMPANHAMENTO'], ['Obra:', meta.obra], [], ['Período','Data','Código','Descrição','Qtd contratada','Qtd medida','Qtd acumulada',moedaHeader('Valor medido'),'Status']];
   STATE.medicoes.forEach(m => {
-    STATE.orcamento.forEach(it => {
+    items.forEach(it => {
       const qtdMed = Number(m.itens?.[it.id]) || 0;
       const acumMed = medicoesAcumulado(it.id);
       medData.push([m.nome, m.data, it.cod, it.desc, it.qtd, qtdMed, acumMed, valorMoeda(qtdMed * (Number(it.preco) || 0)), acumMed > it.qtd ? 'EXCEDIDO' : acumMed >= it.qtd ? 'CONCLUÍDO' : 'EM EXECUÇÃO']);
@@ -4651,6 +5067,30 @@ function exportarExcelProfissional() {
   const ws8 = XLSX.utils.aoa_to_sheet(docData);
   ws8['!cols'] = [{wch:20},{wch:32},{wch:42},{wch:60},{wch:32},{wch:20}];
   XLSX.utils.book_append_sheet(wb, ws8, 'Anexos');
+
+  if (bloqueados.length) {
+    const bloqData = [
+      ['LINHAS BLOQUEADAS PELA AUDITORIA DE EXTRAÇÃO'],
+      ['Estas linhas foram excluídas dos totais para evitar orçamento inflado. Reimporte ou corrija manualmente antes de usar como planilha final.'],
+      [],
+      ['Código','Descrição','Un','Qtd','Preço','Total calculado','Motivo','Linha de origem'],
+    ];
+    bloqueados.forEach(it => {
+      bloqData.push([
+        it.cod || '',
+        it.desc || '',
+        it.unid || '',
+        Number(it.qtd) || 0,
+        valorMoeda(Number(it.preco) || 0),
+        valorMoeda(itemValor(it)),
+        (it.certMotivos || []).join('; ') || 'Indício de cabeçalho, fórmula, valor deslocado ou resto de PDF.',
+        String(it.linhaOrigem || '').slice(0, 500)
+      ]);
+    });
+    const wsBloq = XLSX.utils.aoa_to_sheet(bloqData);
+    wsBloq['!cols'] = [{wch:14},{wch:50},{wch:8},{wch:12},{wch:14},{wch:16},{wch:48},{wch:80}];
+    XLSX.utils.book_append_sheet(wb, wsBloq, 'Linhas bloqueadas');
+  }
 
   // Save
   const fname = (meta.obra || 'orcamento').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'') + '_TLPlanly.xlsx';
@@ -5518,7 +5958,7 @@ async function copilotTentarAPI(userMsg) {
   const context = {
     view: COP.currentView || 'dashboard',
     totalItens: STATE.orcamento?.length ?? 0,
-    totalOrcamento: STATE.orcamento?.reduce((s,i) => s + i.qtd * i.preco, 0) ?? 0,
+    totalOrcamento: STATE.orcamento?.reduce((s,i) => s + itemValor(i), 0) ?? 0,
     bdi: hasBDI() ? STATE.bdi : null,
     sinapiCount: STATE.sinapiBase?.length ?? 0,
   };
@@ -5798,7 +6238,7 @@ async function copilotResponder(txt) {
 
   // ══ ESTADO DO ORÇAMENTO ═══════════════════════════════════
   if (/meu orcamento|quantos itens|total orcamento|resumo|ver orcamento/.test(norm)) {
-    const sub = STATE.orcamento.reduce((s,i)=>s+i.qtd*i.preco,0);
+    const sub = STATE.orcamento.reduce((s,i)=>s+itemValor(i),0);
     copilotBotMsg(`**Seu orçamento atual:**\n\n• **${STATE.orcamento.length} itens** lançados\n• Subtotal (sem BDI): **${fmtMoeda(sub)}**\n• BDI configurado: **${bdiText('não configurado')}**\n• Total c/ BDI: **${fmtMoeda(totalComBDI(sub))}**\n• Base SINAPI: **${STATE.sinapiBase.length.toLocaleString('pt-BR')} insumos** carregados`);
     copilotSetChips(['Ir para Elaborar','Ir para ABC','Como exportar?','Ir para Auditoria']);
     return;

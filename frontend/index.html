@@ -1030,7 +1030,11 @@
         <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('ok')" id="rfilt-ok">&#10003; Match SINAPI</button>
         <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('parcial')" id="rfilt-parcial">&#126; Parcial</button>
         <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('nenhum')" id="rfilt-nenhum">&#10007; Sem match</button>
+        <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('aprovado')" id="rfilt-aprovado">Certificados</button>
+        <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('pendente')" id="rfilt-pendente">Revisar</button>
+        <button class="btn btn-outline btn-sm" onclick="filtrarRevisao('bloqueado')" id="rfilt-bloqueado">Bloqueados</button>
       </div>
+      <div id="imp-audit-summary" style="margin-bottom:12px"></div>
       <div class="ana-text-block" style="min-height:auto;margin-bottom:12px">
         Nada entra no orçamento automaticamente. Revise seleção, descrição, unidade, quantidade, preço e referência antes de confirmar.
       </div>
@@ -1044,6 +1048,7 @@
           <span style="width:80px">P.Unit</span>
           <span style="width:80px">Ref.SINAPI</span>
           <span style="width:75px">Match</span>
+          <span style="width:100px">Certificação</span>
         </div>
         <div id="imp-rev-lista"></div>
       </div>
@@ -1151,6 +1156,7 @@
         <button class="btn btn-gold btn-sm" onclick="analisadorEnviarOrcamento()">Enviar para Elaborar Orçamento</button>
       </div>
     </div>
+    <div id="ana-audit-summary" style="margin-bottom:12px"></div>
     <div class="ana-text-block" style="min-height:auto;margin-bottom:12px">
       Estes serviços são uma primeira versão técnica. Valide confiança, quantidades, referências e pendências antes de enviar para Elaborar Orçamento.
     </div>
