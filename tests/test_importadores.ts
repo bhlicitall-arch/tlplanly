@@ -150,6 +150,17 @@ async function testarImportadores() {
         exigir(certificado.itens[0].certStatus !== 'bloqueado', 'Item 100742 valido nao deveria ser bloqueado.');
         exigir(certificado.itens[1].certStatus === 'bloqueado', 'Rodape importado como item deve ser bloqueado.');
 
+        const estimativaAno = certificarItensExtraidos([{
+            cod: '37476',
+            desc: 'Estrutura de concreto armado',
+            unid: 'UN',
+            qtd: 2023,
+            preco: 3592.45,
+            origemMetodo: 'Inferido por especificação/projeto',
+            capitulo: 'Estimativa por documentos',
+        }], { modo: 'estimativa', maxRodadas: 1 });
+        exigir(estimativaAno.itens[0].certStatus === 'bloqueado', 'Estimativa com quantidade parecida com ano nao deve entrar automaticamente no orcamento.');
+
         console.log('TESTE CERTIFICADOR DE EXTRACAO PASSOU.');
         console.log('PDF/OCR em navegador continua dependente de pdfjs/Tesseract, mas o parser/certificador agora tem teste de regressao.');
     } finally {

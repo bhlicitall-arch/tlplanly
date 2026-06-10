@@ -48,6 +48,13 @@ const NUM_BR_RE_SRC = String.raw`-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\
 const UNIDADE_TAIL_RE_SRC = String.raw`M2XMES|MÂ²|M2|MÂ³|M3|MÃŠS|MES|UNID|UND|UN|KG|T|VG|VB|CJ|GL|HR|H|L|PONTO|KM|M`;
 const ITEM_TAIL_RE = new RegExp(String.raw`\b(${UNIDADE_TAIL_RE_SRC})\b\s+(${NUM_BR_RE_SRC})\s+(?:R\$\s*)?(${NUM_BR_RE_SRC})\s*(?:R\$)?\s+(?:R\$\s*)?(${NUM_BR_RE_SRC})\s*(?:R\$)?`, 'gi');
 
+function normalizarTextoSimples(text: string): string {
+    return String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
 export function parseNumeroBR(valor: any): number {
     if (typeof valor === 'number') return Number.isFinite(valor) ? valor : 0;
     const raw = String(valor ?? '').trim();
@@ -242,12 +249,15 @@ function avaliarItem(item: ItemExtraidoCertificavel, modo: 'planilha' | 'estimat
     const motivos: string[] = [];
     const correcoes = Array.isArray(item.certCorrecoes) ? [...item.certCorrecoes] : [];
     const desc = String(item.desc || '').trim();
-    const origem = `${item.linhaOrigem || ''} ${desc}`;
+    const origem = `${item.linhaOrigem || ''} ${item.origem || ''} ${item.origemMetodo || ''} ${item.metodo || ''} ${item.capitulo || ''} ${desc}`;
     const qtd = Number(item.qtd) || 0;
     const preco = Number(item.preco) || 0;
     const totalLinha = Number(item.totalLinha) || 0;
     const totalCalculado = qtd * preco;
     const unid = normalizarUnidade(item.unid);
+    const origemNorm = normalizarTextoSimples(origem);
+    const quantidadePareceAno = Number.isInteger(qtd) && qtd >= 1900 && qtd <= 2100;
+    const estimativaInferida = modo === 'estimativa' && /inferido|analisador|estimativa por documentos/.test(origemNorm);
     let bloqueios = 0;
     let alertas = 0;
 
@@ -281,6 +291,14 @@ function avaliarItem(item: ItemExtraidoCertificavel, modo: 'planilha' | 'estimat
     }
     if (totalCalculado > 100_000_000 && modo === 'planilha') {
         motivos.push('Total calculado fora da escala esperada; exige correcao antes do orcamento.');
+        bloqueios++;
+    }
+    if (modo === 'estimativa' && quantidadePareceAno) {
+        motivos.push('Quantidade parece ser ano/data extraida do documento; validar manualmente.');
+        bloqueios++;
+    }
+    if (estimativaInferida && !totalLinha && totalCalculado > 500_000) {
+        motivos.push('Estimativa inferida com total muito alto; exige memoria de calculo antes de entrar no orcamento.');
         bloqueios++;
     }
     if (totalLinha > 0 && totalCalculado > 0) {

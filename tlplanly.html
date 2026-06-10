@@ -4576,12 +4576,15 @@ function certAvaliarItem(item, modo = 'planilha') {
   const motivos = [];
   const correcoes = Array.isArray(item.certCorrecoes) ? [...item.certCorrecoes] : [];
   const desc = String(item.desc || '').trim();
-  const origem = `${item.linhaOrigem || ''} ${desc}`;
+  const origem = `${item.linhaOrigem || ''} ${item.origem || ''} ${item.origemMetodo || ''} ${item.metodo || ''} ${item.capitulo || ''} ${desc}`;
   const qtd = Number(item.qtd) || 0;
   const preco = Number(item.preco) || 0;
   const totalLinha = Number(item.totalLinha) || 0;
   const totalCalculado = qtd * preco;
   const unid = normalizarUnidadeImportacao(item.unid);
+  const origemNorm = copilotNormText(origem);
+  const quantidadePareceAno = Number.isInteger(qtd) && qtd >= 1900 && qtd <= 2100;
+  const estimativaInferida = modo === 'estimativa' && /inferido|analisador|estimativa por documentos/.test(origemNorm);
   let bloqueios = 0;
   let alertas = 0;
 
@@ -4593,6 +4596,8 @@ function certAvaliarItem(item, modo = 'planilha') {
   if (qtd > 1000000) { motivos.push('Quantidade muito alta para importacao automatica.'); bloqueios++; }
   if (preco > 10000000) { motivos.push('Preco unitario muito alto para importacao automatica.'); bloqueios++; }
   if (totalCalculado > 100000000 && modo === 'planilha') { motivos.push('Total calculado fora da escala esperada; exige correcao antes do orcamento.'); bloqueios++; }
+  if (modo === 'estimativa' && quantidadePareceAno) { motivos.push('Quantidade parece ser ano/data extraída do documento; validar manualmente.'); bloqueios++; }
+  if (estimativaInferida && !totalLinha && totalCalculado > 500000) { motivos.push('Estimativa inferida com total muito alto; exige memória de cálculo antes de entrar no orçamento.'); bloqueios++; }
   if (totalLinha > 0 && totalCalculado > 0) {
     const divergencia = Math.abs(totalCalculado - totalLinha) / Math.max(totalLinha, 1);
     if (divergencia > 0.05) { motivos.push(`Quantidade x preco nao fecha com o total da linha (${Math.round(divergencia * 100)}% de divergencia).`); bloqueios++; }
@@ -6662,16 +6667,20 @@ function getMeta() {
 function itemOrcamentoCorrompido(it) {
   if (!it) return true;
   if (it.certStatus === 'bloqueado') return true;
-  const text = `${it.linhaOrigem || ''} ${it.desc || ''}`;
+  const text = `${it.linhaOrigem || ''} ${it.origemArquivo || ''} ${it.origemMetodo || ''} ${it.capitulo || ''} ${it.desc || ''}`;
   const norm = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normText = norm.toLowerCase();
   if (/[=]\s*procv|procv\s*\(|vlookup\s*\(|\bR\$\s*R\$/i.test(text)) return true;
   if (/\b(prefeitura municipal|secretaria municipal|codigo\s+referencia\s+descricao|total\s+(sem|com)\s+bdi)\b/i.test(norm)) return true;
   if (!String(it.desc || '').trim() || !String(it.cod || '').trim()) return true;
   const qtd = Number(it.qtd) || 0;
   const preco = Number(it.preco) || 0;
   const total = qtd * preco;
+  const inferidoPorAnalisador = /analisador|estimativa por documentos|inferido/.test(normText);
   if (qtd < 0 || preco < 0) return true;
   if (qtd === 0 && preco > 0) return true;
+  if (inferidoPorAnalisador && Number.isInteger(qtd) && qtd >= 1900 && qtd <= 2100) return true;
+  if (inferidoPorAnalisador && !Number(it.totalLinha || 0) && total > 500000) return true;
   if (total > 10000000 && /SINAPI|SICOR|SUDECAP|R\$/i.test(text)) return true;
   return false;
 }
