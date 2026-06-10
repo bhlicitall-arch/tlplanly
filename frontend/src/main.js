@@ -2434,10 +2434,10 @@ let IMP = {
 const IMPORT_EXTS = ['pdf','xlsx','xls','ods','csv','png','jpg','jpeg','tif','tiff'];
 const IMAGE_EXTS = ['png','jpg','jpeg','tif','tiff'];
 const SPREADSHEET_EXTS = ['xlsx','xls','ods','csv'];
-const UNIDADES_IMPORTACAO = new Set(['UN','M','M2','M3','KG','T','L','H','HR','VG','VB','CJ','GL','MES','PONTO','KM','M2XMES']);
+const UNIDADES_IMPORTACAO = new Set(['UN','M','M2','M3','M2KM','M3KM','TKM','KG','T','L','H','HR','VG','VB','CJ','GL','MES','PONTO','KM','M2XMES']);
 const CODIGO_IMPORTACAO_RE = /(?:\b(ED-\d{3,6})\b|\b(CPU-\d+)\b|\b([A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2})\b|(?<![,.])\b(\d{3,7})(?=\s+(?:SINAPI|SICRO|SICOR|ORSE|DNIT|SUDECAP)\b)(?![,.])|(?<![,.])\b(\d{5,7})\b(?![,.]))/i;
 const NUM_IMPORT_RE_SRC = String.raw`-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?`;
-const UNIDADE_TAIL_IMPORT_RE_SRC = String.raw`M2XMES|M²|M2|M³|M3|MÊS|MES|UNID|UND|UN|KG|T|VG|VB|CJ|GL|HR|H|L|PONTO|KM|M`;
+const UNIDADE_TAIL_IMPORT_RE_SRC = String.raw`M2XMES|M2KM|M3KM|TKM|M²|M2|M³|M3|MÊS|MES|UNID|UND|UN|KG|T|VG|VB|CJ|GL|HR|H|L|PONTO|KM|M`;
 const ITEM_TAIL_IMPORT_RE = new RegExp(String.raw`\b(${UNIDADE_TAIL_IMPORT_RE_SRC})\b\s+(${NUM_IMPORT_RE_SRC})\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?`, 'gi');
 
 function parseNumeroBR(valor) {
@@ -2499,8 +2499,13 @@ function parsearLinhaOrcamentaria(line) {
   const codMatch = cleaned.match(CODIGO_IMPORTACAO_RE);
   if (!codMatch || codMatch.index === undefined) return null;
 
-  const cod = (codMatch.slice(1).find(Boolean) || '').toUpperCase();
-  const afterCode = cleaned.slice(codMatch.index + cod.length).trim();
+  let cod = (codMatch.slice(1).find(Boolean) || '').toUpperCase();
+  let afterCode = cleaned.slice(codMatch.index + cod.length).trim();
+  const cpuAposCodigoAuxiliar = afterCode.match(/^(CPU-\d+)\b/i);
+  if (/^[A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2}$/i.test(cod) && cpuAposCodigoAuxiliar) {
+    cod = cpuAposCodigoAuxiliar[1].toUpperCase();
+    afterCode = afterCode.slice(cpuAposCodigoAuxiliar[1].length).trim();
+  }
   let desc = afterCode;
   let unid = 'UN';
   let qtd = 1;
@@ -3122,8 +3127,9 @@ async function extrairDeExcel(file) {
 function parsearLinhas(lines) {
   const items = [];
   let buffer = null;
+  let prefixoPendente = [];
 
-  const processarLinha = line => {
+  const processarLinha = (line, nextLine = '') => {
     const cleaned = String(line || '').replace(/\s+/g,' ').trim();
     if (!cleaned || cleaned.length < 4) return;
 
@@ -3133,6 +3139,7 @@ function parsearLinhas(lines) {
         if (item) items.push(item);
         buffer = null;
       }
+      prefixoPendente = [];
       return;
     }
 
@@ -3143,15 +3150,29 @@ function parsearLinhas(lines) {
         if (item) items.push(item);
       }
       const cod = (codMatch.slice(1).find(Boolean) || '').toUpperCase();
-      buffer = { cod, desc: '', unid: 'UN', qtd: 1, preco: 0, origem: 'pdf', linhas: [cleaned] };
+      buffer = { cod, desc: '', unid: 'UN', qtd: 1, preco: 0, origem: 'pdf', linhas: [cleaned], prefixo: prefixoPendente };
+      prefixoPendente = [];
+    } else if (buffer && linhaProvavelPrefixoProximoItemImportacao(cleaned, nextLine)) {
+      const item = finalizarBuffer(buffer);
+      if (item) items.push(item);
+      buffer = null;
+      prefixoPendente.push(cleaned);
+      if (prefixoPendente.length > 4) prefixoPendente = prefixoPendente.slice(-4);
     } else if (buffer) {
       buffer.linhas.push(cleaned);
+    } else if (linhaComplementarDescricaoImportacao(cleaned)) {
+      prefixoPendente.push(cleaned);
+      if (prefixoPendente.length > 4) prefixoPendente = prefixoPendente.slice(-4);
     }
   };
 
+  const segmentos = [];
   lines.forEach(line => {
     const cleaned = String(line || '').replace(/\s+/g,' ').trim();
-    segmentarLinhaImportacao(cleaned).forEach(processarLinha);
+    segmentarLinhaImportacao(cleaned).forEach(segment => segmentos.push(segment));
+  });
+  segmentos.forEach((segment, idx) => {
+    processarLinha(segment, segmentos[idx + 1] || '');
   });
   if (buffer) {
     const item = finalizarBuffer(buffer);
@@ -3200,7 +3221,6 @@ function codigoImportacaoSegmentavel(line, match) {
   if (index === 0) return true;
   const prefix = line.slice(0, index);
   if (/^\d{1,3}\s+$/.test(prefix) && /^[A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2}$/i.test(token)) return true;
-  if (/^[A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2}\s*$/i.test(prefix.trim()) && /^CPU-\d+$/i.test(token)) return true;
   const before = line.slice(Math.max(0, index - 40), index);
   return /(?:R\$\s*|\d{1,3}(?:\.\d{3})*,\d{2}\s*)$/.test(before);
 }
@@ -3216,7 +3236,7 @@ function linhaIniciaComCodigoImportacao(line) {
 function finalizarBuffer(buf) {
   const linhas = (buf.linhas || []).map(l => String(l || '').replace(/\s+/g,' ').trim()).filter(l => l && !linhaImportacaoIgnorada(l));
   if (!linhas.length) return null;
-  const fullText = linhas.join(' ');
+  const fullText = montarTextoBufferImportacao(linhas, buf.prefixo || []);
   const parsed = parsearLinhaOrcamentaria(fullText);
   if (parsed) return parsed;
 
@@ -3240,6 +3260,54 @@ function finalizarBuffer(buf) {
   desc = desc.replace(new RegExp(`\\b${unid}\\b`, 'i'), '').trim().substring(0, 220);
   if (!desc || linhaImportacaoIgnorada(desc)) return null;
   return { cod: buf.cod, desc, unid, qtd: qtd > 0 && qtd < 1e7 ? qtd : 1, preco, totalLinha, origem: 'pdf', linhaOrigem: fullText, numerosOrigem: nums };
+}
+
+function linhaComplementarDescricaoImportacao(line) {
+  const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned.length < 3) return false;
+  if (linhaImportacaoIgnorada(cleaned)) return false;
+  if (linhaIniciaComCodigoImportacao(cleaned)) return false;
+  if (/^\d{1,2}\s+[A-ZÀ-Ú\s/.()-]{3,60}$/.test(cleaned)) return false;
+  return true;
+}
+
+function linhaProvavelPrefixoProximoItemImportacao(line, nextLine) {
+  const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+  const next = String(nextLine || '').replace(/\s+/g, ' ').trim();
+  if (!linhaComplementarDescricaoImportacao(cleaned)) return false;
+  if (!linhaIniciaComCodigoImportacao(next)) return false;
+  if (linhaContinuidadeFinalItemImportacao(cleaned)) return false;
+  return cleaned.length >= 20;
+}
+
+function linhaContinuidadeFinalItemImportacao(line) {
+  const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return true;
+  if (cleaned.length < 18) return true;
+  if (new RegExp(ITEM_TAIL_IMPORT_RE.source, 'i').test(cleaned)) return true;
+  if (/^AF_\d{2}\/\d{4}/i.test(cleaned)) return true;
+  if (/AF_\d{2}\/\d{4}/i.test(cleaned) && cleaned.length <= 90) return true;
+  if (/^\d+(?:[.,]\d+)?\/\d+(?:[.,]\d+)?$/.test(cleaned)) return true;
+  if (/^(?:M|MM|CM|KG|UN|M2|M3)\s*\.?\s*AF_/i.test(cleaned)) return true;
+  return false;
+}
+
+function montarTextoBufferImportacao(linhas, prefixo = []) {
+  const partes = (linhas || []).map(l => String(l || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const primeira = partes[0] || '';
+  if (!primeira) return '';
+  const complementos = [...(prefixo || []), ...partes.slice(1)].filter(linhaComplementarDescricaoImportacao);
+  const extras = complementos.join(' ').trim();
+  if (!extras) return primeira;
+
+  const tails = [...primeira.matchAll(ITEM_TAIL_IMPORT_RE)];
+  const tail = tails.length ? tails[tails.length - 1] : null;
+  if (tail && tail.index !== undefined) {
+    const antes = primeira.slice(0, tail.index).trim();
+    const depois = primeira.slice(tail.index).trim();
+    return `${antes} ${extras} ${depois}`.replace(/\s+/g, ' ').trim();
+  }
+  return `${primeira} ${extras}`.replace(/\s+/g, ' ').trim();
 }
 
 function limparCodigo(s) {

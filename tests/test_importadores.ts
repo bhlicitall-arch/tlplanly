@@ -93,6 +93,29 @@ async function testarImportadores() {
         exigir(itensLinhaColada[0].cod === '98459' && Math.abs((itensLinhaColada[0].qtd || 0) - 220) < 0.001, 'Primeiro item colado deveria preservar quantidade 220.');
         exigir(itensLinhaColada[2].cod === '10778' && itensLinhaColada[2].unid === 'MES', 'Terceiro item colado deveria preservar unidade MES.');
 
+        const linhasPdfJsDescricaoAntes = [
+            'REMOCAO DE INTERRUPTORES/TOMADAS ELETRICAS, DE FORMA MANUAL, SEM REAPROVEITAMENTO.',
+            '97660 SINAPI UN 10 R$ 0,58 R$ 5,80',
+            'AF_09/2023',
+            '97663 SINAPI REMOCAO DE LOUCAS, DE FORMA MANUAL, SEM REAPROVEITAMENTO. AF_09/2023 UN 6 R$ 11,12 R$ 66,72',
+        ];
+        const itensDescricaoAntes = parsearLinhasOrcamentarias(linhasPdfJsDescricaoAntes);
+        exigir(itensDescricaoAntes.length === 2, 'PDF.js com descricao antes do codigo deveria preservar os dois itens.');
+        exigir(itensDescricaoAntes[0]!.cod === '97660', 'Codigo do item com descricao antes deveria ser 97660.');
+        exigir(String(itensDescricaoAntes[0]!.desc || '').includes('INTERRUPTORES'), 'Descricao anterior ao codigo deveria ser incorporada ao item correto.');
+        exigir(Math.abs((itensDescricaoAntes[0]!.totalLinha || 0) - 5.8) < 0.01, 'Total do item 97660 divergente.');
+
+        const linhasPdfJsCpuDescricaoAntes = [
+            'REINSTALACAO DE APARELHOS DA ACADEMIA DA CIDADE COM CHUMBADOR COM BARRAS 3/8 E CHAPA',
+            '18.52.28 CPU-15 UN 7 R$ 393,94 R$ 2.757,56',
+            '3/16',
+        ];
+        const itensCpuDescricaoAntes = parsearLinhasOrcamentarias(linhasPdfJsCpuDescricaoAntes);
+        exigir(itensCpuDescricaoAntes.length === 1, 'CPU com descricao antes do codigo deveria gerar um item.');
+        exigir(itensCpuDescricaoAntes[0]!.cod === 'CPU-15', 'Codigo da CPU deveria ser preservado.');
+        exigir(String(itensCpuDescricaoAntes[0]!.desc || '').includes('ACADEMIA'), 'Descricao anterior da CPU deveria ser preservada.');
+        exigir(Math.abs((itensCpuDescricaoAntes[0]!.totalLinha || 0) - 2757.56) < 0.01, 'Total da CPU-15 divergente.');
+
         const linhaCotacao = 'XX.XX.XX COTACAO ITEM DE MERCADO VG 12 80,00R$ 960,00R$';
         const itemCotacao = parsearLinhaOrcamentaria(linhaCotacao);
         exigir(!!itemCotacao, 'Parser deveria reconhecer codigo de cotacao XX.XX.XX.');
@@ -131,6 +154,12 @@ async function testarImportadores() {
         exigir(itemSudecap!.cod === '01.09.21', 'Codigo SUDECAP deveria ser preservado.');
         exigir(itemSudecap!.unid === 'MES', 'Unidade SUDECAP deveria ser MES.');
         exigir(itemSudecap!.qtd === 16, 'Quantidade SUDECAP divergente.');
+
+        const linhaDmtSudecap = '02.28.04 SUDECAP 10/2024 DMT > 5 KM M3KM 2041 R$ 2,14 R$ 4.367,74';
+        const itemDmtSudecap = parsearLinhaOrcamentaria(linhaDmtSudecap);
+        exigir(!!itemDmtSudecap, 'Parser deveria reconhecer unidade operacional M3KM.');
+        exigir(itemDmtSudecap!.unid === 'M3KM', 'Unidade DMT deveria ser M3KM.');
+        exigir(Math.abs((itemDmtSudecap!.totalLinha || 0) - 4367.74) < 0.01, 'Total DMT SUDECAP divergente.');
 
         const linhaSicor = 'ED-48199 SICOR ALVENARIA ESTRUTURAL COM BLOCO DE CONCRETO, ESP. 19CM, (FBK 4,5MPA), PARA REVESTIMENTO, INCLUSIVE ARGAMASSA PARA ASSENTAMENTO m2 45,08 91,86R$ 4.141,05R$';
         const itemSicor = parsearLinhaOrcamentaria(linhaSicor);
