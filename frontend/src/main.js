@@ -3211,9 +3211,6 @@ function linhaIniciaComCodigoImportacao(line) {
 function finalizarBuffer(buf) {
   const linhas = (buf.linhas || []).map(l => String(l || '').replace(/\s+/g,' ').trim()).filter(l => l && !linhaImportacaoIgnorada(l));
   if (!linhas.length) return null;
-  const primeira = parsearLinhaOrcamentaria(linhas[0]);
-  if (primeira && primeira.preco > 0) return primeira;
-
   const fullText = linhas.join(' ');
   const parsed = parsearLinhaOrcamentaria(fullText);
   if (parsed) return parsed;
