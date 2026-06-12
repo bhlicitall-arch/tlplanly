@@ -162,6 +162,45 @@
     </div>
   </div>
 
+  <div class="card preg-discount-card">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Readequar Proposta <span>do Pregão</span></div>
+        <div class="text-sm" id="desconto-current" style="color:var(--text2);margin-top:4px">Total com BDI atual: R$ 0,00</div>
+      </div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-outline btn-sm" onclick="usarTotalAtualDescontoPregao()">Usar total atual</button>
+        <button class="btn btn-outline btn-sm" onclick="desfazerDescontoPregao()">Desfazer último ajuste</button>
+      </div>
+    </div>
+    <div class="preg-discount-grid">
+      <div class="form-group">
+        <label class="form-label">Valor estimado do edital</label>
+        <input id="desconto-original" class="form-input" placeholder="Ex: 800.000,00" oninput="calcularDescontoPregaoPreview(false)"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor vencedor</label>
+        <input id="desconto-final" class="form-input" placeholder="Ex: 680.000,00" oninput="calcularDescontoPregaoPreview(false)"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Desconto (%)</label>
+        <input id="desconto-pct" class="form-input" type="number" min="0" max="100" step="0.01" placeholder="Ex: 15" oninput="calcularDescontoPregaoPreview(false)"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Aplicar sobre</label>
+        <select id="desconto-base" class="form-select" onchange="calcularDescontoPregaoPreview(false)">
+          <option value="com-bdi">Total da proposta / edital (com BDI)</option>
+          <option value="sem-bdi">Subtotal de custos (sem BDI)</option>
+        </select>
+      </div>
+      <div class="preg-discount-actions">
+        <button class="btn btn-outline" onclick="calcularDescontoPregaoPreview()">Calcular prévia</button>
+        <button class="btn btn-gold" onclick="aplicarDescontoPregao()">Aplicar na planilha</button>
+      </div>
+    </div>
+    <div id="desconto-preview" class="preg-preview"></div>
+  </div>
+
   <div class="card">
     <div class="sec-header">
       <div class="sec-title">Planilha Orçamentária</div>

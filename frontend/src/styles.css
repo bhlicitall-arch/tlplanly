@@ -550,6 +550,82 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .file-chip .chip-remove{cursor:pointer;color:var(--text3);font-size:16px;line-height:1}
 .file-chip .chip-remove:hover{color:var(--red)}
 
+/* ── READEQUAÇÃO DE PROPOSTA / PREGÃO ─────────────────────── */
+.preg-discount-card{
+  border-color:rgba(245,166,35,.42);
+  background:linear-gradient(180deg,rgba(245,166,35,.07),rgba(245,166,35,.025)),var(--card);
+}
+.preg-discount-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(150px,1fr)) auto;
+  gap:12px;
+  align-items:end;
+}
+.preg-discount-actions{
+  display:flex;
+  gap:8px;
+  align-items:end;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+.preg-preview{
+  margin-top:14px;
+  border:1px solid rgba(245,166,35,.24);
+  border-radius:var(--radius);
+  background:var(--bg3);
+  overflow:hidden;
+}
+.preg-preview-empty{
+  padding:12px 14px;
+  color:var(--text2);
+  font-size:13px;
+  line-height:1.55;
+}
+.preg-preview-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  border-bottom:1px solid var(--border);
+}
+.preg-preview-grid div{
+  padding:12px 14px;
+  border-right:1px solid var(--border);
+}
+.preg-preview-grid div:last-child{border-right:0}
+.preg-preview-grid span{
+  display:block;
+  color:var(--text3);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.2px;
+  text-transform:uppercase;
+  margin-bottom:4px;
+}
+.preg-preview-grid strong{
+  display:block;
+  color:var(--text);
+  font-size:16px;
+  font-weight:900;
+}
+.preg-preview-note{
+  padding:12px 14px;
+  color:var(--text2);
+  font-size:13px;
+  line-height:1.55;
+}
+.preg-preview-note strong{color:var(--gold)}
+
+@media (max-width:1100px){
+  .preg-discount-grid{grid-template-columns:repeat(2,minmax(160px,1fr))}
+  .preg-discount-actions{justify-content:flex-start}
+  .preg-preview-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:640px){
+  .preg-discount-grid,.preg-preview-grid{grid-template-columns:1fr}
+  .preg-preview-grid div{border-right:0;border-bottom:1px solid var(--border)}
+  .preg-preview-grid div:last-child{border-bottom:0}
+  .preg-discount-actions .btn{width:100%}
+}
+
 /* ── GESTÃO DA OBRA ───────────────────────────────────────── */
 .gantt-wrap{display:flex;flex-direction:column;gap:8px;min-height:180px}
 .gantt-row{display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;font-size:12px}

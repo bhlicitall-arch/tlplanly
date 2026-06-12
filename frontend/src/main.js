@@ -11,6 +11,7 @@ let STATE = {
   bdiDraft: null,
   bdiDraftComponents: null,
   orcamento: [],      // { cod, desc, unid, qtd, preco, ref, cat }
+  descontoProposta: null,
   planejamento: [],
   medicoes: [],
   quantitativos: {},
@@ -61,6 +62,7 @@ try {
     STATE.backups = p.backups || [];
     STATE.gruposCusto = p.gruposCusto || [];
     STATE.insumosImportados = p.insumosImportados || [];
+    STATE.descontoProposta = p.descontoProposta || null;
     const legacyDefaultBDI = isLegacyDefaultBDI(p);
     STATE.bdiConfigured = !legacyDefaultBDI
       && Number.isFinite(Number(p.bdi))
@@ -177,6 +179,7 @@ function normalizeState() {
   STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
   STATE.gruposCusto = normalizarGruposCusto(STATE.gruposCusto);
   STATE.insumosImportados = Array.isArray(STATE.insumosImportados) ? STATE.insumosImportados : [];
+  STATE.descontoProposta = STATE.descontoProposta && typeof STATE.descontoProposta === 'object' ? STATE.descontoProposta : null;
   STATE.config = {
     uf:'MG',
     tolerancia:5,
@@ -230,6 +233,7 @@ function persistedState() {
     backups: STATE.backups,
     gruposCusto: STATE.gruposCusto,
     insumosImportados: STATE.insumosImportados,
+    descontoProposta: STATE.descontoProposta,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
     bdiComponents: STATE.bdiComponents,
@@ -249,6 +253,7 @@ function applyPersistedState(payload) {
   STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
   STATE.gruposCusto = Array.isArray(payload.gruposCusto) ? payload.gruposCusto : [];
   STATE.insumosImportados = Array.isArray(payload.insumosImportados) ? payload.insumosImportados : [];
+  STATE.descontoProposta = payload.descontoProposta && typeof payload.descontoProposta === 'object' ? payload.descontoProposta : null;
   const legacyDefaultBDI = isLegacyDefaultBDI(payload);
   STATE.bdiConfigured = !legacyDefaultBDI
     && Number.isFinite(Number(payload.bdi))
@@ -757,6 +762,7 @@ function adicionarItem() {
   const capitulo = document.getElementById('addCapitulo')?.value?.trim() || cat || 'Serviços';
   if (!cod || !desc) { toast('Informe código e descrição do item', 'error'); return; }
   STATE.orcamento.push({ id: makeId('orc'), cod, desc, unid, qtd, preco, ref, cat, capitulo, ordem: STATE.orcamento.length + 1 });
+  invalidarDescontoPregao('item adicionado ao orçamento');
   saveState();
   renderElaborar();
   renderDashboard();
@@ -769,6 +775,7 @@ function adicionarItem() {
 function removerItem(idx) {
   STATE.orcamento.splice(idx, 1);
   reordenarOrcamento();
+  invalidarDescontoPregao('item removido do orçamento');
   saveState();
   renderElaborar();
   renderDashboard();
@@ -804,6 +811,7 @@ function duplicarItem(idx) {
   };
   STATE.orcamento.splice(idx + 1, 0, copy);
   reordenarOrcamento();
+  invalidarDescontoPregao('item duplicado no orçamento');
   saveState();
   renderElaborar();
   renderDashboard();
@@ -815,6 +823,7 @@ function zerarQuantidades() {
   if (!STATE.orcamento.length) { toast('Não há itens para zerar', 'info'); return; }
   if (!confirm('Zerar as quantidades de todos os itens mantendo a estrutura do orçamento?')) return;
   STATE.orcamento.forEach(it => { it.qtd = 0; });
+  invalidarDescontoPregao('quantidades zeradas');
   saveState();
   renderElaborar();
   renderDashboard();
@@ -825,6 +834,7 @@ function zerarQuantidades() {
 function limparOrcamento() {
   if (!confirm('Deseja limpar todo o orçamento?')) return;
   STATE.orcamento = [];
+  STATE.descontoProposta = null;
   saveState();
   renderElaborar();
   renderDashboard();
@@ -840,6 +850,7 @@ function renderElaborar() {
     document.getElementById('elab-sub').textContent = fmtMoeda(0);
     document.getElementById('elab-total').textContent = fmtMoeda(0);
     document.getElementById('elab-bdi-pct').textContent = bdiText('Não configurado');
+    renderDescontoPregaoResumo();
     return;
   }
   const rows = STATE.orcamento.map((it, i) => {
@@ -875,6 +886,7 @@ function renderElaborar() {
   document.getElementById('elab-sub').textContent = fmtMoeda(sub);
   document.getElementById('elab-total').textContent = fmtMoeda(total);
   document.getElementById('elab-bdi-pct').textContent = bdiText('Não configurado');
+  renderDescontoPregaoResumo();
 }
 
 function categoriaOptions(current) {
@@ -916,14 +928,263 @@ function editarItemCampo(idx, campo, valor) {
   if (['qtd','preco','ref'].includes(campo)) {
     it[campo] = parseFloat(String(valor).replace(',', '.')) || 0;
     if (['qtd','preco'].includes(campo)) it.totalLinha = 0;
+    if (['qtd','preco'].includes(campo)) invalidarDescontoPregao('preço ou quantidade alterado manualmente');
   }
   else it[campo] = String(valor || '').trim();
   if (campo === 'cat' && !it.capitulo) it.capitulo = it.cat;
   saveState();
   atualizarLinhaElaborar(idx);
   atualizarTotaisElaborar();
+  renderDescontoPregaoResumo();
   preencherSelectsOperacionais();
   if (document.getElementById('view-dashboard')?.classList.contains('active')) renderDashboard();
+}
+
+function invalidarDescontoPregao(motivo = 'orçamento alterado') {
+  if (!descontoPregaoAtivo()) return;
+  STATE.descontoProposta = {
+    ...STATE.descontoProposta,
+    desfeitoEm: new Date().toISOString(),
+    invalidadoPor: motivo,
+    snapshot: []
+  };
+}
+
+function roundUnitPrice(v) {
+  return Math.round((Number(v) || 0) * 10000) / 10000;
+}
+
+function roundMoney(v) {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function orcamentoSubtotalAtual() {
+  normalizeState();
+  return STATE.orcamento.reduce((s, it) => s + itemValor(it), 0);
+}
+
+function descontoPregaoBaseLabel(base = 'com-bdi') {
+  return base === 'sem-bdi' ? 'Subtotal sem BDI' : 'Total com BDI';
+}
+
+function descontoPregaoValorAtual(base = 'com-bdi') {
+  const sub = orcamentoSubtotalAtual();
+  return base === 'sem-bdi' ? sub : totalComBDI(sub);
+}
+
+function descontoPregaoAtivo() {
+  return !!(STATE.descontoProposta && !STATE.descontoProposta.desfeitoEm && Number(STATE.descontoProposta.final) > 0);
+}
+
+function lerDescontoPregaoForm() {
+  const base = document.getElementById('desconto-base')?.value || STATE.descontoProposta?.base || 'com-bdi';
+  const totalAtualBase = descontoPregaoValorAtual(base);
+  let original = parseNumeroBR(document.getElementById('desconto-original')?.value);
+  let final = parseNumeroBR(document.getElementById('desconto-final')?.value);
+  let percentual = parseNumeroBR(document.getElementById('desconto-pct')?.value);
+
+  if (original <= 0) original = totalAtualBase;
+  if (final <= 0 && percentual > 0) final = original * (1 - percentual / 100);
+  if (percentual <= 0 && final > 0 && original > 0) percentual = (1 - final / original) * 100;
+
+  const subtotalAtual = orcamentoSubtotalAtual();
+  const targetSubtotal = base === 'sem-bdi' ? final : final / (1 + bdiValue() / 100);
+  const fatorAplicacao = subtotalAtual > 0 && targetSubtotal > 0 ? targetSubtotal / subtotalAtual : 0;
+  const descontoRealSistema = totalAtualBase > 0 && final > 0 ? (1 - final / totalAtualBase) * 100 : percentual;
+
+  return {
+    base,
+    original,
+    final,
+    percentual,
+    subtotalAtual,
+    totalAtualBase,
+    targetSubtotal,
+    fatorAplicacao,
+    descontoRealSistema
+  };
+}
+
+function usarTotalAtualDescontoPregao() {
+  const base = document.getElementById('desconto-base')?.value || 'com-bdi';
+  const el = document.getElementById('desconto-original');
+  if (el) el.value = roundMoney(descontoPregaoValorAtual(base)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  calcularDescontoPregaoPreview(false);
+}
+
+function calcularDescontoPregaoPreview(showToast = true) {
+  const dados = lerDescontoPregaoForm();
+  if (!STATE.orcamento.length) {
+    renderDescontoPregaoResumo(null, 'Importe ou elabore uma planilha antes de aplicar desconto.');
+    if (showToast) toast('Não há itens no orçamento para readequar.', 'error');
+    return null;
+  }
+  if (dados.original <= 0 || dados.final <= 0 || dados.fatorAplicacao <= 0) {
+    renderDescontoPregaoResumo(null, 'Informe o valor vencedor ou o percentual de desconto.');
+    if (showToast) toast('Informe o valor vencedor ou o percentual de desconto.', 'error');
+    return null;
+  }
+  if (dados.final > dados.original) {
+    renderDescontoPregaoResumo(dados, 'Atenção: o valor vencedor está acima do valor estimado informado.');
+  } else {
+    renderDescontoPregaoResumo(dados);
+  }
+  if (showToast) toast('Prévia de readequação calculada.', 'info');
+  return dados;
+}
+
+function aplicarDescontoPregao() {
+  const dados = calcularDescontoPregaoPreview(false);
+  if (!dados) return;
+
+  const linhas = STATE.orcamento.filter(it => (Number(it.qtd) || 0) > 0);
+  if (!linhas.length) {
+    toast('Não há linhas com quantidade para readequar.', 'error');
+    return;
+  }
+
+  const snapshot = STATE.orcamento.map(it => ({
+    id: it.id,
+    preco: it.preco,
+    totalLinha: it.totalLinha,
+    descontoPregaoPct: it.descontoPregaoPct
+  }));
+
+  const subtotalAntes = orcamentoSubtotalAtual();
+  const totalAntes = totalComBDI(subtotalAntes);
+
+  linhas.forEach(it => {
+    const qtd = Number(it.qtd) || 0;
+    const totalBaseLinha = itemValor(it);
+    it.preco = roundUnitPrice(qtd > 0 ? (totalBaseLinha * dados.fatorAplicacao) / qtd : 0);
+    it.totalLinha = 0;
+    it.descontoPregaoPct = roundMoney(dados.percentual);
+  });
+
+  let subtotalDepois = orcamentoSubtotalAtual();
+  let residuo = dados.targetSubtotal - subtotalDepois;
+  let itemAjuste = null;
+
+  if (Math.abs(residuo) > 0.0001) {
+    itemAjuste = [...linhas].sort((a, b) => ((Number(b.qtd) || 0) * (Number(b.preco) || 0)) - ((Number(a.qtd) || 0) * (Number(a.preco) || 0)))[0];
+    if (itemAjuste) {
+      const qtd = Number(itemAjuste.qtd) || 1;
+      itemAjuste.preco = roundUnitPrice((Number(itemAjuste.preco) || 0) + residuo / qtd);
+      itemAjuste.totalLinha = 0;
+    }
+  }
+
+  subtotalDepois = orcamentoSubtotalAtual();
+  residuo = dados.targetSubtotal - subtotalDepois;
+  const totalDepois = totalComBDI(subtotalDepois);
+
+  STATE.descontoProposta = {
+    aplicadoEm: new Date().toISOString(),
+    base: dados.base,
+    original: roundMoney(dados.original),
+    final: roundMoney(dados.final),
+    percentual: roundMoney(dados.percentual),
+    descontoRealSistema: roundMoney(dados.descontoRealSistema),
+    fatorAplicacao: Number(dados.fatorAplicacao.toFixed(8)),
+    subtotalAntes: roundMoney(subtotalAntes),
+    totalAntes: roundMoney(totalAntes),
+    subtotalDepois: roundMoney(subtotalDepois),
+    totalDepois: roundMoney(totalDepois),
+    alvoSubtotal: roundMoney(dados.targetSubtotal),
+    residuoFinal: Number(residuo.toFixed(6)),
+    itemAjusteId: itemAjuste?.id || '',
+    itemAjuste: itemAjuste ? itemLabel(itemAjuste) : '',
+    snapshot
+  };
+
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  if (document.getElementById('view-relatorio')?.classList.contains('active')) renderRelatorioPreview();
+  preencherSelectsOperacionais();
+  toast(`Planilha readequada para ${fmtMoeda(dados.final)}.`, 'success');
+}
+
+function desfazerDescontoPregao() {
+  const hist = STATE.descontoProposta;
+  if (!hist?.snapshot?.length) {
+    toast('Não há ajuste de pregão para desfazer.', 'error');
+    return;
+  }
+  const byId = new Map(hist.snapshot.map(s => [s.id, s]));
+  STATE.orcamento.forEach(it => {
+    const old = byId.get(it.id);
+    if (!old) return;
+    it.preco = old.preco;
+    it.totalLinha = old.totalLinha;
+    if (old.descontoPregaoPct === undefined) delete it.descontoPregaoPct;
+    else it.descontoPregaoPct = old.descontoPregaoPct;
+  });
+  STATE.descontoProposta = { ...hist, desfeitoEm: new Date().toISOString(), snapshot: [] };
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  if (document.getElementById('view-relatorio')?.classList.contains('active')) renderRelatorioPreview();
+  toast('Última readequação desfeita.', 'success');
+}
+
+function renderDescontoPregaoResumo(preview = null, alerta = '') {
+  const wrap = document.getElementById('desconto-preview');
+  const current = document.getElementById('desconto-current');
+  if (!wrap && !current) return;
+
+  const base = document.getElementById('desconto-base')?.value || STATE.descontoProposta?.base || 'com-bdi';
+  const totalAtual = descontoPregaoValorAtual(base);
+  if (current) current.textContent = `${descontoPregaoBaseLabel(base)} atual: ${fmtMoeda(totalAtual)}`;
+  const originalInput = document.getElementById('desconto-original');
+  if (originalInput) originalInput.placeholder = fmtMoeda(totalAtual);
+
+  if (!wrap) return;
+  const dados = preview || (descontoPregaoAtivo() ? STATE.descontoProposta : null);
+  if (!dados) {
+    wrap.innerHTML = `
+      <div class="preg-preview-empty">
+        Informe o valor estimado do edital e o valor vencedor, ou digite apenas o percentual de desconto. O TLPlanly recalcula os preços unitários e prepara a planilha ajustada para exportar.
+        ${alerta ? `<br><strong>${escapeHtml(alerta)}</strong>` : ''}
+      </div>`;
+    return;
+  }
+
+  const targetSubtotal = Number(dados.targetSubtotal || dados.alvoSubtotal || 0);
+  const final = Number(dados.final) || 0;
+  const pct = Number(dados.percentual) || 0;
+  const fator = Number(dados.fatorAplicacao || dados.fator || 0);
+  const sistemaPct = Number(dados.descontoRealSistema || pct) || 0;
+  const aplicado = dados.aplicadoEm && !preview;
+  wrap.innerHTML = `
+    <div class="preg-preview-grid">
+      <div><span>Valor estimado</span><strong>${fmtMoeda(dados.original)}</strong></div>
+      <div><span>Valor vencedor</span><strong>${fmtMoeda(final)}</strong></div>
+      <div><span>Desconto informado</span><strong>${pct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%</strong></div>
+      <div><span>Fator na planilha</span><strong>${(fator * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%</strong></div>
+    </div>
+    <div class="preg-preview-note">
+      ${aplicado ? 'Readequação aplicada' : 'Prévia'} sobre <strong>${descontoPregaoBaseLabel(dados.base)}</strong>.
+      Alvo técnico sem BDI: <strong>${fmtMoeda(targetSubtotal)}</strong>.
+      Desconto real sobre o total atual do sistema: <strong>${sistemaPct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%</strong>.
+      ${dados.itemAjuste ? `<br>Ajuste fino de centavos aplicado em: <strong>${escapeHtml(dados.itemAjuste)}</strong>.` : ''}
+      ${alerta ? `<br><strong>${escapeHtml(alerta)}</strong>` : ''}
+    </div>`;
+}
+
+function descontoPregaoRelatorioTexto() {
+  if (!descontoPregaoAtivo()) return '';
+  const d = STATE.descontoProposta;
+  return `Readequação de proposta: valor estimado ${fmtMoeda(d.original)}, valor vencedor ${fmtMoeda(d.final)}, desconto ${Number(d.percentual || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%, base ${descontoPregaoBaseLabel(d.base)}, fator aplicado ${(Number(d.fatorAplicacao || 0) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%.`;
+}
+
+function descontoPregaoRelatorioHtml(colspan = 11) {
+  if (!descontoPregaoAtivo()) return '';
+  const d = STATE.descontoProposta;
+  return `<tr class="sh-row"><td colspan="${colspan}" style="background:#fff7e6;color:#111!important;font-weight:700;padding:8px 10px;border:1px solid #f2c46d">
+    ${escapeHtml(descontoPregaoRelatorioTexto())}
+    ${d.itemAjuste ? `<br><span style="font-weight:600">Ajuste de centavos: ${escapeHtml(d.itemAjuste)}</span>` : ''}
+  </td></tr>`;
 }
 
 function exportarOrcamento() {
@@ -952,7 +1213,7 @@ function exportarOrcamentoPDF() {
 
 function montarResumoOrcamento(nome) {
   const sub = STATE.orcamento.reduce((s, it)=>s+itemValor(it), 0);
-  return [
+  const rows = [
     ['Campo','Valor'],
     ['Orçamento', nome],
     ['Data', new Date().toLocaleDateString('pt-BR')],
@@ -963,15 +1224,32 @@ function montarResumoOrcamento(nome) {
     ['Subtotal sem BDI', valorMoeda(sub)],
     ['Total com BDI', valorMoeda(totalComBDI(sub))]
   ];
+  if (descontoPregaoAtivo()) {
+    const d = STATE.descontoProposta;
+    rows.push(
+      [],
+      ['Readequação de Pregão', 'Aplicada'],
+      ['Valor estimado do edital', valorMoeda(d.original)],
+      ['Valor vencedor', valorMoeda(d.final)],
+      ['Desconto informado', `${Number(d.percentual || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`],
+      ['Base de cálculo', descontoPregaoBaseLabel(d.base)],
+      ['Fator aplicado aos itens', `${(Number(d.fatorAplicacao || 0) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%`],
+      ['Ajuste de centavos', d.itemAjuste || 'Não necessário']
+    );
+  }
+  return rows;
 }
 
 function montarLinhasOrcamento(nome = 'Orçamento') {
   const rows = [
     [`PLANILHA ORÇAMENTÁRIA — ${nome}`],
     [`Emitido em ${new Date().toLocaleString('pt-BR')} · Moeda ${moedaCodigo()} · BDI ${bdiText('Não configurado')}`],
+  ];
+  if (descontoPregaoAtivo()) rows.push([descontoPregaoRelatorioTexto()]);
+  rows.push(
     [],
     ['Item','Código','Descrição','Unidade','Quantidade',moedaHeader('P.Unit'),moedaHeader('Ref.SINAPI'),'Desvio %',moedaHeader('Total sem BDI'),moedaHeader('Total com BDI'),'Categoria','Capítulo']
-  ];
+  );
   STATE.orcamento.forEach((it, i) => {
     const desvio = Number(it.ref) > 0 ? ((Number(it.preco) - Number(it.ref)) / Number(it.ref) * 100) : '';
     rows.push([
@@ -4371,8 +4649,13 @@ function confirmarImportacao(destino = STATE.mode === 'auditor' ? 'auditoria' : 
     };
   });
 
-  if (acao === 'substituir') STATE.orcamento = novos;
-  else STATE.orcamento = [...STATE.orcamento, ...novos];
+  if (acao === 'substituir') {
+    STATE.orcamento = novos;
+    STATE.descontoProposta = null;
+  } else {
+    STATE.orcamento = [...STATE.orcamento, ...novos];
+    invalidarDescontoPregao('itens importados ao orçamento');
+  }
 
   if (IMP.extracaoId) docsMarcarExtracaoEnviada(IMP.extracaoId, IMP.reviewed);
   saveState();
@@ -4913,6 +5196,7 @@ function analisadorEnviarOrcamento() {
     certMotivos: s.certMotivos || []
   }));
   STATE.orcamento = [...STATE.orcamento, ...novos];
+  invalidarDescontoPregao('serviços do analisador adicionados ao orçamento');
   if (ANALISADOR.extracaoId) docsMarcarExtracaoEnviada(ANALISADOR.extracaoId, ANALISADOR.services);
   saveState();
   renderElaborar();
@@ -5665,6 +5949,7 @@ function renderPreviewPlanilha() {
     <tr><td colspan="11" class="sh-sub">${modelo.subtitulo} · Base de preços: ${meta.fonte} · Moeda: ${moedaCodigo()}</td></tr>
     ${metaRows}
     ${bloqueados.length ? `<tr class="sh-row"><td colspan="11" style="background:#fff4e5;color:#7a3e00!important;font-weight:700;padding:8px 10px;border:1px solid #f0c27a">Auditoria de extração: ${bloqueados.length} linha(s) bloqueada(s) por indício de cabeçalho, fórmula, valor deslocado ou resto de PDF. Reimporte o arquivo para recompor estes itens.</td></tr>` : ''}
+    ${descontoPregaoRelatorioHtml(11)}
     <tr class="sh-col-header">
       <th style="width:35px">Item</th><th style="width:80px">Código</th><th>Descrição do Serviço/Insumo</th>
       <th style="width:40px">Un</th><th style="width:60px">Qtd</th>
@@ -5846,6 +6131,7 @@ function renderPreviewResumo() {
     <tr><td colspan="4" class="sh-header">${modelo.resumo}</td></tr>
     <tr><td colspan="4" class="sh-sub">Obra: ${meta.obra} | ${meta.orgao} | Processo: ${meta.edital} | Moeda: ${moedaCodigo()}</td></tr>
     ${bloqueados.length ? `<tr class="sh-row"><td colspan="4" style="background:#fff4e5;color:#7a3e00!important;font-weight:700;padding:8px 10px;border:1px solid #f0c27a">Auditoria de extração: ${bloqueados.length} linha(s) bloqueada(s) e fora dos totais.</td></tr>` : ''}
+    ${descontoPregaoRelatorioHtml(4)}
     <tr class="sh-meta"><td class="lbl">Responsável:</td><td>${meta.rt} — ${meta.crea}</td><td class="lbl">ART/RRT:</td><td>${meta.art}</td></tr>
     <tr class="sh-meta"><td class="lbl">Local:</td><td>${meta.local}</td><td class="lbl">Data Base:</td><td>${meta.data}</td></tr>
     <tr class="sh-meta"><td class="lbl">Fonte:</td><td>${meta.fonte}</td><td class="lbl">Emissão:</td><td>${new Date().toLocaleDateString('pt-BR')}</td></tr>
@@ -5901,6 +6187,7 @@ function exportarExcelProfissional() {
     ['ART/RRT:', meta.art, '', 'Data Base:', meta.data],
     ['Fonte de Preços:', meta.fonte, '', 'Emissão:', new Date().toLocaleDateString('pt-BR')],
     ['Modelo:', meta.modelo, '', 'Moeda:', moedaCodigo(), 'Cotação:', moedaCotacao()],
+    ...(descontoPregaoAtivo() ? [[descontoPregaoRelatorioTexto()], ['Ajuste de centavos:', STATE.descontoProposta.itemAjuste || 'Não necessário']] : []),
     ...(bloqueados.length ? [[`Auditoria de extração: ${bloqueados.length} linha(s) bloqueada(s) e excluída(s) dos totais.`], []] : [[]]),
     ['Item','Capítulo','Código SINAPI','Descrição','Un','Qtd',moedaHeader('P.Unit'),moedaHeader('Ref.SINAPI'),'Desvio %','BDI %',moedaHeader('P.Unit c/BDI'),moedaHeader('Total c/BDI'),'Categoria'],
   ];
@@ -6053,6 +6340,36 @@ function exportarExcelProfissional() {
     const wsBloq = XLSX.utils.aoa_to_sheet(bloqData);
     wsBloq['!cols'] = [{wch:14},{wch:50},{wch:8},{wch:12},{wch:14},{wch:16},{wch:48},{wch:80}];
     XLSX.utils.book_append_sheet(wb, wsBloq, 'Linhas bloqueadas');
+  }
+
+  if (descontoPregaoAtivo()) {
+    const d = STATE.descontoProposta;
+    const pregData = [
+      ['READEQUAÇÃO DE PROPOSTA DO PREGÃO'],
+      ['Obra:', meta.obra],
+      ['Edital/Processo:', meta.edital],
+      ['Aplicado em:', new Date(d.aplicadoEm).toLocaleString('pt-BR')],
+      [],
+      ['Campo','Valor'],
+      ['Valor estimado do edital', valorMoeda(d.original)],
+      ['Valor vencedor', valorMoeda(d.final)],
+      ['Desconto informado (%)', Number(d.percentual || 0)],
+      ['Desconto real sobre total atual (%)', Number(d.descontoRealSistema || d.percentual || 0)],
+      ['Base de cálculo', descontoPregaoBaseLabel(d.base)],
+      ['Fator aplicado aos preços unitários (%)', Number(((Number(d.fatorAplicacao) || 0) * 100).toFixed(6))],
+      ['Subtotal antes', valorMoeda(d.subtotalAntes)],
+      ['Total com BDI antes', valorMoeda(d.totalAntes)],
+      ['Subtotal depois', valorMoeda(d.subtotalDepois)],
+      ['Total com BDI depois', valorMoeda(d.totalDepois)],
+      ['Ajuste de centavos', d.itemAjuste || 'Não necessário'],
+      ['Resíduo final técnico', Number(d.residuoFinal || 0)],
+      [],
+      ['Observação'],
+      ['Os preços unitários foram recalculados proporcionalmente para fechar o valor vencedor informado, preservando quantidades e estrutura da planilha.']
+    ];
+    const wsPreg = XLSX.utils.aoa_to_sheet(pregData);
+    wsPreg['!cols'] = [{wch:36},{wch:48}];
+    XLSX.utils.book_append_sheet(wb, wsPreg, 'Readequação Pregão');
   }
 
   // Save
@@ -6392,6 +6709,7 @@ function cpuEnviarParaOrcamento() {
     cod: CPU.cod, desc: CPU.desc, unid: CPU.unid,
     qtd: 1, preco: custoTotal, ref: 0, cat: CPU.tipo, capitulo: CPU.tipo, ordem: STATE.orcamento.length + 1
   });
+  invalidarDescontoPregao('CPU adicionada ao orçamento');
   saveState();
   renderElaborar();
   renderDashboard();
@@ -6480,6 +6798,7 @@ function cpuUsarDaBiblioteca() {
   if (!_cpuFichaSelecionada) return;
   const c = _cpuFichaSelecionada;
   STATE.orcamento.push({ id: makeId('orc'), cod: c.cod, desc: c.desc, unid: c.unid, qtd: 1, preco: c.precoUnitario, ref: 0, cat: c.tipo, capitulo: c.tipo, ordem: STATE.orcamento.length + 1 });
+  invalidarDescontoPregao('CPU da biblioteca adicionada ao orçamento');
   saveState(); renderElaborar(); renderDashboard(); preencherSelectsOperacionais();
   toast('CPU "' + c.cod + '" enviada ao orçamento', 'success');
   showView('elaborar');
@@ -6568,6 +6887,12 @@ const COPILOT_KB = {
     q: ['manual','manual de instruções','manual de instrucoes','guia do usuário','guia do usuario','treinamento','apresentação do sistema','apresentacao do sistema','como operar o tlplanly'],
     r: `**Manual de Operação do TLPlanly**\n\nCriei um manual prático para usuários leigos, com fluxo recomendado, explicação de todos os módulos e roteiros para construtora, órgão público e auditor.\n\nVocê pode abrir a versão visual em: [Manual TLPlanly](/docs/manual_usuario_tlplanly.html)\n\nTambém posso te orientar por aqui. Pergunte, por exemplo:\n• Como importar uma planilha?\n• Como usar a Central de Documentos?\n• Como configurar BDI?\n• Como auditar preços?`,
     chips: ['Abrir Manual','Como importar edital?','Central de Documentos','Como auditar?']
+  },
+
+  desconto_pregao: {
+    q: ['desconto pregão','desconto pregao','planilha ajustada','readequar proposta','valor vencedor','proposta vencedora','aplicar desconto','pregoeiro'],
+    r: `**Como gerar a planilha ajustada após o desconto do pregão**\n\nUse este fluxo quando o edital trouxe uma planilha estimativa e, após o lance, o pregoeiro pediu a planilha readequada.\n\n1. Vá em **Elaborar Orçamento**\n2. Importe ou confira a planilha estimativa do edital\n3. No bloco **Readequar Proposta do Pregão**, clique em **Usar total atual** ou informe o valor estimado do edital\n4. Preencha o **Valor vencedor** ou o **Desconto (%)**\n5. Clique em **Calcular prévia** para conferir o fator\n6. Clique em **Aplicar na planilha**\n7. Exporte em **Excel** e **PDF**\n\nO TLPlanly recalcula os preços unitários proporcionalmente, preserva quantidades e estrutura, faz ajuste fino de centavos e registra a memória da readequação na exportação.`,
+    chips: ['Ir para Elaborar','Meu orçamento atual','Como exportar?','Ir para Relatório']
   },
 
   // ── BDI ────────────────────────────────────────────────
@@ -6770,6 +7095,7 @@ function copilotDetectPendingAction(txt) {
   if (/(abrir manual|manual|guia do usuario|guia do sistema)/.test(norm)) return { type: 'manual' };
   if (!asksToContinue) return null;
 
+  if (/(desconto pregao|desconto do pregao|planilha ajustada|readequar proposta|valor vencedor|proposta vencedora)/.test(norm)) return copilotActionForView('elaborar');
   if (/(moeda|cotacao|dolar|euro|modelo padrao)/.test(norm)) return copilotActionForView('config');
   if (/(analisar documentos|projeto basico|termo de referencia|etp|memorial|estimativa por documento|gerar orcamento pelo projeto|documentos da obra)/.test(norm)) return copilotActionForView('analisador');
   if (/(relatorio|exportar|pdf final|gerar pdf|baixar)/.test(norm)) return copilotActionForView('relatorio');
@@ -7078,7 +7404,7 @@ async function copilotResponder(txt) {
 
   const localFirst = /^(ir|abrir|acessar)\b/.test(norm)
     || /^(meu orcamento atual|o que posso fazer aqui|sim me guie)$/.test(norm)
-    || /^(manual|abrir manual|guia|como operar|o que e bdi|como importar|como exportar|como calcular bdi|o que e sinapi|o que e curva abc|limite bdi)/.test(norm);
+    || /^(manual|abrir manual|guia|como operar|o que e bdi|como importar|como exportar|como calcular bdi|o que e sinapi|o que e curva abc|limite bdi|desconto pregao|planilha ajustada|readequar proposta)/.test(norm);
 
   // Comandos de navegação e chips previsíveis são locais para não prender o usuário em chamadas externas.
   if (!localFirst) {
@@ -7093,6 +7419,11 @@ async function copilotResponder(txt) {
     { keys:['manual','manual de instrucoes','manual de operacao','guia do usuario','guia do sistema',
             'treinamento','apresentacao do sistema','como operar o tlplanly','como operar o sistema'],
       entry:'manual' },
+    { keys:['desconto pregao','desconto do pregao','planilha ajustada','readequar proposta',
+            'valor vencedor','proposta vencedora','aplicar desconto','lance vencedor',
+            'pregoeiro pediu planilha','duas horas planilha','ajustar planilha pregão',
+            'ajustar planilha pregao','reduzir proposta','desconto linear'],
+      entry:'desconto_pregao' },
     // Onboarding / tutorial
     { keys:['sim me guie','como comecar','comecar','iniciar','tutorial','por onde comecar','primeiro passo',
             'como usar o sistema','me guie','ajuda','help','nao sei','nao entendo','como funciona',
