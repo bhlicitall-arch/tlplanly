@@ -190,6 +190,19 @@ async function testarImportadores() {
             ['MAT-001', 'Cimento CP II', '32,50', 'SC', 'Material'],
             ['MO-001', 'Pedreiro', '28,80', 'H', 'Mao de Obra'],
         ];
+        const gruposCusto = [
+            ['Código', 'Grupo de Custo', 'Tipo'],
+            ['E', 'Equipamento', 'Equipamento'],
+            ['M', 'Material', 'Material'],
+            ['S', 'Mao de Obra', 'Mao de Obra'],
+            ['T', 'Transporte', 'Transporte'],
+            ['SV', 'Servicos', 'Servicos'],
+        ];
+        const sugestaoGrupos = sugerirMapeamentoPlanilha(gruposCusto, 'grupos');
+        const gruposMapeados = mapearPlanilha(gruposCusto, sugestaoGrupos.mapping, 'grupos', sugestaoGrupos.headerRow);
+        exigir(gruposMapeados.grupos.length === 5, 'Fluxo TCOP deveria importar os 5 grupos de custo.');
+        exigir(gruposMapeados.grupos[4].tipo === 'SV', 'Grupo de servicos deveria ser normalizado como SV.');
+
         const sugestaoInsumos = sugerirMapeamentoPlanilha(insumosSemCabecalho, 'insumos');
         exigir(sugestaoInsumos.headerRow === -1, 'Planilha sem cabecalho deveria usar layout A/B/C.');
         const insumosMapeados = mapearPlanilha(insumosSemCabecalho, sugestaoInsumos.mapping, 'insumos', sugestaoInsumos.headerRow);

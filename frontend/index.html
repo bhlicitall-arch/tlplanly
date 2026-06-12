@@ -169,7 +169,8 @@
         <button class="btn btn-outline btn-sm" onclick="novoItemProprio()">&#43; Item próprio</button>
         <button class="btn btn-outline btn-sm" onclick="zerarQuantidades()">Zerar qtd.</button>
         <button class="btn btn-outline btn-sm" onclick="limparOrcamento()">&#128465; Limpar</button>
-        <button class="btn btn-gold btn-sm" onclick="exportarOrcamento()">&#128229; Exportar</button>
+        <button class="btn btn-gold btn-sm" onclick="exportarOrcamentoExcel()">&#128229; Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="exportarOrcamentoPDF()">&#128438; PDF</button>
       </div>
     </div>
     <div class="tbl-wrap">
@@ -204,7 +205,8 @@
       <div class="flex flex-wrap">
         <button class="btn btn-gold btn-sm" onclick="planejamentoGerarDoOrcamento()">Gerar do orçamento</button>
         <button class="btn btn-outline btn-sm" onclick="planejamentoAdicionarTarefa()">Adicionar tarefa</button>
-        <button class="btn btn-outline btn-sm" onclick="planejamentoExportar()">Exportar .md</button>
+        <button class="btn btn-outline btn-sm" onclick="planejamentoExportarExcel()">Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="planejamentoExportarPDF()">PDF</button>
       </div>
     </div>
     <div class="grid grid-4" style="gap:10px">
@@ -348,7 +350,8 @@
     </div>
     <div class="flex flex-wrap mt-4">
       <button class="btn btn-gold btn-sm" onclick="docsAdicionar()">Salvar anexo</button>
-      <button class="btn btn-outline btn-sm" onclick="docsExportarDossie()">Exportar dossiê .md</button>
+      <button class="btn btn-outline btn-sm" onclick="docsExportarDossieExcel()">Dossiê Excel</button>
+      <button class="btn btn-outline btn-sm" onclick="docsExportarDossiePDF()">Dossiê PDF</button>
     </div>
   </div>
 
@@ -360,7 +363,8 @@
     <div class="card">
       <div class="sec-header">
         <div class="sec-title">Revisões de <span>Extração</span></div>
-        <button class="btn btn-outline btn-sm" onclick="docsExportarDossie()">Exportar dossiê .md</button>
+        <button class="btn btn-outline btn-sm" onclick="docsExportarDossieExcel()">Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="docsExportarDossiePDF()">PDF</button>
       </div>
       <div id="docs-extracoes-lista"></div>
     </div>
@@ -685,9 +689,7 @@
   <div id="exp-planilha" class="exp-panel active">
     <div class="action-bar">
       <button class="btn btn-gold" onclick="exportarExcelProfissional()">&#128229; Excel (.xlsx) Profissional</button>
-      <button class="btn btn-outline" onclick="exportarCSV()">&#128229; CSV</button>
-      <button class="btn btn-outline" onclick="exportarJSON()">&#123;&#125; JSON</button>
-      <button class="btn btn-outline" onclick="imprimirRelatorio()">&#128438; Imprimir / PDF</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('planilha')">&#128438; PDF Profissional</button>
       <span class="text-sm" style="margin-left:auto;align-self:center" id="rel-info-count"></span>
     </div>
     <div class="preview-sheet" id="preview-planilha">
@@ -699,7 +701,7 @@
   <div id="exp-bdi-rel" class="exp-panel">
     <div class="action-bar">
       <button class="btn btn-gold" onclick="exportarExcelBDI()">&#128229; Exportar Composição BDI</button>
-      <button class="btn btn-outline" onclick="imprimirRelatorio()">&#128438; Imprimir</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('bdi-rel')">&#128438; PDF BDI</button>
     </div>
     <div class="preview-sheet" id="preview-bdi-rel"></div>
   </div>
@@ -708,6 +710,7 @@
   <div id="exp-abc-rel" class="exp-panel">
     <div class="action-bar">
       <button class="btn btn-gold" onclick="exportarExcelABC()">&#128229; Exportar Curva ABC</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('abc-rel')">&#128438; PDF ABC</button>
     </div>
     <div class="preview-sheet" id="preview-abc-rel"></div>
   </div>
@@ -715,7 +718,8 @@
   <!-- Tab: Resumo Executivo -->
   <div id="exp-resumo-rel" class="exp-panel">
     <div class="action-bar">
-      <button class="btn btn-gold" onclick="imprimirRelatorio()">&#128438; Imprimir / Gerar PDF</button>
+      <button class="btn btn-gold" onclick="exportarExcelProfissional()">&#128229; Excel Completo</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('resumo-rel')">&#128438; PDF Resumo</button>
     </div>
     <div class="preview-sheet" id="preview-resumo-rel"></div>
   </div>
@@ -1022,6 +1026,7 @@
       <div>
         <label class="form-label">Finalidade da importação</label>
         <select id="imp-map-purpose" class="form-select" onchange="impAlterarFinalidadeMapeamento(this.value)">
+          <option value="grupos">Grupos de custo</option>
           <option value="orcamento">Itens de orçamento</option>
           <option value="insumos">Cadastro de insumos</option>
           <option value="composicoes">Composições CPU</option>
@@ -1067,7 +1072,8 @@
         <div class="sec-title">&#x33;&#xFE0F;&#x20E3; Revisar <span>Itens Extraídos</span></div>
         <div class="flex">
           <span id="imp-rev-stats" style="font-size:12px;color:var(--text2)"></span>
-          <button class="btn btn-outline btn-sm" onclick="exportarMemoriaImportacao()">Mem&oacute;ria .md</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarMemoriaImportacaoExcel()">Mem&oacute;ria Excel</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarMemoriaImportacaoPDF()">Mem&oacute;ria PDF</button>
           <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(true)">Todos</button>
           <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(false)">Nenhum</button>
         </div>
@@ -1199,7 +1205,8 @@
         <span id="ana-review-stats" style="font-size:12px;color:var(--text2);align-self:center"></span>
         <button class="btn btn-outline btn-sm" onclick="analisadorSelecionarTodos(true)">Todos</button>
         <button class="btn btn-outline btn-sm" onclick="analisadorSelecionarTodos(false)">Nenhum</button>
-        <button class="btn btn-outline btn-sm" onclick="analisadorExportarMemoria()">Memória .md</button>
+        <button class="btn btn-outline btn-sm" onclick="analisadorExportarMemoriaExcel()">Memória Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="analisadorExportarMemoriaPDF()">Memória PDF</button>
         <button class="btn btn-gold btn-sm" onclick="analisadorEnviarOrcamento()">Enviar para Elaborar Orçamento</button>
       </div>
     </div>
@@ -1378,7 +1385,8 @@
           <div class="flex">
             <span id="cpu-lib-count" style="font-size:12px;color:var(--text3)">0 composições</span>
             <button class="btn btn-outline btn-sm" onclick="cpuImportarBiblioteca()">&#128228; Importar</button>
-            <button class="btn btn-outline btn-sm" onclick="cpuExportarBiblioteca()">&#128229; Exportar</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuExportarBibliotecaExcel()">&#128229; Excel</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuExportarBibliotecaPDF()">&#128438; PDF</button>
           </div>
         </div>
 

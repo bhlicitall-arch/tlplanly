@@ -1,6 +1,6 @@
 import { parseNumeroBR, normalizarUnidade } from './ExtracaoCertificador';
 
-export type FinalidadePlanilha = 'orcamento' | 'insumos' | 'composicoes';
+export type FinalidadePlanilha = 'grupos' | 'orcamento' | 'insumos' | 'composicoes';
 
 export type MapeamentoColunas = Record<string, number>;
 
@@ -15,6 +15,7 @@ export interface SugestaoMapeamento {
 }
 
 export interface ResultadoPlanilhaMapeada {
+    grupos: any[];
     items: any[];
     insumos: any[];
     composicoes: any[];
@@ -22,6 +23,12 @@ export interface ResultadoPlanilhaMapeada {
 }
 
 const FIELDS: Record<FinalidadePlanilha, Array<{ key: string; label: string; required?: boolean; numeric?: boolean; aliases: string[] }>> = {
+    grupos: [
+        { key: 'cod', label: 'Codigo do grupo', required: true, aliases: ['codigo', 'cod', 'codigo grupo', 'grupo', 'grupo custo', 'grupo de custo'] },
+        { key: 'nome', label: 'Nome do grupo', required: true, aliases: ['nome', 'descricao', 'grupo', 'grupo custo', 'grupo de custo', 'classe'] },
+        { key: 'tipo', label: 'Tipo normalizado', aliases: ['tipo', 'natureza', 'classificacao', 'categoria'] },
+        { key: 'descricao', label: 'Descricao complementar', aliases: ['observacao', 'descricao complementar', 'detalhe'] },
+    ],
     orcamento: [
         { key: 'cod', label: 'Codigo', aliases: ['codigo', 'cod', 'item', 'codigo item', 'codigo servico', 'codigo composicao'] },
         { key: 'desc', label: 'Descricao', required: true, aliases: ['descricao', 'servico', 'especificacao', 'insumo'] },
@@ -36,7 +43,8 @@ const FIELDS: Record<FinalidadePlanilha, Array<{ key: string; label: string; req
         { key: 'desc', label: 'Descricao do insumo', required: true, aliases: ['descricao', 'insumo', 'especificacao'] },
         { key: 'preco', label: 'Custo unitario', required: true, numeric: true, aliases: ['preco', 'custo', 'valor', 'preco unitario', 'custo unitario', 'valor unitario'] },
         { key: 'unid', label: 'Unidade', aliases: ['unidade', 'unid', 'und', 'un'] },
-        { key: 'tipo', label: 'Tipo do insumo', aliases: ['tipo', 'classe', 'categoria', 'grupo', 'natureza', 'classificacao'] },
+        { key: 'tipo', label: 'Tipo do insumo', aliases: ['tipo', 'classe', 'categoria', 'natureza', 'classificacao'] },
+        { key: 'grupo', label: 'Grupo de custo', aliases: ['grupo', 'grupo custo', 'grupo de custo', 'codigo grupo', 'cod grupo'] },
     ],
     composicoes: [
         { key: 'cpuCod', label: 'Codigo da CPU', required: true, aliases: ['codigo cpu', 'cod cpu', 'composicao', 'codigo composicao', 'codigo servico'] },
@@ -110,6 +118,7 @@ export function mapearPlanilha(rawRows: any[][], mapping: MapeamentoColunas, fin
     const rows = normalizarLinhas(rawRows);
     const start = headerRow >= 0 ? headerRow + 1 : 0;
     const issues: string[] = [];
+    const grupos: any[] = [];
     const items: any[] = [];
     const insumos: any[] = [];
     const cpuMap = new Map<string, any>();
@@ -119,6 +128,16 @@ export function mapearPlanilha(rawRows: any[][], mapping: MapeamentoColunas, fin
         if (!row || row.every(cell => !String(cell ?? '').trim())) return;
         const joined = row.map(cell => String(cell ?? '')).join(' ').trim();
         if (!joined || /^(total|subtotal)\b/i.test(joined)) return;
+
+        if (finalidade === 'grupos') {
+            const grupo = itemGrupoCusto(row, mapping);
+            if (!grupo.codigo || !grupo.nome) {
+                issues.push(`Linha ${rowNumber}: grupo de custo sem codigo ou nome.`);
+                return;
+            }
+            grupos.push(grupo);
+            return;
+        }
 
         if (finalidade === 'orcamento') {
             const item = itemOrcamento(row, mapping);
@@ -163,7 +182,19 @@ export function mapearPlanilha(rawRows: any[][], mapping: MapeamentoColunas, fin
         cpuMap.set(vinculo.cpuCod, cpu);
     });
 
-    return { items, insumos, composicoes: [...cpuMap.values()], issues };
+    return { grupos, items, insumos, composicoes: [...cpuMap.values()], issues };
+}
+
+function itemGrupoCusto(row: string[], mapping: MapeamentoColunas) {
+    const codigo = limparCodigoPlanilha(valor(row, mapping.cod));
+    const nome = valor(row, mapping.nome);
+    return {
+        codigo,
+        nome,
+        tipo: normalizarGrupoCusto(valor(row, mapping.tipo) || nome || codigo),
+        descricao: valor(row, mapping.descricao),
+        importado: true,
+    };
 }
 
 function itemOrcamento(row: string[], mapping: MapeamentoColunas) {
@@ -184,13 +215,16 @@ function itemOrcamento(row: string[], mapping: MapeamentoColunas) {
 
 function itemInsumo(row: string[], mapping: MapeamentoColunas) {
     const cod = limparCodigoPlanilha(valor(row, mapping.cod));
+    const grupoCusto = valor(row, mapping.grupo) || valor(row, mapping.tipo);
+    const tipo = normalizarTipoInsumo(valor(row, mapping.tipo) || grupoCusto);
     return {
         codigoSinapi: cod,
         codigo: cod,
         descricao: valor(row, mapping.desc),
         unidade: normalizarUnidade(valor(row, mapping.unid) || 'UN'),
         precoMedio: parseNumeroBR(valor(row, mapping.preco)),
-        tipo: normalizarTipoInsumo(valor(row, mapping.tipo)),
+        tipo,
+        grupoCusto: String(grupoCusto || tipo).trim().toUpperCase(),
         fonte: 'IMPORTADO/TLPLANLY',
         dataReferencia: new Date().toLocaleDateString('pt-BR'),
         importado: true,
@@ -234,8 +268,10 @@ function scoreCabecalho(cell: string, aliases: string[]): number {
 function defaultMapping(finalidade: FinalidadePlanilha, maxCols: number): MapeamentoColunas {
     const map: MapeamentoColunas = {};
     const set = (key: string, idx: number) => { if (idx < maxCols) map[key] = idx; };
-    if (finalidade === 'insumos') {
-        set('cod', 0); set('desc', 1); set('preco', 2); set('unid', 3); set('tipo', 4);
+    if (finalidade === 'grupos') {
+        set('cod', 0); set('nome', 1); set('tipo', 2); set('descricao', 3);
+    } else if (finalidade === 'insumos') {
+        set('cod', 0); set('desc', 1); set('preco', 2); set('unid', 3); set('tipo', 4); set('grupo', 5);
     } else if (finalidade === 'composicoes') {
         set('cpuCod', 0); set('cpuDesc', 1); set('cpuUnid', 2); set('insumoCod', 3); set('insumoDesc', 4); set('tipo', 5); set('coef', 6); set('preco', 7);
     } else {
@@ -266,6 +302,16 @@ export function normalizarTipoInsumo(value: string): 'M' | 'S' | 'E' | 'T' {
     if (/mao|mdo|obra|pedreiro|servente|oficial|horista/.test(n)) return 'S';
     if (/equip|maquina|caminhao|trator|escavadeira|betoneira|andaime/.test(n)) return 'E';
     if (/transp|frete|dmt/.test(n)) return 'T';
+    return 'M';
+}
+
+export function normalizarGrupoCusto(value: string): 'M' | 'S' | 'E' | 'T' | 'SV' {
+    const raw = String(value || '').trim().toUpperCase();
+    const n = normalizarTexto(value);
+    if (raw === 'E' || /equip|maquina|ferramenta/.test(n)) return 'E';
+    if (raw === 'S' || /mao|mdo|obra|pessoal|horista|mensalista/.test(n)) return 'S';
+    if (raw === 'T' || /transp|frete|dmt/.test(n)) return 'T';
+    if (raw === 'SV' || raw === 'SERV' || /servic|composicao|cpu/.test(n)) return 'SV';
     return 'M';
 }
 

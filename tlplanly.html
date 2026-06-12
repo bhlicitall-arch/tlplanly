@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-﻿
+
 /* ── TOKENS ──────────────────────────────────────────────────── */
 :root{
   --gold:#f5a623;--gold2:#ffc045;--gold3:#ffe0a0;
@@ -752,7 +752,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
         <button class="btn btn-outline btn-sm" onclick="novoItemProprio()">&#43; Item próprio</button>
         <button class="btn btn-outline btn-sm" onclick="zerarQuantidades()">Zerar qtd.</button>
         <button class="btn btn-outline btn-sm" onclick="limparOrcamento()">&#128465; Limpar</button>
-        <button class="btn btn-gold btn-sm" onclick="exportarOrcamento()">&#128229; Exportar</button>
+        <button class="btn btn-gold btn-sm" onclick="exportarOrcamentoExcel()">&#128229; Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="exportarOrcamentoPDF()">&#128438; PDF</button>
       </div>
     </div>
     <div class="tbl-wrap">
@@ -787,7 +788,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       <div class="flex flex-wrap">
         <button class="btn btn-gold btn-sm" onclick="planejamentoGerarDoOrcamento()">Gerar do orçamento</button>
         <button class="btn btn-outline btn-sm" onclick="planejamentoAdicionarTarefa()">Adicionar tarefa</button>
-        <button class="btn btn-outline btn-sm" onclick="planejamentoExportar()">Exportar .md</button>
+        <button class="btn btn-outline btn-sm" onclick="planejamentoExportarExcel()">Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="planejamentoExportarPDF()">PDF</button>
       </div>
     </div>
     <div class="grid grid-4" style="gap:10px">
@@ -931,7 +933,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
     </div>
     <div class="flex flex-wrap mt-4">
       <button class="btn btn-gold btn-sm" onclick="docsAdicionar()">Salvar anexo</button>
-      <button class="btn btn-outline btn-sm" onclick="docsExportarDossie()">Exportar dossiê .md</button>
+      <button class="btn btn-outline btn-sm" onclick="docsExportarDossieExcel()">Dossiê Excel</button>
+      <button class="btn btn-outline btn-sm" onclick="docsExportarDossiePDF()">Dossiê PDF</button>
     </div>
   </div>
 
@@ -943,7 +946,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
     <div class="card">
       <div class="sec-header">
         <div class="sec-title">Revisões de <span>Extração</span></div>
-        <button class="btn btn-outline btn-sm" onclick="docsExportarDossie()">Exportar dossiê .md</button>
+        <button class="btn btn-outline btn-sm" onclick="docsExportarDossieExcel()">Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="docsExportarDossiePDF()">PDF</button>
       </div>
       <div id="docs-extracoes-lista"></div>
     </div>
@@ -1268,9 +1272,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   <div id="exp-planilha" class="exp-panel active">
     <div class="action-bar">
       <button class="btn btn-gold" onclick="exportarExcelProfissional()">&#128229; Excel (.xlsx) Profissional</button>
-      <button class="btn btn-outline" onclick="exportarCSV()">&#128229; CSV</button>
-      <button class="btn btn-outline" onclick="exportarJSON()">&#123;&#125; JSON</button>
-      <button class="btn btn-outline" onclick="imprimirRelatorio()">&#128438; Imprimir / PDF</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('planilha')">&#128438; PDF Profissional</button>
       <span class="text-sm" style="margin-left:auto;align-self:center" id="rel-info-count"></span>
     </div>
     <div class="preview-sheet" id="preview-planilha">
@@ -1282,7 +1284,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   <div id="exp-bdi-rel" class="exp-panel">
     <div class="action-bar">
       <button class="btn btn-gold" onclick="exportarExcelBDI()">&#128229; Exportar Composição BDI</button>
-      <button class="btn btn-outline" onclick="imprimirRelatorio()">&#128438; Imprimir</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('bdi-rel')">&#128438; PDF BDI</button>
     </div>
     <div class="preview-sheet" id="preview-bdi-rel"></div>
   </div>
@@ -1291,6 +1293,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   <div id="exp-abc-rel" class="exp-panel">
     <div class="action-bar">
       <button class="btn btn-gold" onclick="exportarExcelABC()">&#128229; Exportar Curva ABC</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('abc-rel')">&#128438; PDF ABC</button>
     </div>
     <div class="preview-sheet" id="preview-abc-rel"></div>
   </div>
@@ -1298,7 +1301,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   <!-- Tab: Resumo Executivo -->
   <div id="exp-resumo-rel" class="exp-panel">
     <div class="action-bar">
-      <button class="btn btn-gold" onclick="imprimirRelatorio()">&#128438; Imprimir / Gerar PDF</button>
+      <button class="btn btn-gold" onclick="exportarExcelProfissional()">&#128229; Excel Completo</button>
+      <button class="btn btn-outline" onclick="exportarPDFProfissional('resumo-rel')">&#128438; PDF Resumo</button>
     </div>
     <div class="preview-sheet" id="preview-resumo-rel"></div>
   </div>
@@ -1605,6 +1609,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       <div>
         <label class="form-label">Finalidade da importação</label>
         <select id="imp-map-purpose" class="form-select" onchange="impAlterarFinalidadeMapeamento(this.value)">
+          <option value="grupos">Grupos de custo</option>
           <option value="orcamento">Itens de orçamento</option>
           <option value="insumos">Cadastro de insumos</option>
           <option value="composicoes">Composições CPU</option>
@@ -1650,7 +1655,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
         <div class="sec-title">&#x33;&#xFE0F;&#x20E3; Revisar <span>Itens Extraídos</span></div>
         <div class="flex">
           <span id="imp-rev-stats" style="font-size:12px;color:var(--text2)"></span>
-          <button class="btn btn-outline btn-sm" onclick="exportarMemoriaImportacao()">Mem&oacute;ria .md</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarMemoriaImportacaoExcel()">Mem&oacute;ria Excel</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarMemoriaImportacaoPDF()">Mem&oacute;ria PDF</button>
           <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(true)">Todos</button>
           <button class="btn btn-outline btn-sm" onclick="selecionarTodosRev(false)">Nenhum</button>
         </div>
@@ -1782,7 +1788,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
         <span id="ana-review-stats" style="font-size:12px;color:var(--text2);align-self:center"></span>
         <button class="btn btn-outline btn-sm" onclick="analisadorSelecionarTodos(true)">Todos</button>
         <button class="btn btn-outline btn-sm" onclick="analisadorSelecionarTodos(false)">Nenhum</button>
-        <button class="btn btn-outline btn-sm" onclick="analisadorExportarMemoria()">Memória .md</button>
+        <button class="btn btn-outline btn-sm" onclick="analisadorExportarMemoriaExcel()">Memória Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="analisadorExportarMemoriaPDF()">Memória PDF</button>
         <button class="btn btn-gold btn-sm" onclick="analisadorEnviarOrcamento()">Enviar para Elaborar Orçamento</button>
       </div>
     </div>
@@ -1961,7 +1968,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
           <div class="flex">
             <span id="cpu-lib-count" style="font-size:12px;color:var(--text3)">0 composições</span>
             <button class="btn btn-outline btn-sm" onclick="cpuImportarBiblioteca()">&#128228; Importar</button>
-            <button class="btn btn-outline btn-sm" onclick="cpuExportarBiblioteca()">&#128229; Exportar</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuExportarBibliotecaExcel()">&#128229; Excel</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuExportarBibliotecaPDF()">&#128438; PDF</button>
           </div>
         </div>
 
@@ -2097,7 +2105,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 <div id="toast"></div>
 
 <script>
-﻿
+
 // ═══════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════
@@ -2116,6 +2124,7 @@ let STATE = {
   documentos: [],
   extracoes: [],
   backups: [],
+  gruposCusto: [],
   insumosImportados: [],
   sinapiBase: [],     // { codigoSinapi, descricao, unidade, precoMedio, ... }
   sinapiMes: '',
@@ -2157,6 +2166,7 @@ try {
     STATE.documentos = p.documentos || [];
     STATE.extracoes = p.extracoes || [];
     STATE.backups = p.backups || [];
+    STATE.gruposCusto = p.gruposCusto || [];
     STATE.insumosImportados = p.insumosImportados || [];
     const legacyDefaultBDI = isLegacyDefaultBDI(p);
     STATE.bdiConfigured = !legacyDefaultBDI
@@ -2184,6 +2194,33 @@ function isLegacyDefaultBDI(payload) {
     Number(c.i) === 8.65;
   const bdi = Number(payload.bdi);
   return defaults && (Math.abs(bdi - 25.88) < 0.05 || Math.abs(bdi - 24.46) < 0.05);
+}
+
+function gruposCustoDefault() {
+  return [
+    { codigo:'E', nome:'Equipamentos', tipo:'E', descricao:'Máquinas, ferramentas e equipamentos aplicados à obra', importado:false },
+    { codigo:'M', nome:'Materiais', tipo:'M', descricao:'Materiais de consumo e permanentes incorporados ao serviço', importado:false },
+    { codigo:'S', nome:'Mão de Obra', tipo:'S', descricao:'Serviços de profissionais, oficiais, ajudantes e equipes', importado:false },
+    { codigo:'T', nome:'Transportes', tipo:'T', descricao:'Fretes, deslocamentos, DMT e transporte de materiais', importado:false },
+    { codigo:'SV', nome:'Serviços', tipo:'SV', descricao:'Serviços ou composições de preço unitário', importado:false }
+  ];
+}
+
+function normalizarGruposCusto(grupos) {
+  const byCode = new Map();
+  gruposCustoDefault().forEach(g => byCode.set(g.codigo, g));
+  (Array.isArray(grupos) ? grupos : []).forEach(g => {
+    const codigo = String(g.codigo || g.cod || g.tipo || '').trim().toUpperCase();
+    if (!codigo) return;
+    byCode.set(codigo, {
+      codigo,
+      nome: String(g.nome || g.desc || g.descricao || codigo).trim(),
+      tipo: normalizarGrupoCustoImportacao(g.tipo || g.nome || codigo),
+      descricao: String(g.descricao || g.desc || '').trim(),
+      importado: g.importado === true
+    });
+  });
+  return [...byCode.values()];
 }
 
 function hasBDI() {
@@ -2245,6 +2282,7 @@ function normalizeState() {
   STATE.documentos = Array.isArray(STATE.documentos) ? STATE.documentos : [];
   STATE.extracoes = Array.isArray(STATE.extracoes) ? STATE.extracoes : [];
   STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
+  STATE.gruposCusto = normalizarGruposCusto(STATE.gruposCusto);
   STATE.insumosImportados = Array.isArray(STATE.insumosImportados) ? STATE.insumosImportados : [];
   STATE.config = {
     uf:'MG',
@@ -2297,6 +2335,7 @@ function persistedState() {
     documentos: STATE.documentos,
     extracoes: STATE.extracoes,
     backups: STATE.backups,
+    gruposCusto: STATE.gruposCusto,
     insumosImportados: STATE.insumosImportados,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
@@ -2315,6 +2354,7 @@ function applyPersistedState(payload) {
   STATE.documentos = Array.isArray(payload.documentos) ? payload.documentos : [];
   STATE.extracoes = Array.isArray(payload.extracoes) ? payload.extracoes : [];
   STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
+  STATE.gruposCusto = Array.isArray(payload.gruposCusto) ? payload.gruposCusto : [];
   STATE.insumosImportados = Array.isArray(payload.insumosImportados) ? payload.insumosImportados : [];
   const legacyDefaultBDI = isLegacyDefaultBDI(payload);
   STATE.bdiConfigured = !legacyDefaultBDI
@@ -2994,17 +3034,72 @@ function editarItemCampo(idx, campo, valor) {
 }
 
 function exportarOrcamento() {
+  exportarOrcamentoExcel();
+}
+
+function exportarOrcamentoExcel() {
+  if (!window.XLSX) { toast('Excel indisponível: biblioteca XLSX não carregou.', 'error'); return; }
   const nome = document.getElementById('orcNome').value || 'orcamento';
-  const data = {
-    nome, data: new Date().toLocaleDateString('pt-BR'),
-    bdi: STATE.bdi,
-    bdiConfigured: STATE.bdiConfigured,
-    moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
-    itens: STATE.orcamento,
-    subtotal: STATE.orcamento.reduce((s, it)=>s+itemValor(it), 0)
-  };
-  downloadJSON(data, nome.replace(/\s+/g,'_') + '_TLPlanly.json');
-  toast('Orçamento exportado', 'success');
+  exportRowsToExcel(`orcamento_${nome}_TLPlanly`, [
+    { name:'Orçamento', rows: montarLinhasOrcamento(nome) },
+    { name:'Resumo', rows: montarResumoOrcamento(nome) }
+  ]);
+}
+
+function exportarOrcamentoPDF() {
+  const nome = document.getElementById('orcNome').value || 'orcamento';
+  const rows = montarLinhasOrcamento(nome);
+  const html = `
+    <h1>Planilha Orçamentária</h1>
+    <p><strong>Orçamento:</strong> ${escapeHtml(nome)} · <strong>Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')} · <strong>Moeda:</strong> ${moedaCodigo()}</p>
+    ${rowsToHtmlTable(rows)}
+  `;
+  exportHtmlToPDF('Planilha Orçamentária - TLPlanly', html, `orcamento_${nome}_TLPlanly`);
+}
+
+function montarResumoOrcamento(nome) {
+  const sub = STATE.orcamento.reduce((s, it)=>s+itemValor(it), 0);
+  return [
+    ['Campo','Valor'],
+    ['Orçamento', nome],
+    ['Data', new Date().toLocaleDateString('pt-BR')],
+    ['Itens', STATE.orcamento.length],
+    ['Moeda', moedaCodigo()],
+    ['Cotação', moedaCotacao()],
+    ['BDI', bdiText('Não configurado')],
+    ['Subtotal sem BDI', valorMoeda(sub)],
+    ['Total com BDI', valorMoeda(totalComBDI(sub))]
+  ];
+}
+
+function montarLinhasOrcamento(nome = 'Orçamento') {
+  const rows = [
+    [`PLANILHA ORÇAMENTÁRIA — ${nome}`],
+    [`Emitido em ${new Date().toLocaleString('pt-BR')} · Moeda ${moedaCodigo()} · BDI ${bdiText('Não configurado')}`],
+    [],
+    ['Item','Código','Descrição','Unidade','Quantidade',moedaHeader('P.Unit'),moedaHeader('Ref.SINAPI'),'Desvio %',moedaHeader('Total sem BDI'),moedaHeader('Total com BDI'),'Categoria','Capítulo']
+  ];
+  STATE.orcamento.forEach((it, i) => {
+    const desvio = Number(it.ref) > 0 ? ((Number(it.preco) - Number(it.ref)) / Number(it.ref) * 100) : '';
+    rows.push([
+      i + 1,
+      it.cod || '',
+      it.desc || '',
+      it.unid || 'UN',
+      Number(it.qtd) || 0,
+      valorMoeda(Number(it.preco) || 0),
+      Number(it.ref) > 0 ? valorMoeda(Number(it.ref)) : '',
+      desvio === '' ? '' : Number(desvio.toFixed(2)),
+      valorMoeda(itemValor(it)),
+      valorMoeda(totalComBDI(itemValor(it))),
+      it.cat || '',
+      it.capitulo || ''
+    ]);
+  });
+  const sub = STATE.orcamento.reduce((s, it)=>s+itemValor(it), 0);
+  rows.push([]);
+  rows.push(['','','','','','','','Subtotal',valorMoeda(sub),valorMoeda(totalComBDI(sub)),'','']);
+  return rows;
 }
 
 function elaborarImportFileSelect(e) {
@@ -3638,24 +3733,11 @@ function renderRelatorioPreview() {
 }
 
 function exportarJSON() {
-  const data = {
-    orcamento: STATE.orcamento,
-    bdi: STATE.bdi,
-    bdiConfigured: STATE.bdiConfigured,
-    moeda: { codigo: moedaCodigo(), cotacao: moedaCotacao() },
-    total: STATE.orcamento.reduce((s,i)=>s+itemValor(i),0)
-  };
-  downloadJSON(data, 'tlplanly_export.json');
-  toast('JSON exportado', 'success');
+  exportarExcelProfissional();
 }
 
 function exportarCSV() {
-  const lines = [`Código;Descrição;Un;Qtd;Preço Unit (${moedaCodigo()});Ref SINAPI (${moedaCodigo()});Total (${moedaCodigo()})`];
-  STATE.orcamento.forEach(i => {
-    lines.push([i.cod, i.desc, i.unid, i.qtd, valorMoeda(i.preco).toFixed(2), valorMoeda(i.ref).toFixed(2), valorMoeda(itemValor(i)).toFixed(2)].join(';'));
-  });
-  downloadText(lines.join('\n'), 'tlplanly_export.csv', 'text/csv');
-  toast('CSV exportado', 'success');
+  exportarExcelProfissional();
 }
 
 function imprimirRelatorio() { window.print(); }
@@ -3749,6 +3831,119 @@ function downloadText(txt, fname, mime='text/plain') {
   const a = document.createElement('a');
   a.href = 'data:'+mime+';charset=utf-8,' + encodeURIComponent(txt);
   a.download = fname; a.click();
+}
+
+function safeFileName(name, fallback = 'tlplanly_export') {
+  const clean = String(name || fallback)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 90);
+  return clean || fallback;
+}
+
+function exportRowsToExcel(baseName, sheets) {
+  if (!window.XLSX) { toast('Excel indisponível: biblioteca XLSX não carregou.', 'error'); return; }
+  const wb = XLSX.utils.book_new();
+  (sheets || []).filter(s => s && Array.isArray(s.rows)).forEach((sheet, idx) => {
+    const ws = XLSX.utils.aoa_to_sheet(sheet.rows);
+    const maxCols = Math.max(1, ...sheet.rows.map(row => row.length));
+    ws['!cols'] = Array.from({ length: maxCols }, (_, col) => ({
+      wch: Math.min(70, Math.max(10, ...sheet.rows.map(row => String(row[col] ?? '').length + 2)))
+    }));
+    XLSX.utils.book_append_sheet(wb, ws, String(sheet.name || `Aba ${idx + 1}`).slice(0, 31));
+  });
+  const fname = `${safeFileName(baseName)}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  toast('Excel gerado: ' + fname, 'success');
+}
+
+function rowsToHtmlTable(rows) {
+  return `<table>${(rows || []).map((row, idx) => {
+    if (!row || !row.length) return '<tr><td class="blank" colspan="12"></td></tr>';
+    const tag = idx < 3 ? 'th' : 'td';
+    return `<tr>${row.map(cell => `<${tag}>${escapeHtml(cell ?? '')}</${tag}>`).join('')}</tr>`;
+  }).join('')}</table>`;
+}
+
+function markdownToRows(markdown) {
+  const rows = [];
+  String(markdown || '').split(/\r?\n/).forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) { rows.push([]); return; }
+    if (/^\|[-:\s|]+\|?$/.test(trimmed)) return;
+    if (trimmed.startsWith('|')) {
+      rows.push(trimmed.replace(/^\||\|$/g, '').split('|').map(c => c.trim()));
+      return;
+    }
+    rows.push([trimmed.replace(/^#{1,6}\s*/, '').replace(/^[-*]\s*/, '')]);
+  });
+  return rows;
+}
+
+function markdownToHtml(markdown) {
+  const lines = String(markdown || '').split(/\r?\n/);
+  let html = '';
+  let table = [];
+  const flushTable = () => {
+    if (!table.length) return;
+    html += rowsToHtmlTable(table);
+    table = [];
+  };
+  lines.forEach(line => {
+    const t = line.trim();
+    if (/^\|[-:\s|]+\|?$/.test(t)) return;
+    if (t.startsWith('|')) {
+      table.push(t.replace(/^\||\|$/g, '').split('|').map(c => c.trim()));
+      return;
+    }
+    flushTable();
+    if (!t) { html += '<br>'; return; }
+    const heading = t.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      html += `<h${level}>${escapeHtml(heading[2])}</h${level}>`;
+      return;
+    }
+    if (/^[-*]\s+/.test(t)) html += `<p>• ${escapeHtml(t.replace(/^[-*]\s+/, ''))}</p>`;
+    else html += `<p>${escapeHtml(t)}</p>`;
+  });
+  flushTable();
+  return html;
+}
+
+function exportMarkdownToExcel(markdown, baseName, sheetName = 'Memória') {
+  exportRowsToExcel(baseName, [{ name: sheetName, rows: markdownToRows(markdown) }]);
+}
+
+function exportMarkdownToPDF(markdown, title, baseName) {
+  exportHtmlToPDF(title, markdownToHtml(markdown), baseName);
+}
+
+function exportHtmlToPDF(title, contentHtml, baseName = 'tlplanly_pdf') {
+  const w = window.open('', '_blank');
+  if (!w) {
+    toast('O navegador bloqueou a janela do PDF. Libere pop-ups para o TLPlanly.', 'error');
+    return;
+  }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;background:#fff}
+      h1{font-size:22px;margin:0 0 10px;color:#0f2742} h2{font-size:17px;margin:18px 0 8px;color:#173b63} h3{font-size:14px;margin:14px 0 6px;color:#173b63}
+      p{font-size:12px;line-height:1.45;margin:5px 0} table{width:100%;border-collapse:collapse;margin:10px 0 16px;page-break-inside:auto}
+      th,td{border:1px solid #c9d3df;padding:6px 7px;font-size:10.5px;vertical-align:top;text-align:left}
+      th{background:#173b63;color:#fff;font-weight:700}.blank{border:0;height:8px;background:#fff}
+      .cover{border-bottom:3px solid #f5a623;margin-bottom:14px;padding-bottom:8px}
+      .muted{font-size:10px;color:#555}
+      @page{size:A4 landscape;margin:10mm}
+      @media print{button{display:none!important} body{margin:0} th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+      <div class="cover"><h1>${escapeHtml(title)}</h1><p class="muted">TLPlanly · ${new Date().toLocaleString('pt-BR')} · Arquivo sugerido: ${escapeHtml(safeFileName(baseName))}.pdf</p></div>
+      ${contentHtml}
+      <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script>
+    </body></html>`);
+  w.document.close();
+  toast('PDF aberto para salvar/imprimir.', 'success');
 }
 
 function redrawAllCharts() {
@@ -3981,9 +4176,21 @@ function renderCurvaS(tasks) {
 }
 
 function planejamentoExportar() {
+  planejamentoExportarExcel();
+}
+
+function planejamentoRows() {
   const lines = ['# Planejamento TLPlanly', '', '| ID | Tarefa | Início | Fim | Dependências | Progresso |', '|---|---|---:|---:|---|---:|'];
   STATE.planejamento.forEach(t => lines.push(`| ${t.code} | ${mdCell(t.desc)} | ${t.inicio} | ${t.fim} | ${(t.deps || []).join(', ') || '-'} | ${t.progresso || 0}% |`));
-  downloadText(lines.join('\n'), 'planejamento_tlplanly.md', 'text/markdown');
+  return markdownToRows(lines.join('\n'));
+}
+
+function planejamentoExportarExcel() {
+  exportRowsToExcel('planejamento_tlplanly', [{ name:'Planejamento', rows: planejamentoRows() }]);
+}
+
+function planejamentoExportarPDF() {
+  exportHtmlToPDF('Planejamento Físico-Financeiro - TLPlanly', rowsToHtmlTable(planejamentoRows()), 'planejamento_tlplanly');
 }
 
 function medicoesCriarPeriodo() {
@@ -4340,6 +4547,10 @@ function docsRemover(id) {
 }
 
 function docsExportarDossie() {
+  docsExportarDossieExcel();
+}
+
+function docsDossieMarkdown() {
   const lines = ['# Dossiê Técnico TLPlanly', '', `Gerado em: ${new Date().toLocaleString('pt-BR')}`, ''];
   STATE.documentos.forEach(d => {
     const item = d.targetId === 'obra' ? null : getItemById(d.targetId);
@@ -4351,7 +4562,27 @@ function docsExportarDossie() {
   (STATE.extracoes || []).forEach(e => {
     lines.push(`### ${e.titulo || 'Extração'}`, '', `- Tipo: ${e.tipo}`, `- Status: ${e.status}`, `- Criado em: ${e.criadoEm}`, `- Documentos: ${e.docs?.length || 0}`, `- Itens/serviços: ${(e.reviewed || e.services || e.items || []).length}`, '');
   });
-  downloadText(lines.join('\n'), 'dossie_tecnico_tlplanly.md', 'text/markdown');
+  return lines.join('\n');
+}
+
+function docsExportarDossieExcel() {
+  const docsRows = [['Tipo','Título','Vínculo','Texto/Observação','Arquivos','Criado em']];
+  STATE.documentos.forEach(d => {
+    const item = d.targetId === 'obra' ? null : getItemById(d.targetId);
+    docsRows.push([d.tipo, d.titulo, d.targetId === 'obra' ? 'Obra / Geral' : itemLabel(item), d.texto || '', (d.files || []).map(f => f.name).join(', '), d.criadoEm]);
+  });
+  const extrRows = [['Título','Tipo','Status','Criado em','Documentos','Itens/Serviços']];
+  (STATE.extracoes || []).forEach(e => {
+    extrRows.push([e.titulo || 'Extração', e.tipo, e.status, e.criadoEm, e.docs?.length || 0, (e.reviewed || e.services || e.items || []).length]);
+  });
+  exportRowsToExcel('dossie_tecnico_tlplanly', [
+    { name:'Documentos', rows: docsRows },
+    { name:'Extrações', rows: extrRows }
+  ]);
+}
+
+function docsExportarDossiePDF() {
+  exportMarkdownToPDF(docsDossieMarkdown(), 'Dossiê Técnico - TLPlanly', 'dossie_tecnico_tlplanly');
 }
 
 function docsCompactDoc(doc) {
@@ -4544,8 +4775,14 @@ const CODIGO_IMPORTACAO_RE = /(?:\b(ED-\d{3,6})\b|\b(CPU-\d+)\b|\b([A-Z0-9]{2}\.
 const NUM_IMPORT_RE_SRC = String.raw`-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?`;
 const UNIDADE_TAIL_IMPORT_RE_SRC = String.raw`M2XMES|M2KM|M3KM|TKM|M²|M2|M³|M3|MÊS|MES|UNID|UND|UN|KG|T|VG|VB|CJ|GL|HR|H|L|PONTO|KM|M`;
 const ITEM_TAIL_IMPORT_RE = new RegExp(String.raw`\b(${UNIDADE_TAIL_IMPORT_RE_SRC})\b\s+(${NUM_IMPORT_RE_SRC})\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?`, 'gi');
-const SHEET_PURPOSES = ['orcamento', 'insumos', 'composicoes'];
+const SHEET_PURPOSES = ['grupos', 'orcamento', 'insumos', 'composicoes'];
 const SHEET_FIELDS = {
+  grupos: [
+    { key:'cod', label:'Código do grupo', hint:'E, M, S, T ou código próprio', required:true, aliases:['codigo','cod','codigo grupo','grupo','grupo custo','grupo de custo'] },
+    { key:'nome', label:'Nome do grupo', hint:'Equipamento, Material, Mão de Obra, Transporte ou Serviços', required:true, aliases:['nome','descricao','descrição','grupo','grupo custo','grupo de custo','classe'] },
+    { key:'tipo', label:'Tipo normalizado', hint:'E, M, S, T ou Serviços', aliases:['tipo','natureza','classificacao','classificação','categoria'] },
+    { key:'descricao', label:'Descrição complementar', hint:'Opcional', aliases:['observacao','observação','descricao complementar','descrição complementar','detalhe'] },
+  ],
   orcamento: [
     { key:'cod', label:'Código', hint:'Código do item ou composição', aliases:['codigo','cod','item','codigo item','codigo servico','codigo composicao'] },
     { key:'desc', label:'Descrição', hint:'Serviço, insumo ou especificação', required:true, aliases:['descricao','descrição','servico','serviço','especificacao','especificação','insumo'] },
@@ -4560,7 +4797,8 @@ const SHEET_FIELDS = {
     { key:'desc', label:'Descrição do insumo', hint:'Obrigatório', required:true, aliases:['descricao','descrição','insumo','especificacao','especificação'] },
     { key:'preco', label:'Custo unitário', hint:'Obrigatório', required:true, numeric:true, aliases:['preco','preço','custo','valor','preco unitario','preço unitário','custo unitario','valor unitario'] },
     { key:'unid', label:'Unidade', hint:'UN, M2, H...', aliases:['unidade','unid','und','un'] },
-    { key:'tipo', label:'Tipo do insumo', hint:'Material, mão de obra, equipamento ou transporte', aliases:['tipo','classe','categoria','grupo','natureza','classificacao','classificação'] },
+    { key:'tipo', label:'Tipo do insumo', hint:'Material, mão de obra, equipamento ou transporte', aliases:['tipo','classe','categoria','natureza','classificacao','classificação'] },
+    { key:'grupo', label:'Grupo de custo', hint:'Código do grupo cadastrado na etapa anterior', aliases:['grupo','grupo custo','grupo de custo','codigo grupo','cod grupo'] },
   ],
   composicoes: [
     { key:'cpuCod', label:'Código da CPU', hint:'Obrigatório', required:true, aliases:['codigo cpu','cod cpu','composicao','composição','codigo composicao','codigo servico'] },
@@ -4637,8 +4875,10 @@ function sheetScoreHeader(cell, aliases) {
 function sheetDefaultMapping(purpose, maxCols) {
   const map = {};
   const set = (key, idx) => { if (idx < maxCols) map[key] = idx; };
-  if (purpose === 'insumos') {
-    set('cod', 0); set('desc', 1); set('preco', 2); set('unid', 3); set('tipo', 4);
+  if (purpose === 'grupos') {
+    set('cod', 0); set('nome', 1); set('tipo', 2); set('descricao', 3);
+  } else if (purpose === 'insumos') {
+    set('cod', 0); set('desc', 1); set('preco', 2); set('unid', 3); set('tipo', 4); set('grupo', 5);
   } else if (purpose === 'composicoes') {
     set('cpuCod', 0); set('cpuDesc', 1); set('cpuUnid', 2); set('insumoCod', 3); set('insumoDesc', 4); set('tipo', 5); set('coef', 6); set('preco', 7);
   } else {
@@ -4699,6 +4939,16 @@ function sheetSuggestMapping(rawRows, purpose = 'orcamento') {
   };
 }
 
+function sheetGuessPurpose(rawRows) {
+  const guesses = SHEET_PURPOSES.map(purpose => sheetSuggestMapping(rawRows, purpose));
+  guesses.sort((a, b) => {
+    const scoreA = a.confidence + (a.headerRow >= 0 ? 8 : 0) - (a.requiredMissing?.length || 0) * 20;
+    const scoreB = b.confidence + (b.headerRow >= 0 ? 8 : 0) - (b.requiredMissing?.length || 0) * 20;
+    return scoreB - scoreA;
+  });
+  return guesses[0] || sheetSuggestMapping(rawRows, 'orcamento');
+}
+
 function sheetCell(row, idx) {
   return idx !== undefined && idx >= 0 ? String(row[idx] ?? '').trim() : '';
 }
@@ -4711,16 +4961,44 @@ function normalizarTipoInsumoImportacao(value) {
   return 'M';
 }
 
+function normalizarGrupoCustoImportacao(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  const n = sheetNormText(value);
+  if (raw === 'E' || /equip|maquina|ferramenta/.test(n)) return 'E';
+  if (raw === 'S' || /mao|mdo|obra|pessoal|horista|mensalista/.test(n)) return 'S';
+  if (raw === 'T' || /transp|frete|dmt/.test(n)) return 'T';
+  if (raw === 'SV' || raw === 'SERV' || /servic|composicao|cpu/.test(n)) return 'SV';
+  return 'M';
+}
+
 function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow = -1) {
   const rows = sheetNormalizeRows(rawRows);
   const start = headerRow >= 0 ? headerRow + 1 : 0;
-  const result = { items: [], insumos: [], composicoes: [], issues: [] };
+  const result = { grupos: [], items: [], insumos: [], composicoes: [], issues: [] };
   const cpuMap = new Map();
   rows.slice(start).forEach((row, offset) => {
     const rowNumber = start + offset + 1;
     if (!row || row.every(cell => !String(cell || '').trim())) return;
     const joined = row.map(cell => String(cell || '')).join(' ').trim();
     if (!joined || linhaImportacaoIgnorada(joined)) return;
+
+    if (purpose === 'grupos') {
+      const codigo = limparCodigo(sheetCell(row, mapping.cod)).toUpperCase();
+      const nome = sheetCell(row, mapping.nome);
+      const grupo = {
+        codigo,
+        nome,
+        tipo: normalizarGrupoCustoImportacao(sheetCell(row, mapping.tipo) || nome || codigo),
+        descricao: sheetCell(row, mapping.descricao),
+        importado: true
+      };
+      if (!grupo.codigo || !grupo.nome) {
+        result.issues.push(`Linha ${rowNumber}: grupo de custo sem código ou nome.`);
+        return;
+      }
+      result.grupos.push(grupo);
+      return;
+    }
 
     if (purpose === 'orcamento') {
       const qtd = parseNumeroBR(sheetCell(row, mapping.qtd)) || 1;
@@ -4747,13 +5025,16 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
 
     if (purpose === 'insumos') {
       const cod = limparCodigo(sheetCell(row, mapping.cod));
+      const grupoCusto = sheetCell(row, mapping.grupo) || sheetCell(row, mapping.tipo);
+      const tipo = normalizarTipoInsumoImportacao(sheetCell(row, mapping.tipo) || grupoCusto);
       const ins = {
         codigoSinapi: cod,
         codigo: cod,
         descricao: sheetCell(row, mapping.desc),
         unidade: normalizarUnidadeImportacao(sheetCell(row, mapping.unid) || 'UN'),
         precoMedio: parseNumeroBR(sheetCell(row, mapping.preco)),
-        tipo: normalizarTipoInsumoImportacao(sheetCell(row, mapping.tipo)),
+        tipo,
+        grupoCusto: String(grupoCusto || tipo).trim().toUpperCase(),
         fonte: 'IMPORTADO/TLPLANLY',
         dataReferencia: new Date().toLocaleDateString('pt-BR'),
         importado: true
@@ -5154,17 +5435,16 @@ async function prepararMapeamentoPlanilha(files) {
   }
   if (!entries.length) throw new Error('Nenhuma aba com dados foi encontrada nas planilhas.');
 
-  const purpose = document.getElementById('imp-tipo')?.value === 'livre' ? 'orcamento' : 'orcamento';
   entries.forEach((entry, idx) => {
     entry.index = idx;
-    entry.purpose = purpose;
-    entry.suggestion = sheetSuggestMapping(entry.raw, purpose);
+    entry.suggestion = sheetGuessPurpose(entry.raw);
+    entry.purpose = entry.suggestion.purpose || 'orcamento';
     entry.headerRow = entry.suggestion.headerRow;
     entry.mapping = { ...entry.suggestion.mapping };
     entry.columns = entry.suggestion.colunas;
   });
 
-  IMP.sheetMapping = { entries, currentIndex: 0, purpose };
+  IMP.sheetMapping = { entries, currentIndex: 0, purpose: entries[0]?.purpose || 'orcamento' };
   setProgress(100, 'Mapeamento pronto.');
   await sleep(80);
   document.getElementById('imp-card-progress').style.display = 'none';
@@ -5241,7 +5521,7 @@ function renderMapStatus(entry) {
   const issuesEl = document.getElementById('imp-map-issues');
   if (!entry) return;
   const parsed = sheetParseMappedRows(entry.raw, entry.mapping || {}, entry.purpose, entry.headerRow);
-  const count = entry.purpose === 'insumos' ? parsed.insumos.length : entry.purpose === 'composicoes' ? parsed.composicoes.length : parsed.items.length;
+  const count = entry.purpose === 'grupos' ? parsed.grupos.length : entry.purpose === 'insumos' ? parsed.insumos.length : entry.purpose === 'composicoes' ? parsed.composicoes.length : parsed.items.length;
   const missing = (SHEET_FIELDS[entry.purpose] || []).filter(f => f.required && !(entry.mapping?.[f.key] >= 0)).map(f => f.label);
   if (badge) {
     const conf = entry.suggestion?.confidence || 0;
@@ -5266,14 +5546,14 @@ function impSelecionarPlanilhaMapeada(value) {
 
 function impAlterarFinalidadeMapeamento(value) {
   if (!IMP.sheetMapping || !SHEET_PURPOSES.includes(value)) return;
+  const entry = impCurrentSheetEntry();
+  if (!entry) return;
+  entry.purpose = value;
+  entry.suggestion = sheetSuggestMapping(entry.raw, value);
+  entry.headerRow = entry.suggestion.headerRow;
+  entry.mapping = { ...entry.suggestion.mapping };
+  entry.columns = entry.suggestion.colunas;
   IMP.sheetMapping.purpose = value;
-  IMP.sheetMapping.entries.forEach(entry => {
-    entry.purpose = value;
-    entry.suggestion = sheetSuggestMapping(entry.raw, value);
-    entry.headerRow = entry.suggestion.headerRow;
-    entry.mapping = { ...entry.suggestion.mapping };
-    entry.columns = entry.suggestion.colunas;
-  });
   renderMapeamentoPlanilha();
 }
 
@@ -5314,11 +5594,11 @@ function impVoltarUpload() {
 async function confirmarMapeamentoPlanilha() {
   const state = IMP.sheetMapping;
   if (!state?.entries?.length) return;
-  const purpose = state.purpose || state.entries[0].purpose || 'orcamento';
   const results = [];
-  let items = [], insumos = [], composicoes = [], issues = [];
+  let grupos = [], items = [], insumos = [], composicoes = [], issues = [];
   state.entries.forEach(entry => {
-    const parsed = sheetParseMappedRows(entry.raw, entry.mapping || {}, entry.purpose || purpose, entry.headerRow);
+    const parsed = sheetParseMappedRows(entry.raw, entry.mapping || {}, entry.purpose || 'orcamento', entry.headerRow);
+    grupos = grupos.concat(parsed.grupos);
     items = items.concat(parsed.items);
     insumos = insumos.concat(parsed.insumos);
     composicoes = composicoes.concat(parsed.composicoes);
@@ -5328,6 +5608,7 @@ async function confirmarMapeamentoPlanilha() {
       sheetName: entry.sheetName,
       ext: getFileExt({ name: entry.fileName }),
       metodo: `Planilha mapeada (${entry.purpose})`,
+      grupos: parsed.grupos,
       items: parsed.items,
       insumos: parsed.insumos,
       composicoes: parsed.composicoes,
@@ -5336,26 +5617,23 @@ async function confirmarMapeamentoPlanilha() {
     });
   });
 
-  if (purpose === 'insumos') {
-    if (!insumos.length) { toast('Nenhum insumo válido foi encontrado no mapeamento.', 'error'); return; }
-    const qtd = registrarInsumosImportados(insumos);
-    IMP.importResults = results;
-    IMP.markdown = gerarMemoriaImportacao(results);
-    persistirImportacaoComoExtracao('enviado');
-    document.getElementById('imp-map-issues').innerHTML = `<div class="sheet-map-ok">${qtd} insumo(s) importado(s) para a base local. CPUs vinculadas foram recalculadas quando havia código correspondente.</div>`;
-    toast(`${qtd} insumo(s) importado(s) para a base local`, 'success');
-    return;
-  }
+  const contagens = { grupos:0, insumos:0, composicoes:0 };
+  if (grupos.length) contagens.grupos = registrarGruposCustoImportados(grupos);
+  if (insumos.length) contagens.insumos = registrarInsumosImportados(insumos);
+  if (composicoes.length) contagens.composicoes = registrarComposicoesImportadas(composicoes);
+  IMP.importResults = results;
+  IMP.markdown = gerarMemoriaImportacao(results);
 
-  if (purpose === 'composicoes') {
-    if (!composicoes.length) { toast('Nenhuma composição válida foi encontrada no mapeamento.', 'error'); return; }
-    const qtd = registrarComposicoesImportadas(composicoes);
-    IMP.importResults = results;
-    IMP.markdown = gerarMemoriaImportacao(results);
+  if (!items.length && (contagens.grupos || contagens.insumos || contagens.composicoes)) {
     persistirImportacaoComoExtracao('enviado');
-    document.getElementById('imp-map-issues').innerHTML = `<div class="sheet-map-ok">${qtd} composição(ões) importada(s) para a biblioteca CPU. Revise a ficha antes de enviar ao orçamento.</div>`;
-    toast(`${qtd} composição(ões) importada(s) para a biblioteca CPU`, 'success');
-    showView('cpu');
+    const msg = [
+      contagens.grupos ? `${contagens.grupos} grupo(s) de custo` : '',
+      contagens.insumos ? `${contagens.insumos} insumo(s)` : '',
+      contagens.composicoes ? `${contagens.composicoes} composição(ões) CPU` : ''
+    ].filter(Boolean).join(' · ');
+    document.getElementById('imp-map-issues').innerHTML = `<div class="sheet-map-ok">Importação concluída: ${msg}. Sequência recomendada: Grupos de Custo → Insumos → Composições.</div>`;
+    toast(`Importação concluída: ${msg}`, 'success');
+    if (contagens.composicoes) showView('cpu');
     return;
   }
 
@@ -5375,6 +5653,25 @@ async function confirmarMapeamentoPlanilha() {
   setProgress(100, issues.length ? 'Concluído com alertas.' : 'Concluído.');
   await sleep(120);
   mostrarRevisao();
+}
+
+function registrarGruposCustoImportados(grupos) {
+  normalizeState();
+  const atuais = new Map(STATE.gruposCusto.map(g => [String(g.codigo || '').toUpperCase(), g]));
+  grupos.forEach(grupo => {
+    const codigo = String(grupo.codigo || '').toUpperCase();
+    if (!codigo) return;
+    atuais.set(codigo, {
+      ...(atuais.get(codigo) || {}),
+      ...grupo,
+      codigo,
+      tipo: normalizarGrupoCustoImportacao(grupo.tipo || grupo.nome || codigo),
+      importado: true
+    });
+  });
+  STATE.gruposCusto = [...atuais.values()];
+  saveState();
+  return grupos.length;
 }
 
 function registrarInsumosImportados(insumos) {
@@ -5635,11 +5932,22 @@ function gerarMemoriaImportacao(results) {
   ];
 
   results.forEach((r, idx) => {
-    const count = (r.items?.length || 0) + (r.insumos?.length || 0) + (r.composicoes?.length || 0) || r.itemsCount || 0;
+    const count = (r.grupos?.length || 0) + (r.items?.length || 0) + (r.insumos?.length || 0) + (r.composicoes?.length || 0) || r.itemsCount || 0;
     linhas.push(`${idx + 1}. **${r.fileName || r.name || 'Documento'}** - ${r.metodo || 'Extração'} - ${count} registro(s)`);
     if (r.aviso) linhas.push(`   - Aviso: ${r.aviso}`);
     (r.issues || []).slice(0, 5).forEach(issue => linhas.push(`   - Validação: ${issue}`));
   });
+
+  if (results.some(r => r.grupos?.length)) {
+    linhas.push('', '## Grupos de custo importados', '');
+    linhas.push('| Arquivo | Código | Nome | Tipo | Descrição |');
+    linhas.push('|---|---:|---|---:|---|');
+    results.forEach(r => {
+      (r.grupos || []).forEach(g => {
+        linhas.push(`| ${mdCell(r.fileName || r.name)} | ${mdCell(g.codigo || '-')} | ${mdCell(g.nome || '-')} | ${mdCell(g.tipo || '-')} | ${mdCell(g.descricao || '-')} |`);
+      });
+    });
+  }
 
   linhas.push('', '## Itens extraídos', '');
   linhas.push('| Arquivo | Método | Código | Descrição | Unid. | Qtd. | Preço |');
@@ -5684,20 +5992,28 @@ function mdCell(value) {
 }
 
 function exportarMemoriaImportacao() {
+  exportarMemoriaImportacaoExcel();
+}
+
+function memoriaImportacaoMarkdownAtual() {
   if (!IMP.markdown && IMP.importResults.length) IMP.markdown = gerarMemoriaImportacao(IMP.importResults);
   if (!IMP.markdown) {
-    toast('Extraia os arquivos antes de gerar a memória .md.', 'error');
-    return;
+    toast('Extraia os arquivos antes de gerar a memória em Excel/PDF.', 'error');
+    return '';
   }
-  const blob = new Blob([IMP.markdown], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `memoria_importacao_tlplanly_${new Date().toISOString().slice(0,10)}.md`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  return IMP.markdown;
+}
+
+function exportarMemoriaImportacaoExcel() {
+  const md = memoriaImportacaoMarkdownAtual();
+  if (!md) return;
+  exportMarkdownToExcel(md, `memoria_importacao_tlplanly_${new Date().toISOString().slice(0,10)}`, 'Memória');
+}
+
+function exportarMemoriaImportacaoPDF() {
+  const md = memoriaImportacaoMarkdownAtual();
+  if (!md) return;
+  exportMarkdownToPDF(md, 'Memória de Importação - TLPlanly', `memoria_importacao_tlplanly_${new Date().toISOString().slice(0,10)}`);
 }
 
 // ─── PDF PARSER ────────────────────────────────────────────
@@ -6019,7 +6335,7 @@ function persistirImportacaoComoExtracao(status = '') {
     fileName: r.fileName || r.name,
     tipo: r.tipo || (SPREADSHEET_EXTS.includes(r.ext) ? 'Planilha Orçamentária' : 'Documento Técnico'),
     confianca: r.confianca || (r.metodo && /ocr/i.test(r.metodo) ? 72 : 86),
-    itemsCount: (r.items?.length || 0) + (r.insumos?.length || 0) + (r.composicoes?.length || 0) || r.itemsCount || 0,
+    itemsCount: (r.grupos?.length || 0) + (r.items?.length || 0) + (r.insumos?.length || 0) + (r.composicoes?.length || 0) || r.itemsCount || 0,
     text: r.rawText || r.textPreview || ''
   }));
   IMP.extracaoId = docsPersistirExtracao({
@@ -6732,8 +7048,29 @@ function analisadorGerarMemoria() {
 }
 
 function analisadorExportarMemoria() {
+  analisadorExportarMemoriaExcel();
+}
+
+function analisadorMemoriaAtual() {
   const md = ANALISADOR.memoria || analisadorGerarMemoria();
-  downloadText(md, 'memoria_analisador_documentos_tlplanly.md', 'text/markdown');
+  return md;
+}
+
+function analisadorExportarMemoriaExcel() {
+  const servRows = [['Serviço','Un','Qtd','Preço','Referência','Confiança','Pendências','Origem','Método']];
+  (ANALISADOR.services || []).forEach(s => servRows.push([
+    s.desc, s.unid, s.qtd, s.preco, s.ref || 0, `${s.confidence}%`, (s.pendencias || []).join('; ') || '-', s.origem || '', s.metodo || ''
+  ]));
+  exportRowsToExcel(`memoria_analisador_documentos_tlplanly_${new Date().toISOString().slice(0,10)}`, [
+    { name:'Escopo', rows: [['Escopo identificado'], ...(ANALISADOR.escopo || []).map(x => [x])] },
+    { name:'Especificações', rows: [['Especificações relevantes'], ...(ANALISADOR.especificacoes || []).map(x => [x])] },
+    { name:'Serviços', rows: servRows },
+    { name:'Memória', rows: markdownToRows(analisadorMemoriaAtual()) }
+  ]);
+}
+
+function analisadorExportarMemoriaPDF() {
+  exportMarkdownToPDF(analisadorMemoriaAtual(), 'Memória do Analisador de Documentos - TLPlanly', `memoria_analisador_documentos_tlplanly_${new Date().toISOString().slice(0,10)}`);
 }
 
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
@@ -7363,10 +7700,9 @@ function itemOrcamentoCorrompido(it) {
   if (!it) return true;
   if (it.certStatus === 'bloqueado') return true;
   const text = `${it.linhaOrigem || ''} ${it.origemArquivo || ''} ${it.origemMetodo || ''} ${it.capitulo || ''} ${it.desc || ''}`;
-  const norm = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const normText = norm.toLowerCase();
+  const normText = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   if (/[=]\s*procv|procv\s*\(|vlookup\s*\(|\bR\$\s*R\$/i.test(text)) return true;
-  if (/\b(prefeitura municipal|secretaria municipal|codigo\s+referencia\s+descricao|total\s+(sem|com)\s+bdi)\b/i.test(norm)) return true;
+  if (/\b(prefeitura municipal|secretaria municipal|codigo\s+referencia\s+descricao|total\s+(sem|com)\s+bdi)\b/i.test(normText)) return true;
   if (!String(it.desc || '').trim() || !String(it.cod || '').trim()) return true;
   const qtd = Number(it.qtd) || 0;
   const preco = Number(it.preco) || 0;
@@ -7868,8 +8204,33 @@ function exportarExcelABC() {
 }
 
 function imprimirRelatorio() {
-  renderPreviewPlanilha();
-  window.print();
+  exportarPDFProfissional();
+}
+
+function exportarPDFProfissional(tabId = '') {
+  const active = tabId || ['planilha','bdi-rel','abc-rel','resumo-rel'].find(id => document.getElementById('exp-' + id)?.classList.contains('active')) || 'planilha';
+  const renderers = {
+    'planilha': renderPreviewPlanilha,
+    'bdi-rel': renderPreviewBDI,
+    'abc-rel': renderPreviewABC,
+    'resumo-rel': renderPreviewResumo
+  };
+  const previewIds = {
+    'planilha': 'preview-planilha',
+    'bdi-rel': 'preview-bdi-rel',
+    'abc-rel': 'preview-abc-rel',
+    'resumo-rel': 'preview-resumo-rel'
+  };
+  renderers[active]?.();
+  const el = document.getElementById(previewIds[active] || 'preview-planilha');
+  const meta = getMeta();
+  const titles = {
+    'planilha': 'Planilha Orçamentária - TLPlanly',
+    'bdi-rel': 'Composição do BDI - TLPlanly',
+    'abc-rel': 'Curva ABC - TLPlanly',
+    'resumo-rel': 'Resumo Executivo - TLPlanly'
+  };
+  exportHtmlToPDF(titles[active] || 'Relatório TLPlanly', `<div class="preview-sheet">${el?.innerHTML || ''}</div>`, `${safeFileName(meta.obra || 'relatorio')}_${active}_TLPlanly`);
 }
 
 // Patch renderRelatorioPreview to use new system
@@ -8233,9 +8594,37 @@ function cpuUsarDaBiblioteca() {
 
 // ─── EXPORTAR / IMPORTAR BIBLIOTECA ───────────────────────
 function cpuExportarBiblioteca() {
+  cpuExportarBibliotecaExcel();
+}
+
+function cpuExportarBibliotecaExcel() {
   if (!CPU_BIBLIOTECA.length) { toast('Biblioteca vazia', 'error'); return; }
-  downloadJSON(CPU_BIBLIOTECA, 'TLPlanly_CPU_Biblioteca.json');
-  toast('Biblioteca exportada', 'success');
+  const cpuRows = [['Código','Descrição','Unidade','Tipo','Encargos','Encargos %','Custo unitário','Criada em','Qtd insumos']];
+  const insRows = [['CPU','Código insumo','Descrição','Unidade','Tipo','Coeficiente','Preço unitário','Subtotal']];
+  CPU_BIBLIOTECA.forEach(cpu => {
+    cpuRows.push([cpu.cod, cpu.desc, cpu.unid, cpu.tipo, cpu.encargos, cpu.encPct, cpu.precoUnitario, cpu.criadaEm, (cpu.insumos || []).length]);
+    (cpu.insumos || []).forEach(ins => insRows.push([
+      cpu.cod, ins.cod, ins.desc, ins.unid, ins.tipo, Number(ins.coef) || 0, Number(ins.preco) || 0, (Number(ins.coef) || 0) * (Number(ins.preco) || 0)
+    ]));
+  });
+  exportRowsToExcel(`TLPlanly_CPU_Biblioteca_${new Date().toISOString().slice(0,10)}`, [
+    { name:'Composições', rows: cpuRows },
+    { name:'Insumos', rows: insRows }
+  ]);
+}
+
+function cpuExportarBibliotecaPDF() {
+  if (!CPU_BIBLIOTECA.length) { toast('Biblioteca vazia', 'error'); return; }
+  const rows = [['Código','Descrição','Un','Tipo','Custo Unitário','Insumos']];
+  CPU_BIBLIOTECA.forEach(cpu => rows.push([cpu.cod, cpu.desc, cpu.unid, cpu.tipo, fmtMoeda(cpu.precoUnitario), (cpu.insumos || []).length]));
+  const detalhes = CPU_BIBLIOTECA.map(cpu => `
+    <h2>${escapeHtml(cpu.cod)} — ${escapeHtml(cpu.desc)}</h2>
+    <p><strong>Unidade:</strong> ${escapeHtml(cpu.unid)} · <strong>Tipo:</strong> ${escapeHtml(cpu.tipo)} · <strong>Custo unitário:</strong> ${fmtMoeda(cpu.precoUnitario)}</p>
+    ${rowsToHtmlTable([['Código','Descrição','Un','Tipo','Coef.','Preço','Subtotal'], ...(cpu.insumos || []).map(ins => [
+      ins.cod, ins.desc, ins.unid, ins.tipo, ins.coef, fmtMoeda(ins.preco), fmtMoeda((Number(ins.coef) || 0) * (Number(ins.preco) || 0))
+    ])])}
+  `).join('');
+  exportHtmlToPDF('Biblioteca de Composições CPU - TLPlanly', rowsToHtmlTable(rows) + detalhes, `TLPlanly_CPU_Biblioteca_${new Date().toISOString().slice(0,10)}`);
 }
 
 function cpuImportarBiblioteca() {
@@ -8386,14 +8775,14 @@ const COPILOT_KB = {
 
   ocr: {
     q: ['ocr','pdf escaneado','imagem pdf','digitalizado','reconhecimento texto'],
-    r: `**OCR — Reconhecimento de Texto em PDFs Escaneados** 🔍\n\nO TLPlanly usa **Tesseract.js** no navegador. Ao importar pelo **Elaborar Orçamento** ou pelo módulo **Importar Planilha/PDF**, o OCR entra automaticamente quando o PDF não tem texto aproveitável ou quando você envia imagem digitalizada.\n\n✅ **Vantagens:**\n• Aceita lote com PDF + anexos + imagens\n• Mantém a origem de cada item extraído\n• Gera **Memória .md** para conferência\n• Envia os itens para ajuste direto na planilha editável\n\n⚠️ PDFs de baixa qualidade reduzem a precisão. Resolução mínima recomendada: 200 DPI.`,
+    r: `**OCR — Reconhecimento de Texto em PDFs Escaneados** 🔍\n\nO TLPlanly usa **Tesseract.js** no navegador. Ao importar pelo **Elaborar Orçamento** ou pelo módulo **Importar Planilha/PDF**, o OCR entra automaticamente quando o PDF não tem texto aproveitável ou quando você envia imagem digitalizada.\n\n✅ **Vantagens:**\n• Aceita lote com PDF + anexos + imagens\n• Mantém a origem de cada item extraído\n• Gera **Memória em Excel e PDF** para conferência\n• Envia os itens para ajuste direto na planilha editável\n\n⚠️ PDFs de baixa qualidade reduzem a precisão. Resolução mínima recomendada: 200 DPI.`,
     chips: ['Ir para Elaborar','Ir para Importar','Como importar planilha?']
   },
 
   // ── EXPORTAÇÃO ────────────────────────────────────────
   exportar: {
     q: ['exportar','gerar planilha','relatório','gerar excel','planilha excel','pdf edital','imprimir'],
-    r: `**Como exportar a planilha orçamentária:** 📤\n\n1. Acesse **Exportar / Relatório** no menu\n2. Preencha os dados da obra (nome, órgão, RT, CREA, ART/RRT)\n3. Escolha a aba desejada para pré-visualizar\n4. Clique **"Excel (.xlsx) Profissional"**\n\nO Excel agora leva: Planilha Orçamentária, BDI, Curva ABC, Encargos, Planejamento, Medições, Quantitativos e Anexos.\n\n✅ O formato segue padrão exigido pelo **TCU/CGU/editais públicos** e também serve para acompanhamento de obra.`,
+    r: `**Como exportar a planilha orçamentária:** 📤\n\n1. Acesse **Exportar / Relatório** no menu\n2. Preencha os dados da obra (nome, órgão, RT, CREA, ART/RRT)\n3. Escolha a aba desejada para pré-visualizar\n4. Clique em **Excel (.xlsx) Profissional** ou **PDF Profissional**\n\nO Excel leva: Planilha Orçamentária, BDI, Curva ABC, Encargos, Planejamento, Medições, Quantitativos e Anexos. O PDF gera uma versão pronta para salvar, imprimir ou anexar ao processo.\n\n✅ O formato segue padrão exigido pelo **TCU/CGU/editais públicos** e também serve para acompanhamento de obra.`,
     chips: ['Ir para Relatório','Modelo de relatório','Como configurar moeda']
   },
 
