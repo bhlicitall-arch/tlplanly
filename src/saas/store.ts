@@ -8,6 +8,7 @@ export type UserRole = 'admin' | 'construtor' | 'auditor' | 'leitor';
 export type PublicUser = {
   id: string;
   tenantId: string;
+  tenantName: string;
   name: string;
   email: string;
   role: UserRole;
@@ -85,6 +86,7 @@ function publicUser(user: StoredUser): PublicUser {
   return {
     id: user.id,
     tenantId: user.tenantId,
+    tenantName: user.tenantName || 'Cliente TLPlanly',
     name: user.name,
     email: user.email,
     role: user.role,
@@ -112,6 +114,10 @@ export class FileSaasStore implements SaasStore {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     if (fs.existsSync(this.filePath)) {
       this.data = { ...defaultData(), ...JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) };
+      this.data.users = this.data.users.map(user => ({
+        ...user,
+        tenantName: user.tenantName || this.data.tenants.find(tenant => tenant.id === user.tenantId)?.name || 'Cliente TLPlanly',
+      }));
     } else {
       this.persist();
     }
@@ -153,6 +159,7 @@ export class FileSaasStore implements SaasStore {
     const user: StoredUser = {
       id: createId('usr'),
       tenantId: tenant.id,
+      tenantName: tenant.name,
       name: input.name.trim(),
       email,
       role: 'admin',
@@ -328,18 +335,19 @@ export class PostgresSaasStore implements SaasStore {
     const tenantId = createId('ten');
     const userId = createId('usr');
     const email = normalizeEmail(input.email);
+    const tenantName = input.orgName?.trim() || input.name.trim() || 'TLPlanly';
     const client = await this.pool.connect();
     try {
       await client.query('begin');
       await client.query(
         'insert into saas_tenants (id, name, plan) values ($1, $2, $3)',
-        [tenantId, input.orgName?.trim() || input.name.trim() || 'TLPlanly', 'trial']
+        [tenantId, tenantName, 'trial']
       );
       const result = await client.query(
         `insert into saas_users (id, tenant_id, name, email, role, password_hash, password_salt)
          values ($1, $2, $3, $4, $5, $6, $7)
-         returning id, tenant_id, name, email, role`,
-        [userId, tenantId, input.name.trim(), email, 'admin', input.passwordHash, input.passwordSalt]
+         returning id, tenant_id, $8::text as tenant_name, name, email, role`,
+        [userId, tenantId, input.name.trim(), email, 'admin', input.passwordHash, input.passwordSalt, tenantName]
       );
       await client.query('commit');
       return rowToPublicUser(result.rows[0]);
@@ -354,8 +362,10 @@ export class PostgresSaasStore implements SaasStore {
 
   async findUserByEmail(email: string): Promise<StoredUser | null> {
     const result = await this.pool.query(
-      `select id, tenant_id, name, email, role, password_hash, password_salt
-       from saas_users where email = $1 limit 1`,
+      `select u.id, u.tenant_id, t.name as tenant_name, u.name, u.email, u.role, u.password_hash, u.password_salt
+       from saas_users u
+       join saas_tenants t on t.id = u.tenant_id
+       where u.email = $1 limit 1`,
       [normalizeEmail(email)]
     );
     if (!result.rows[0]) return null;
@@ -373,9 +383,10 @@ export class PostgresSaasStore implements SaasStore {
 
   async getUserBySession(tokenHash: string): Promise<PublicUser | null> {
     const result = await this.pool.query(
-      `select u.id, u.tenant_id, u.name, u.email, u.role
+      `select u.id, u.tenant_id, t.name as tenant_name, u.name, u.email, u.role
        from saas_sessions s
        join saas_users u on u.id = s.user_id
+       join saas_tenants t on t.id = u.tenant_id
        where s.token_hash = $1 and s.expires_at > now()
        limit 1`,
       [tokenHash]
@@ -444,6 +455,7 @@ function rowToPublicUser(row: any): PublicUser {
   return {
     id: row.id,
     tenantId: row.tenant_id,
+    tenantName: row.tenant_name || 'Cliente TLPlanly',
     name: row.name,
     email: row.email,
     role: row.role,

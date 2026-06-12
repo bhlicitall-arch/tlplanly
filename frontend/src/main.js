@@ -401,6 +401,11 @@ function cloudRender() {
   }
   document.getElementById('cloud-user-name').textContent = CLOUD.user.name || 'Usuario';
   document.getElementById('cloud-user-email').textContent = CLOUD.user.email || '';
+  const org = CLOUD.user.tenantName || CLOUD.user.tenant || 'Cliente TLPlanly';
+  const orgEl = document.getElementById('cloud-user-org');
+  if (orgEl) orgEl.textContent = `Cliente: ${org}`;
+  const isolation = document.getElementById('cloud-isolation-text');
+  if (isolation) isolation.textContent = `Ambiente "${org}" isolado. Outros clientes nao podem listar, abrir, alterar ou apagar estas obras.`;
   const select = document.getElementById('cloud-projects');
   select.innerHTML = '';
   if (!CLOUD.projects.length) {
@@ -414,7 +419,7 @@ function cloudRender() {
       select.appendChild(opt);
     });
   }
-  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · ${cloudLastSavedText()}`);
+  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · cliente isolado · ${cloudLastSavedText()}`);
   cloudRenderSaveStatus();
 }
 

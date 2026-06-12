@@ -393,6 +393,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     const publicUser: PublicUser = {
       id: user.id,
       tenantId: user.tenantId,
+      tenantName: user.tenantName,
       name: user.name,
       email: user.email,
       role: user.role,

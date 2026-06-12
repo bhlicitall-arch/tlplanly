@@ -106,6 +106,14 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
   padding:12px;margin-bottom:14px;
 }
 .cloud-user span{display:block;color:var(--text3);font-size:12px;margin-top:2px}
+.cloud-user-org{color:var(--gold)!important;font-weight:800}
+.cloud-isolation{
+  display:flex;flex-direction:column;gap:4px;
+  border:1px solid rgba(245,166,35,.28);background:rgba(245,166,35,.08);
+  border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;
+}
+.cloud-isolation strong{font-size:12px;color:var(--gold);font-weight:900}
+.cloud-isolation span{font-size:12px;color:var(--text2);line-height:1.45}
 .cloud-sync-box{
   display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;
 }
@@ -2162,8 +2170,13 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       <div>
         <strong id="cloud-user-name">Usuario</strong>
         <span id="cloud-user-email"></span>
+        <span id="cloud-user-org" class="cloud-user-org">Cliente isolado</span>
       </div>
       <button class="btn btn-outline btn-sm" onclick="cloudLogout()">Sair</button>
+    </div>
+    <div class="cloud-isolation">
+      <strong>Ambiente isolado por cliente</strong>
+      <span id="cloud-isolation-text">Cada organização acessa somente suas próprias obras, orçamentos, CPUs e documentos.</span>
     </div>
     <div class="cloud-sync-box">
       <div>
@@ -2623,6 +2636,11 @@ function cloudRender() {
   }
   document.getElementById('cloud-user-name').textContent = CLOUD.user.name || 'Usuario';
   document.getElementById('cloud-user-email').textContent = CLOUD.user.email || '';
+  const org = CLOUD.user.tenantName || CLOUD.user.tenant || 'Cliente TLPlanly';
+  const orgEl = document.getElementById('cloud-user-org');
+  if (orgEl) orgEl.textContent = `Cliente: ${org}`;
+  const isolation = document.getElementById('cloud-isolation-text');
+  if (isolation) isolation.textContent = `Ambiente "${org}" isolado. Outros clientes nao podem listar, abrir, alterar ou apagar estas obras.`;
   const select = document.getElementById('cloud-projects');
   select.innerHTML = '';
   if (!CLOUD.projects.length) {
@@ -2636,7 +2654,7 @@ function cloudRender() {
       select.appendChild(opt);
     });
   }
-  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · ${cloudLastSavedText()}`);
+  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · cliente isolado · ${cloudLastSavedText()}`);
   cloudRenderSaveStatus();
 }
 

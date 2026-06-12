@@ -22,6 +22,7 @@ async function main(): Promise<void> {
 
   assert.equal(user.email, 'carlos@exemplo.com');
   assert.equal(user.role, 'admin');
+  assert.equal(user.tenantName, 'TechLicense');
   assert.equal(verifyPassword('senha-forte-123', pwd.salt, pwd.hash), true);
 
   const storedUser = await store.findUserByEmail('carlos@exemplo.com');
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
   await store.createSession(user.id, tokenHash, new Date(Date.now() + 60_000));
   const sessionUser = await store.getUserBySession(tokenHash);
   assert.equal(sessionUser?.id, user.id);
+  assert.equal(sessionUser?.tenantName, 'TechLicense');
 
   const project = await store.createProject(user, {
     name: 'Obra Escola Municipal',
@@ -62,7 +64,15 @@ async function main(): Promise<void> {
     passwordSalt: otherPwd.salt,
     orgName: 'Outro Orgao',
   });
+  assert.equal(otherUser.tenantName, 'Outro Orgao');
+  assert.equal((await store.listProjects(otherUser)).length, 0);
   assert.equal(await store.getProject(otherUser, project.id), null);
+  assert.equal(await store.updateProject(otherUser, project.id, {
+    name: 'Tentativa indevida',
+    state: { orcamento: [{ cod: 'INVASAO' }] },
+  }), null);
+  assert.equal(await store.deleteProject(otherUser, project.id), false);
+  assert.equal((await store.listProjects(user)).length, 1);
 
   const health = await store.health();
   assert.equal(health.ready, true);
