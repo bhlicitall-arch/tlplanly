@@ -8,6 +8,7 @@ import {
     parsearLinhasOrcamentarias,
     parsearLinhaOrcamentaria,
 } from '../src/services/ExtracaoCertificador';
+import { mapearPlanilha, sugerirMapeamentoPlanilha } from '../src/services/PlanilhaInteligente';
 
 function exigir(condicao: boolean, mensagem: string): void {
     if (!condicao) throw new Error(mensagem);
@@ -171,6 +172,40 @@ async function testarImportadores() {
         exigir(linhaDeImportacaoIgnorada('TOTAL COM BDI 853.185,74'), 'TOTAL COM BDI deve ser tratado como rodape.');
         exigir(linhaDeImportacaoIgnorada('PREFEITURA MUNICIPAL DE BELO HORIZONTE - MG'), 'Cabecalho institucional deve ser ignorado.');
         exigir(linhaDeImportacaoIgnorada("02 =PROCV(A8;'MEMORIA - CAMPO DO LEBLON'!B:E;3;0)"), 'Formula PROCV deve ser ignorada.');
+
+        const planilhaLivre = [
+            ['qualquer titulo'],
+            ['ID do item', 'Especificacao do servico', 'UN', 'Qtde medida', 'Valor unitario', 'Valor total'],
+            ['CPU-01', 'Alvenaria de vedacao', 'M2', '12,5', '84,30', '1.053,75'],
+        ];
+        const sugestaoOrcamento = sugerirMapeamentoPlanilha(planilhaLivre, 'orcamento');
+        exigir(sugestaoOrcamento.headerRow === 1, 'Mapeamento inteligente deveria localizar cabecalho na linha 2.');
+        exigir(sugestaoOrcamento.mapping.cod === 0, 'Coluna de codigo deveria ser reconhecida.');
+        exigir(sugestaoOrcamento.mapping.desc === 1, 'Coluna de descricao deveria ser reconhecida.');
+        const orcamentoMapeado = mapearPlanilha(planilhaLivre, sugestaoOrcamento.mapping, 'orcamento', sugestaoOrcamento.headerRow);
+        exigir(orcamentoMapeado.items.length === 1, 'Layout livre deveria gerar 1 item de orcamento.');
+        exigir(Math.abs((orcamentoMapeado.items[0].totalLinha || 0) - 1053.75) < 0.01, 'Total do item mapeado divergente.');
+
+        const insumosSemCabecalho = [
+            ['MAT-001', 'Cimento CP II', '32,50', 'SC', 'Material'],
+            ['MO-001', 'Pedreiro', '28,80', 'H', 'Mao de Obra'],
+        ];
+        const sugestaoInsumos = sugerirMapeamentoPlanilha(insumosSemCabecalho, 'insumos');
+        exigir(sugestaoInsumos.headerRow === -1, 'Planilha sem cabecalho deveria usar layout A/B/C.');
+        const insumosMapeados = mapearPlanilha(insumosSemCabecalho, sugestaoInsumos.mapping, 'insumos', sugestaoInsumos.headerRow);
+        exigir(insumosMapeados.insumos.length === 2, 'Layout A/B/C de insumos deveria importar 2 insumos.');
+        exigir(insumosMapeados.insumos[1].tipo === 'S', 'Classificacao de mao de obra deveria virar tipo S.');
+
+        const cpuRows = [
+            ['CPU', 'Servico', 'Un CPU', 'Cod Insumo', 'Insumo', 'Tipo', 'Coeficiente', 'Custo Unitario'],
+            ['CPU-10', 'Alvenaria propria', 'M2', 'MAT-001', 'Cimento CP II', 'Material', '0,35', '32,50'],
+            ['CPU-10', 'Alvenaria propria', 'M2', 'MO-001', 'Pedreiro', 'Mao de Obra', '0,80', '28,80'],
+        ];
+        const sugestaoCpu = sugerirMapeamentoPlanilha(cpuRows, 'composicoes');
+        const cpuMapeada = mapearPlanilha(cpuRows, sugestaoCpu.mapping, 'composicoes', sugestaoCpu.headerRow);
+        exigir(cpuMapeada.composicoes.length === 1, 'Mapeamento de CPU deveria agrupar insumos na mesma composicao.');
+        exigir(cpuMapeada.composicoes[0].insumos.length === 2, 'CPU importada deveria ter 2 insumos vinculados.');
+        exigir(Math.abs(cpuMapeada.composicoes[0].precoUnitario - 34.415) < 0.001, 'Custo unitario da CPU vinculada divergente.');
 
         const certificado = certificarItensExtraidos([
             item!,

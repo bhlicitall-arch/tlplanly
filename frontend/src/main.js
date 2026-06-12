@@ -17,6 +17,7 @@ let STATE = {
   documentos: [],
   extracoes: [],
   backups: [],
+  insumosImportados: [],
   sinapiBase: [],     // { codigoSinapi, descricao, unidade, precoMedio, ... }
   sinapiMes: '',
   auditResultados: [],
@@ -57,6 +58,7 @@ try {
     STATE.documentos = p.documentos || [];
     STATE.extracoes = p.extracoes || [];
     STATE.backups = p.backups || [];
+    STATE.insumosImportados = p.insumosImportados || [];
     const legacyDefaultBDI = isLegacyDefaultBDI(p);
     STATE.bdiConfigured = !legacyDefaultBDI
       && Number.isFinite(Number(p.bdi))
@@ -144,6 +146,7 @@ function normalizeState() {
   STATE.documentos = Array.isArray(STATE.documentos) ? STATE.documentos : [];
   STATE.extracoes = Array.isArray(STATE.extracoes) ? STATE.extracoes : [];
   STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
+  STATE.insumosImportados = Array.isArray(STATE.insumosImportados) ? STATE.insumosImportados : [];
   STATE.config = {
     uf:'MG',
     tolerancia:5,
@@ -195,6 +198,7 @@ function persistedState() {
     documentos: STATE.documentos,
     extracoes: STATE.extracoes,
     backups: STATE.backups,
+    insumosImportados: STATE.insumosImportados,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
     bdiComponents: STATE.bdiComponents,
@@ -212,6 +216,7 @@ function applyPersistedState(payload) {
   STATE.documentos = Array.isArray(payload.documentos) ? payload.documentos : [];
   STATE.extracoes = Array.isArray(payload.extracoes) ? payload.extracoes : [];
   STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
+  STATE.insumosImportados = Array.isArray(payload.insumosImportados) ? payload.insumosImportados : [];
   const legacyDefaultBDI = isLegacyDefaultBDI(payload);
   STATE.bdiConfigured = !legacyDefaultBDI
     && Number.isFinite(Number(payload.bdi))
@@ -2428,7 +2433,8 @@ let IMP = {
   audit: null,
   filtro: 'todos',
   extracaoId: '',
-  origemRapida: ''
+  origemRapida: '',
+  sheetMapping: null
 };
 
 const IMPORT_EXTS = ['pdf','xlsx','xls','ods','csv','png','jpg','jpeg','tif','tiff'];
@@ -2439,6 +2445,36 @@ const CODIGO_IMPORTACAO_RE = /(?:\b(ED-\d{3,6})\b|\b(CPU-\d+)\b|\b([A-Z0-9]{2}\.
 const NUM_IMPORT_RE_SRC = String.raw`-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?`;
 const UNIDADE_TAIL_IMPORT_RE_SRC = String.raw`M2XMES|M2KM|M3KM|TKM|M²|M2|M³|M3|MÊS|MES|UNID|UND|UN|KG|T|VG|VB|CJ|GL|HR|H|L|PONTO|KM|M`;
 const ITEM_TAIL_IMPORT_RE = new RegExp(String.raw`\b(${UNIDADE_TAIL_IMPORT_RE_SRC})\b\s+(${NUM_IMPORT_RE_SRC})\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?\s+(?:R\$\s*)?(${NUM_IMPORT_RE_SRC})\s*(?:R\$)?`, 'gi');
+const SHEET_PURPOSES = ['orcamento', 'insumos', 'composicoes'];
+const SHEET_FIELDS = {
+  orcamento: [
+    { key:'cod', label:'Código', hint:'Código do item ou composição', aliases:['codigo','cod','item','codigo item','codigo servico','codigo composicao'] },
+    { key:'desc', label:'Descrição', hint:'Serviço, insumo ou especificação', required:true, aliases:['descricao','descrição','servico','serviço','especificacao','especificação','insumo'] },
+    { key:'unid', label:'Unidade', hint:'UN, M2, M3, H, KG...', aliases:['unidade','unid','und','un'] },
+    { key:'qtd', label:'Quantidade', hint:'Quantidade do orçamento', numeric:true, aliases:['quantidade','quant','qtd','qtde'] },
+    { key:'preco', label:'Custo unitário', hint:'Preço unitário sem BDI', numeric:true, aliases:['preco unitario','preço unitário','valor unitario','valor unitário','custo unitario','custo unitário','p unit'] },
+    { key:'total', label:'Total da linha', hint:'Opcional, usado para conferência', numeric:true, aliases:['total','preco total','preço total','valor total','custo total'] },
+    { key:'categoria', label:'Categoria/capítulo', hint:'Grupo do item', aliases:['categoria','grupo','classe','capitulo','capítulo'] },
+  ],
+  insumos: [
+    { key:'cod', label:'Código do insumo', hint:'Obrigatório', required:true, aliases:['codigo','cod','codigo insumo','insumo','item'] },
+    { key:'desc', label:'Descrição do insumo', hint:'Obrigatório', required:true, aliases:['descricao','descrição','insumo','especificacao','especificação'] },
+    { key:'preco', label:'Custo unitário', hint:'Obrigatório', required:true, numeric:true, aliases:['preco','preço','custo','valor','preco unitario','preço unitário','custo unitario','valor unitario'] },
+    { key:'unid', label:'Unidade', hint:'UN, M2, H...', aliases:['unidade','unid','und','un'] },
+    { key:'tipo', label:'Tipo do insumo', hint:'Material, mão de obra, equipamento ou transporte', aliases:['tipo','classe','categoria','grupo','natureza','classificacao','classificação'] },
+  ],
+  composicoes: [
+    { key:'cpuCod', label:'Código da CPU', hint:'Obrigatório', required:true, aliases:['codigo cpu','cod cpu','composicao','composição','codigo composicao','codigo servico'] },
+    { key:'cpuDesc', label:'Descrição da CPU', hint:'Serviço composto', aliases:['descricao cpu','descrição cpu','descricao composicao','servico','serviço'] },
+    { key:'cpuUnid', label:'Unidade da CPU', hint:'Unidade do serviço', aliases:['unidade cpu','unid cpu','unidade servico','unidade serviço'] },
+    { key:'insumoCod', label:'Código do insumo', hint:'Obrigatório para vincular', required:true, aliases:['codigo insumo','cod insumo','insumo','codigo recurso','recurso'] },
+    { key:'insumoDesc', label:'Descrição do insumo', hint:'Opcional se o código já existir', aliases:['descricao insumo','descrição insumo','descricao recurso','recurso descricao'] },
+    { key:'insumoUnid', label:'Unidade do insumo', hint:'UN, H, KG...', aliases:['unidade insumo','unid insumo','unidade recurso'] },
+    { key:'tipo', label:'Tipo do insumo', hint:'M, S, E ou T', aliases:['tipo','classe','categoria','grupo','natureza'] },
+    { key:'coef', label:'Coeficiente', hint:'Consumo do insumo por unidade da CPU', required:true, numeric:true, aliases:['coeficiente','coef','consumo','indice','índice','quantidade insumo'] },
+    { key:'preco', label:'Custo unitário do insumo', hint:'Pode vir da base importada', numeric:true, aliases:['preco','preço','custo','valor','preco unitario','custo unitario'] },
+  ]
+};
 
 function parseNumeroBR(valor) {
   if (typeof valor === 'number') return Number.isFinite(valor) ? valor : 0;
@@ -2460,6 +2496,229 @@ function normalizarUnidadeImportacao(unid) {
     .replace(/^UND$/,'UN')
     .replace(/^UNID$/,'UN')
     .replace(/^MÊS$/,'MES') || 'UN';
+}
+
+function sheetNormText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function sheetColumnLetter(index) {
+  let n = Number(index) + 1;
+  let out = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    out = String.fromCharCode(65 + m) + out;
+    n = Math.floor((n - m) / 26);
+  }
+  return out || '?';
+}
+
+function sheetNormalizeRows(rawRows) {
+  return (rawRows || []).map(row => Array.isArray(row) ? row.map(cell => String(cell ?? '').replace(/\s+/g, ' ').trim()) : []);
+}
+
+function sheetScoreHeader(cell, aliases) {
+  const norm = sheetNormText(cell);
+  if (!norm) return 0;
+  return (aliases || []).reduce((best, alias) => {
+    const a = sheetNormText(alias);
+    if (!a) return best;
+    if (norm === a) return Math.max(best, 6);
+    if (norm.includes(a)) return Math.max(best, 4);
+    if (a.includes(norm) && norm.length >= 3) return Math.max(best, 2);
+    return best;
+  }, 0);
+}
+
+function sheetDefaultMapping(purpose, maxCols) {
+  const map = {};
+  const set = (key, idx) => { if (idx < maxCols) map[key] = idx; };
+  if (purpose === 'insumos') {
+    set('cod', 0); set('desc', 1); set('preco', 2); set('unid', 3); set('tipo', 4);
+  } else if (purpose === 'composicoes') {
+    set('cpuCod', 0); set('cpuDesc', 1); set('cpuUnid', 2); set('insumoCod', 3); set('insumoDesc', 4); set('tipo', 5); set('coef', 6); set('preco', 7);
+  } else {
+    set('cod', 0); set('desc', 1); set('unid', 2); set('qtd', 3); set('preco', 4); set('total', 5); set('categoria', 6);
+  }
+  return map;
+}
+
+function sheetBuildColumns(rows, maxCols, headerRow) {
+  const start = headerRow >= 0 ? headerRow + 1 : 0;
+  return Array.from({ length: maxCols }, (_, index) => ({
+    index,
+    letra: sheetColumnLetter(index),
+    header: headerRow >= 0 ? (rows[headerRow]?.[index] || `Coluna ${sheetColumnLetter(index)}`) : `Coluna ${sheetColumnLetter(index)}`,
+    amostras: rows.slice(start, start + 4).map(row => row[index] || '').filter(Boolean).slice(0, 3)
+  }));
+}
+
+function sheetSuggestMapping(rawRows, purpose = 'orcamento') {
+  const rows = sheetNormalizeRows(rawRows);
+  const fields = SHEET_FIELDS[purpose] || SHEET_FIELDS.orcamento;
+  const maxCols = Math.max(0, ...rows.slice(0, 50).map(row => row.length));
+  let best = { row: -1, score: -1, mapping: {} };
+  for (let r = 0; r < Math.min(25, rows.length); r++) {
+    const row = rows[r] || [];
+    const used = new Set();
+    const mapping = {};
+    let score = 0;
+    fields.forEach(field => {
+      let bestCol = -1, bestScore = 0;
+      row.forEach((cell, ci) => {
+        if (used.has(ci)) return;
+        const s = sheetScoreHeader(cell, field.aliases);
+        if (s > bestScore) { bestScore = s; bestCol = ci; }
+      });
+      if (bestCol >= 0 && bestScore > 0) {
+        mapping[field.key] = bestCol;
+        used.add(bestCol);
+        score += bestScore + (field.required ? 2 : 0);
+      }
+    });
+    score += fields.filter(f => f.required && mapping[f.key] >= 0).length * 4;
+    if (score > best.score) best = { row: r, score, mapping };
+  }
+  const minScore = purpose === 'composicoes' ? 10 : 7;
+  const headerRow = best.score >= minScore ? best.row : -1;
+  const mapping = headerRow >= 0 ? best.mapping : sheetDefaultMapping(purpose, maxCols);
+  const requiredMissing = fields.filter(f => f.required && !(mapping[f.key] >= 0)).map(f => f.key);
+  const confidence = Math.max(15, Math.min(98, Math.round(best.score * 7 + (requiredMissing.length ? -20 : 10))));
+  return {
+    purpose,
+    headerRow,
+    startRow: headerRow >= 0 ? headerRow + 1 : 0,
+    confidence,
+    colunas: sheetBuildColumns(rows, maxCols, headerRow),
+    mapping,
+    requiredMissing
+  };
+}
+
+function sheetCell(row, idx) {
+  return idx !== undefined && idx >= 0 ? String(row[idx] ?? '').trim() : '';
+}
+
+function normalizarTipoInsumoImportacao(value) {
+  const n = sheetNormText(value);
+  if (/mao|mdo|obra|pedreiro|servente|oficial|horista|carpinteiro|eletricista|encanador|pintor/.test(n)) return 'S';
+  if (/equip|maquina|caminhao|trator|escavadeira|betoneira|andaime|guindaste/.test(n)) return 'E';
+  if (/transp|frete|dmt/.test(n)) return 'T';
+  return 'M';
+}
+
+function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow = -1) {
+  const rows = sheetNormalizeRows(rawRows);
+  const start = headerRow >= 0 ? headerRow + 1 : 0;
+  const result = { items: [], insumos: [], composicoes: [], issues: [] };
+  const cpuMap = new Map();
+  rows.slice(start).forEach((row, offset) => {
+    const rowNumber = start + offset + 1;
+    if (!row || row.every(cell => !String(cell || '').trim())) return;
+    const joined = row.map(cell => String(cell || '')).join(' ').trim();
+    if (!joined || linhaImportacaoIgnorada(joined)) return;
+
+    if (purpose === 'orcamento') {
+      const qtd = parseNumeroBR(sheetCell(row, mapping.qtd)) || 1;
+      const preco = parseNumeroBR(sheetCell(row, mapping.preco));
+      const totalLinha = parseNumeroBR(sheetCell(row, mapping.total));
+      const item = {
+        cod: limparCodigo(sheetCell(row, mapping.cod)),
+        desc: sheetCell(row, mapping.desc),
+        unid: normalizarUnidadeImportacao(sheetCell(row, mapping.unid) || 'UN'),
+        qtd,
+        preco,
+        totalLinha,
+        cat: sheetCell(row, mapping.categoria) || 'Serviços',
+        capitulo: sheetCell(row, mapping.categoria) || 'Serviços',
+        origem: 'excel',
+        linhaOrigem: joined
+      };
+      if (!item.desc || item.desc.length < 3) return;
+      if (!Number.isFinite(qtd) || qtd <= 0) result.issues.push(`Linha ${rowNumber}: quantidade inválida.`);
+      if (!Number.isFinite(preco) || preco < 0) result.issues.push(`Linha ${rowNumber}: custo unitário inválido.`);
+      result.items.push(item);
+      return;
+    }
+
+    if (purpose === 'insumos') {
+      const cod = limparCodigo(sheetCell(row, mapping.cod));
+      const ins = {
+        codigoSinapi: cod,
+        codigo: cod,
+        descricao: sheetCell(row, mapping.desc),
+        unidade: normalizarUnidadeImportacao(sheetCell(row, mapping.unid) || 'UN'),
+        precoMedio: parseNumeroBR(sheetCell(row, mapping.preco)),
+        tipo: normalizarTipoInsumoImportacao(sheetCell(row, mapping.tipo)),
+        fonte: 'IMPORTADO/TLPLANLY',
+        dataReferencia: new Date().toLocaleDateString('pt-BR'),
+        importado: true
+      };
+      if (!ins.codigoSinapi || !ins.descricao) {
+        result.issues.push(`Linha ${rowNumber}: insumo sem código ou descrição.`);
+        return;
+      }
+      if (!ins.precoMedio) result.issues.push(`Linha ${rowNumber}: custo unitário ausente ou zerado.`);
+      result.insumos.push(ins);
+      return;
+    }
+
+    const cpuCod = limparCodigo(sheetCell(row, mapping.cpuCod));
+    const insumoCod = limparCodigo(sheetCell(row, mapping.insumoCod));
+    if (!cpuCod || !insumoCod) {
+      result.issues.push(`Linha ${rowNumber}: composição sem código de CPU ou código de insumo.`);
+      return;
+    }
+    const lookup = lookupPreco(insumoCod);
+    const precoMapeado = parseNumeroBR(sheetCell(row, mapping.preco));
+    const insumo = {
+      cod: insumoCod,
+      desc: sheetCell(row, mapping.insumoDesc) || lookup?.item?.descricao || insumoCod,
+      unid: normalizarUnidadeImportacao(sheetCell(row, mapping.insumoUnid) || lookup?.item?.unidade || 'UN'),
+      tipo: normalizarTipoInsumoImportacao(sheetCell(row, mapping.tipo)),
+      coef: parseNumeroBR(sheetCell(row, mapping.coef)),
+      preco: precoMapeado || lookup?.preco || 0
+    };
+    if (!insumo.coef) result.issues.push(`Linha ${rowNumber}: coeficiente ausente ou zerado.`);
+    const cpu = cpuMap.get(cpuCod) || {
+      id: makeId('cpu'),
+      cod: cpuCod,
+      desc: sheetCell(row, mapping.cpuDesc) || cpuCod,
+      unid: normalizarUnidadeImportacao(sheetCell(row, mapping.cpuUnid) || 'UN'),
+      tipo: 'Serviços',
+      encargos: 'nd',
+      encPct: 127.5,
+      insumos: [],
+      precoUnitario: 0,
+      criadaEm: new Date().toLocaleDateString('pt-BR')
+    };
+    cpu.insumos.push(insumo);
+    cpu.precoUnitario = cpu.insumos.reduce((s, i) => s + (Number(i.coef) || 0) * (Number(i.preco) || 0), 0);
+    cpuMap.set(cpuCod, cpu);
+  });
+  result.composicoes = [...cpuMap.values()];
+  return result;
+}
+
+async function lerPlanilhasArquivo(file) {
+  const ab = await file.arrayBuffer();
+  const wb = XLSX.read(ab, { type: 'array', raw: false, cellDates: false });
+  return wb.SheetNames.map(sheetName => {
+    const ws = wb.Sheets[sheetName];
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+    return {
+      id: `${file.name}::${sheetName}`,
+      fileName: file.name,
+      sheetName,
+      size: file.size,
+      raw
+    };
+  }).filter(entry => entry.raw.some(row => Array.isArray(row) && row.some(cell => String(cell || '').trim())));
 }
 
 function linhaImportacaoIgnorada(line) {
@@ -2700,6 +2959,7 @@ function setImportFiles(files) {
 
   IMP.files = validos;
   IMP.file = validos[0] || null;
+  IMP.sheetMapping = null;
   IMP.markdown = '';
   renderImportFileChips();
   document.getElementById('btnExtract').disabled = !IMP.files.length;
@@ -2758,8 +3018,9 @@ function resetarImportacao() {
   removerArquivo();
   document.getElementById('imp-card-progress').style.display = 'none';
   document.getElementById('imp-card-review').style.display = 'none';
+  document.getElementById('imp-card-mapping').style.display = 'none';
   document.getElementById('imp-card-upload').style.display = 'block';
-  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = ''; IMP.audit = null; IMP.extracaoId = ''; IMP.origemRapida = '';
+  IMP.rawItems = []; IMP.reviewed = []; IMP.importResults = []; IMP.markdown = ''; IMP.audit = null; IMP.extracaoId = ''; IMP.origemRapida = ''; IMP.sheetMapping = null;
 }
 
 function setStep(steps, idx, status, statusText) {
@@ -2779,12 +3040,318 @@ function setProgress(pct, label) {
   document.getElementById('imp-prog-label').textContent = label;
 }
 
+async function prepararMapeamentoPlanilha(files) {
+  document.getElementById('imp-card-upload').style.display = 'none';
+  document.getElementById('imp-card-progress').style.display = 'block';
+  document.getElementById('imp-card-review').style.display = 'none';
+  document.getElementById('imp-card-mapping').style.display = 'none';
+  document.getElementById('imp-steps').innerHTML = '';
+  setProgress(10, 'Lendo planilhas...');
+
+  const entries = [];
+  for (const file of files) {
+    const sheets = await lerPlanilhasArquivo(file);
+    entries.push(...sheets);
+  }
+  if (!entries.length) throw new Error('Nenhuma aba com dados foi encontrada nas planilhas.');
+
+  const purpose = document.getElementById('imp-tipo')?.value === 'livre' ? 'orcamento' : 'orcamento';
+  entries.forEach((entry, idx) => {
+    entry.index = idx;
+    entry.purpose = purpose;
+    entry.suggestion = sheetSuggestMapping(entry.raw, purpose);
+    entry.headerRow = entry.suggestion.headerRow;
+    entry.mapping = { ...entry.suggestion.mapping };
+    entry.columns = entry.suggestion.colunas;
+  });
+
+  IMP.sheetMapping = { entries, currentIndex: 0, purpose };
+  setProgress(100, 'Mapeamento pronto.');
+  await sleep(80);
+  document.getElementById('imp-card-progress').style.display = 'none';
+  document.getElementById('imp-card-mapping').style.display = 'block';
+  renderMapeamentoPlanilha();
+}
+
+function impCurrentSheetEntry() {
+  return IMP.sheetMapping?.entries?.[IMP.sheetMapping.currentIndex || 0] || null;
+}
+
+function renderMapeamentoPlanilha() {
+  const state = IMP.sheetMapping;
+  if (!state?.entries?.length) return;
+  const entry = impCurrentSheetEntry();
+  const source = document.getElementById('imp-map-source');
+  const purpose = document.getElementById('imp-map-purpose');
+  const header = document.getElementById('imp-map-header');
+  if (source) {
+    source.innerHTML = state.entries.map((e, idx) => `<option value="${idx}"${idx === state.currentIndex ? ' selected' : ''}>${escapeHtml(e.fileName)} — ${escapeHtml(e.sheetName)} (${e.raw.length} linhas)</option>`).join('');
+  }
+  if (purpose) purpose.value = entry.purpose || state.purpose || 'orcamento';
+  if (header) {
+    const rows = sheetNormalizeRows(entry.raw);
+    const opts = ['<option value="-1">Sem cabeçalho: dados começam na linha 1</option>'];
+    rows.slice(0, 15).forEach((row, idx) => {
+      const sample = row.slice(0, 5).join(' | ').substring(0, 100) || '(linha vazia)';
+      opts.push(`<option value="${idx}"${idx === entry.headerRow ? ' selected' : ''}>Linha ${idx + 1}: ${escapeHtml(sample)}</option>`);
+    });
+    header.innerHTML = opts.join('');
+  }
+  renderMapFields(entry);
+  renderMapPreview(entry);
+  renderMapStatus(entry);
+}
+
+function renderMapFields(entry) {
+  const el = document.getElementById('imp-map-fields');
+  if (!el || !entry) return;
+  const fields = SHEET_FIELDS[entry.purpose] || SHEET_FIELDS.orcamento;
+  const columns = entry.columns || sheetBuildColumns(sheetNormalizeRows(entry.raw), Math.max(0, ...entry.raw.map(r => r.length)), entry.headerRow);
+  const options = ['<option value="-1">Não importar</option>'].concat(columns.map(c => {
+    const sample = c.amostras?.length ? ` — ${c.amostras.join(' / ').substring(0, 60)}` : '';
+    return `<option value="${c.index}">${c.letra} · ${escapeHtml(c.header)}${escapeHtml(sample)}</option>`;
+  })).join('');
+  el.innerHTML = fields.map(field => `
+    <div class="sheet-map-field">
+      <label>${escapeHtml(field.label)}${field.required ? ' *' : ''}<small>${escapeHtml(field.hint || '')}</small></label>
+      <select class="form-select" onchange="impAtualizarCampoMapeado('${field.key}', this.value)">
+        ${options.replace(`value="${entry.mapping?.[field.key]}"`, `value="${entry.mapping?.[field.key]}" selected`)}
+      </select>
+    </div>`).join('');
+}
+
+function renderMapPreview(entry) {
+  const el = document.getElementById('imp-map-preview');
+  if (!el || !entry) return;
+  const rows = sheetNormalizeRows(entry.raw).slice(0, 14);
+  const maxCols = Math.max(0, ...rows.map(r => r.length), ...(entry.columns || []).map(c => c.index + 1));
+  if (!rows.length || !maxCols) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px">Sem dados para pré-visualizar.</div>';
+    return;
+  }
+  const head = Array.from({ length: maxCols }, (_, idx) => `<th>${sheetColumnLetter(idx)}</th>`).join('');
+  const body = rows.map((row, idx) => {
+    const cls = idx === entry.headerRow ? 'header-row' : idx < (entry.headerRow || -1) ? 'skip-row' : '';
+    return `<tr class="${cls}">${Array.from({ length: maxCols }, (_, ci) => `<td>${escapeHtml(row[ci] || '')}</td>`).join('')}</tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function renderMapStatus(entry) {
+  const badge = document.getElementById('imp-map-confidence');
+  const issuesEl = document.getElementById('imp-map-issues');
+  if (!entry) return;
+  const parsed = sheetParseMappedRows(entry.raw, entry.mapping || {}, entry.purpose, entry.headerRow);
+  const count = entry.purpose === 'insumos' ? parsed.insumos.length : entry.purpose === 'composicoes' ? parsed.composicoes.length : parsed.items.length;
+  const missing = (SHEET_FIELDS[entry.purpose] || []).filter(f => f.required && !(entry.mapping?.[f.key] >= 0)).map(f => f.label);
+  if (badge) {
+    const conf = entry.suggestion?.confidence || 0;
+    badge.textContent = `${conf}% de confiança · ${count} registro(s)`;
+    badge.style.color = conf >= 70 && !missing.length ? 'var(--green)' : 'var(--gold)';
+  }
+  if (issuesEl) {
+    const msgs = [];
+    if (missing.length) msgs.push(`Campos obrigatórios sem coluna: ${missing.join(', ')}.`);
+    msgs.push(...parsed.issues.slice(0, 5));
+    issuesEl.innerHTML = msgs.length
+      ? `<div class="sheet-map-warning">${msgs.map(escapeHtml).join('<br>')}</div>`
+      : `<div class="sheet-map-ok">Mapeamento pronto: ${count} registro(s) válidos para importação.</div>`;
+  }
+}
+
+function impSelecionarPlanilhaMapeada(value) {
+  if (!IMP.sheetMapping) return;
+  IMP.sheetMapping.currentIndex = Number(value) || 0;
+  renderMapeamentoPlanilha();
+}
+
+function impAlterarFinalidadeMapeamento(value) {
+  if (!IMP.sheetMapping || !SHEET_PURPOSES.includes(value)) return;
+  IMP.sheetMapping.purpose = value;
+  IMP.sheetMapping.entries.forEach(entry => {
+    entry.purpose = value;
+    entry.suggestion = sheetSuggestMapping(entry.raw, value);
+    entry.headerRow = entry.suggestion.headerRow;
+    entry.mapping = { ...entry.suggestion.mapping };
+    entry.columns = entry.suggestion.colunas;
+  });
+  renderMapeamentoPlanilha();
+}
+
+function impAlterarLinhaCabecalho(value) {
+  const entry = impCurrentSheetEntry();
+  if (!entry) return;
+  entry.headerRow = Number(value);
+  const rows = sheetNormalizeRows(entry.raw);
+  const maxCols = Math.max(0, ...rows.slice(0, 50).map(row => row.length));
+  entry.columns = sheetBuildColumns(rows, maxCols, entry.headerRow);
+  renderMapeamentoPlanilha();
+}
+
+function impAtualizarCampoMapeado(field, value) {
+  const entry = impCurrentSheetEntry();
+  if (!entry) return;
+  entry.mapping = { ...(entry.mapping || {}), [field]: Number(value) };
+  if (entry.mapping[field] < 0) delete entry.mapping[field];
+  renderMapFields(entry);
+  renderMapStatus(entry);
+}
+
+function impReaplicarSugestao() {
+  const entry = impCurrentSheetEntry();
+  if (!entry) return;
+  entry.suggestion = sheetSuggestMapping(entry.raw, entry.purpose);
+  entry.headerRow = entry.suggestion.headerRow;
+  entry.mapping = { ...entry.suggestion.mapping };
+  entry.columns = entry.suggestion.colunas;
+  renderMapeamentoPlanilha();
+}
+
+function impVoltarUpload() {
+  document.getElementById('imp-card-mapping').style.display = 'none';
+  document.getElementById('imp-card-upload').style.display = 'block';
+}
+
+async function confirmarMapeamentoPlanilha() {
+  const state = IMP.sheetMapping;
+  if (!state?.entries?.length) return;
+  const purpose = state.purpose || state.entries[0].purpose || 'orcamento';
+  const results = [];
+  let items = [], insumos = [], composicoes = [], issues = [];
+  state.entries.forEach(entry => {
+    const parsed = sheetParseMappedRows(entry.raw, entry.mapping || {}, entry.purpose || purpose, entry.headerRow);
+    items = items.concat(parsed.items);
+    insumos = insumos.concat(parsed.insumos);
+    composicoes = composicoes.concat(parsed.composicoes);
+    issues = issues.concat(parsed.issues.map(msg => `${entry.sheetName}: ${msg}`));
+    results.push({
+      fileName: entry.fileName,
+      sheetName: entry.sheetName,
+      ext: getFileExt({ name: entry.fileName }),
+      metodo: `Planilha mapeada (${entry.purpose})`,
+      items: parsed.items,
+      insumos: parsed.insumos,
+      composicoes: parsed.composicoes,
+      issues: parsed.issues,
+      rawText: ''
+    });
+  });
+
+  if (purpose === 'insumos') {
+    if (!insumos.length) { toast('Nenhum insumo válido foi encontrado no mapeamento.', 'error'); return; }
+    const qtd = registrarInsumosImportados(insumos);
+    IMP.importResults = results;
+    IMP.markdown = gerarMemoriaImportacao(results);
+    persistirImportacaoComoExtracao('enviado');
+    document.getElementById('imp-map-issues').innerHTML = `<div class="sheet-map-ok">${qtd} insumo(s) importado(s) para a base local. CPUs vinculadas foram recalculadas quando havia código correspondente.</div>`;
+    toast(`${qtd} insumo(s) importado(s) para a base local`, 'success');
+    return;
+  }
+
+  if (purpose === 'composicoes') {
+    if (!composicoes.length) { toast('Nenhuma composição válida foi encontrada no mapeamento.', 'error'); return; }
+    const qtd = registrarComposicoesImportadas(composicoes);
+    IMP.importResults = results;
+    IMP.markdown = gerarMemoriaImportacao(results);
+    persistirImportacaoComoExtracao('enviado');
+    document.getElementById('imp-map-issues').innerHTML = `<div class="sheet-map-ok">${qtd} composição(ões) importada(s) para a biblioteca CPU. Revise a ficha antes de enviar ao orçamento.</div>`;
+    toast(`${qtd} composição(ões) importada(s) para a biblioteca CPU`, 'success');
+    showView('cpu');
+    return;
+  }
+
+  if (!items.length) { toast('Nenhum item de orçamento válido foi encontrado no mapeamento.', 'error'); return; }
+  document.getElementById('imp-card-mapping').style.display = 'none';
+  document.getElementById('imp-card-progress').style.display = 'block';
+  setProgress(70, 'Normalizando itens mapeados...');
+  await sleep(80);
+  IMP.rawItems = items;
+  IMP.importResults = results;
+  IMP.markdown = gerarMemoriaImportacao(results);
+  const matched = items.map(it => matchSINAPI(it));
+  setProgress(92, 'Rodando auditoria de extração...');
+  const certified = certificarItensExtraidosLocal(matched, { modo: 'planilha', maxRodadas: 3 });
+  IMP.reviewed = certified.itens;
+  IMP.audit = certified.relatorio;
+  setProgress(100, issues.length ? 'Concluído com alertas.' : 'Concluído.');
+  await sleep(120);
+  mostrarRevisao();
+}
+
+function registrarInsumosImportados(insumos) {
+  normalizeState();
+  const byCode = new Map(STATE.insumosImportados.map(i => [String(i.codigoSinapi || i.codigo || '').toUpperCase(), i]));
+  insumos.forEach(ins => {
+    const code = String(ins.codigoSinapi || ins.codigo || '').toUpperCase();
+    if (!code) return;
+    byCode.set(code, { ...(byCode.get(code) || {}), ...ins, codigoSinapi: code, codigo: code, importado: true });
+  });
+  STATE.insumosImportados = [...byCode.values()];
+  atualizarCpusPorInsumosImportados(insumos);
+  saveState();
+  return insumos.length;
+}
+
+function registrarComposicoesImportadas(composicoes) {
+  let count = 0;
+  composicoes.forEach(comp => {
+    const idx = CPU_BIBLIOTECA.findIndex(c => String(c.cod).toUpperCase() === String(comp.cod).toUpperCase());
+    const normalizada = { ...comp, id: idx >= 0 ? CPU_BIBLIOTECA[idx].id : (comp.id || makeId('cpu')) };
+    normalizada.insumos = (normalizada.insumos || []).map(ins => {
+      const lookup = lookupPreco(ins.cod);
+      return { ...ins, preco: Number(ins.preco) || lookup?.preco || 0, desc: ins.desc || lookup?.item?.descricao || ins.cod, unid: ins.unid || lookup?.item?.unidade || 'UN' };
+    });
+    normalizada.precoUnitario = normalizada.insumos.reduce((s, i) => s + (Number(i.coef) || 0) * (Number(i.preco) || 0), 0);
+    if (idx >= 0) CPU_BIBLIOTECA[idx] = normalizada;
+    else CPU_BIBLIOTECA.push(normalizada);
+    count++;
+  });
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  return count;
+}
+
+function atualizarCpusPorInsumosImportados(insumos) {
+  if (!Array.isArray(CPU_BIBLIOTECA) || !CPU_BIBLIOTECA.length) return;
+  const byCode = new Map(insumos.map(i => [String(i.codigoSinapi || i.codigo || '').toUpperCase(), i]));
+  let mudou = false;
+  CPU_BIBLIOTECA.forEach(cpu => {
+    (cpu.insumos || []).forEach(ins => {
+      const ref = byCode.get(String(ins.cod || '').toUpperCase());
+      if (!ref) return;
+      ins.desc = ref.descricao || ins.desc;
+      ins.unid = ref.unidade || ins.unid;
+      ins.tipo = ref.tipo || ins.tipo;
+      ins.preco = Number(ref.precoMedio) || Number(ins.preco) || 0;
+      mudou = true;
+    });
+    if (mudou) cpu.precoUnitario = (cpu.insumos || []).reduce((s, i) => s + (Number(i.coef) || 0) * (Number(i.preco) || 0), 0);
+  });
+  if (mudou) {
+    cpuSaveLib();
+    if (document.getElementById('cpu-biblioteca')) cpuRenderBiblioteca();
+  }
+}
+
 async function iniciarExtracao() {
   const files = IMP.files.length ? IMP.files : (IMP.file ? [IMP.file] : []);
   if (!files.length) return;
 
+  const somentePlanilhas = files.length > 0 && files.every(f => SPREADSHEET_EXTS.includes(getFileExt(f)));
+  if (somentePlanilhas && !IMP.sheetMapping) {
+    try {
+      await prepararMapeamentoPlanilha(files);
+    } catch (err) {
+      toast('Erro ao mapear planilha: ' + err.message, 'error');
+      document.getElementById('imp-card-progress').style.display = 'none';
+      document.getElementById('imp-card-upload').style.display = 'block';
+    }
+    return;
+  }
+
   // Show progress card
   document.getElementById('imp-card-upload').style.display = 'none';
+  document.getElementById('imp-card-mapping').style.display = 'none';
   document.getElementById('imp-card-progress').style.display = 'block';
   document.getElementById('imp-card-review').style.display = 'none';
 
@@ -2969,9 +3536,10 @@ function gerarMemoriaImportacao(results) {
   ];
 
   results.forEach((r, idx) => {
-    const count = r.items?.length ?? r.itemsCount ?? 0;
-    linhas.push(`${idx + 1}. **${r.fileName || r.name || 'Documento'}** - ${r.metodo || 'Extração'} - ${count} item(ns)`);
+    const count = (r.items?.length || 0) + (r.insumos?.length || 0) + (r.composicoes?.length || 0) || r.itemsCount || 0;
+    linhas.push(`${idx + 1}. **${r.fileName || r.name || 'Documento'}** - ${r.metodo || 'Extração'} - ${count} registro(s)`);
     if (r.aviso) linhas.push(`   - Aviso: ${r.aviso}`);
+    (r.issues || []).slice(0, 5).forEach(issue => linhas.push(`   - Validação: ${issue}`));
   });
 
   linhas.push('', '## Itens extraídos', '');
@@ -2984,8 +3552,30 @@ function gerarMemoriaImportacao(results) {
     });
   });
 
+  if (results.some(r => r.insumos?.length)) {
+    linhas.push('', '## Insumos importados para a base local', '');
+    linhas.push('| Arquivo | Código | Tipo | Descrição | Unid. | Custo unitário |');
+    linhas.push('|---|---:|---|---|---:|---:|');
+    results.forEach(r => {
+      (r.insumos || []).forEach(ins => {
+        linhas.push(`| ${mdCell(r.fileName || r.name)} | ${mdCell(ins.codigoSinapi || ins.codigo || '-')} | ${mdCell(ins.tipo || '-')} | ${mdCell(ins.descricao || '-')} | ${mdCell(ins.unidade || 'UN')} | ${ins.precoMedio || ins.preco || 0} |`);
+      });
+    });
+  }
+
+  if (results.some(r => r.composicoes?.length)) {
+    linhas.push('', '## Composições importadas para a biblioteca CPU', '');
+    linhas.push('| Arquivo | CPU | Descrição | Unid. | Insumos vinculados | Custo unitário |');
+    linhas.push('|---|---:|---|---:|---:|---:|');
+    results.forEach(r => {
+      (r.composicoes || []).forEach(cpu => {
+        linhas.push(`| ${mdCell(r.fileName || r.name)} | ${mdCell(cpu.cod || '-')} | ${mdCell(cpu.desc || '-')} | ${mdCell(cpu.unid || 'UN')} | ${(cpu.insumos || []).length} | ${cpu.precoUnitario || 0} |`);
+      });
+    });
+  }
+
   linhas.push('', '## Observação técnica', '');
-  linhas.push('O Markdown é usado como memória de conferência e rastreabilidade. A importação operacional do orçamento usa dados estruturados para preservar código, descrição, unidade, quantidade, preço e origem.');
+  linhas.push('O Markdown é usado como memória de conferência e rastreabilidade. A importação operacional usa dados estruturados para preservar código, descrição, unidade, quantidade, preço, origem e vínculos entre insumos e composições.');
 
   return linhas.join('\n');
 }
@@ -3067,60 +3657,23 @@ async function extrairDeExcel(file) {
   setStep(null, 0, 'spin', 'Lendo...');
   setProgress(15, 'Lendo arquivo Excel...');
 
-  const arrayBuffer = await file.arrayBuffer();
-  const wb = XLSX.read(arrayBuffer, { type: 'array' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const sheets = await lerPlanilhasArquivo(file);
+  const first = sheets[0];
+  if (!first) return [];
+  const raw = first.raw;
 
   setStep(null, 0, 'done', `${raw.length} linhas`);
   setStep(null, 1, 'spin', 'Detectando cabeçalho...');
   setProgress(40, 'Detectando colunas...');
 
-  // Find header row
-  let headerRow = -1, colMap = { cod:-1, desc:-1, unid:-1, qtd:-1, preco:-1 };
-  for (let r = 0; r < Math.min(20, raw.length); r++) {
-    const row = raw[r].map(c => String(c).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''));
-    let found = 0;
-    row.forEach((cell, ci) => {
-      if ((cell.includes('cod') || cell.includes('item')) && colMap.cod < 0) { colMap.cod = ci; found++; }
-      if ((cell.includes('desc') || cell.includes('servic') || cell.includes('especif')) && colMap.desc < 0) { colMap.desc = ci; found++; }
-      if ((cell.includes('unid') || cell === 'un' || cell === 'und') && colMap.unid < 0) { colMap.unid = ci; found++; }
-      if ((cell.includes('qtd') || cell.includes('quant')) && colMap.qtd < 0) { colMap.qtd = ci; found++; }
-      if ((cell.includes('prec') || cell.includes('unit') || cell.includes('valor') || cell.includes('custo')) && colMap.preco < 0) { colMap.preco = ci; found++; }
-    });
-    if (found >= 2 && (colMap.cod >= 0 || colMap.desc >= 0)) { headerRow = r; break; }
-  }
+  const sugestao = sheetSuggestMapping(raw, 'orcamento');
+  const parsed = sheetParseMappedRows(raw, sugestao.mapping, 'orcamento', sugestao.headerRow);
 
-  setStep(null, 1, 'done', headerRow >= 0 ? `Cabeçalho L${headerRow+1}` : 'Heurística');
-  setStep(null, 2, 'spin', 'Lendo itens...');
-  setProgress(60, 'Extraindo itens...');
-
-  const items = [];
-  const start = headerRow >= 0 ? headerRow + 1 : 1;
-
-  for (let r = start; r < raw.length; r++) {
-    const row = raw[r];
-    if (!row || row.every(c => !c)) continue;
-
-    const cod = colMap.cod >= 0 ? String(row[colMap.cod] || '').trim() : '';
-    const desc = colMap.desc >= 0 ? String(row[colMap.desc] || '').trim() : row.filter(c=>c).join(' ').trim();
-    const unid = colMap.unid >= 0 ? String(row[colMap.unid] || '').trim() : 'UN';
-    const qtdRaw = colMap.qtd >= 0 ? row[colMap.qtd] : '';
-    const precoRaw = colMap.preco >= 0 ? row[colMap.preco] : '';
-    const joined = row.map(c => String(c || '')).join(' ');
-    if (linhaImportacaoIgnorada(joined)) continue;
-
-    const qtd = parseNumeroBR(qtdRaw) || 0;
-    const preco = parseNumeroBR(precoRaw) || 0;
-
-    if (desc.length < 3) continue;
-
-    items.push({ cod: limparCodigo(cod), desc, unid: normalizarUnidadeImportacao(unid || 'UN'), qtd: qtd || 1, preco, origem: 'excel', linhaOrigem: joined });
-  }
-
-  setStep(null, 2, 'done', `${items.length} itens`);
+  setStep(null, 1, 'done', sugestao.headerRow >= 0 ? `Cabeçalho L${sugestao.headerRow+1}` : 'Layout livre');
+  setStep(null, 2, 'done', `${parsed.items.length} itens`);
   setProgress(70, 'Concluído');
-  return items;
+
+  return parsed.items;
 }
 
 // ─── PDF LINE PARSER ───────────────────────────────────────
@@ -3316,25 +3869,28 @@ function limparCodigo(s) {
 
 // ─── MATCH SINAPI ──────────────────────────────────────────
 function matchSINAPI(item) {
-  const ref = STATE.sinapiBase.find(s => s.codigoSinapi === item.cod);
+  const allRefs = typeof getAllItems === 'function'
+    ? getAllItems()
+    : [...(STATE.insumosImportados || []), ...STATE.sinapiBase];
+  const ref = allRefs.find(s => (s.codigoSinapi || s.codigo || '').toString().toUpperCase() === String(item.cod || '').toUpperCase());
 
   if (ref) {
-    return { ...item, refSinapi: ref.precoMedio, refDesc: ref.descricao, refUnid: ref.unidade, matchTipo: 'ok', selecionado: true };
+    return { ...item, refSinapi: ref.precoMedio || ref.preco || 0, refDesc: ref.descricao, refUnid: ref.unidade, matchTipo: 'ok', matchFonte: ref._base || ref.fonte || 'Base', selecionado: true };
   }
 
   // Partial match by description keywords
   const words = item.desc.toUpperCase().split(/\s+/).filter(w => w.length > 4);
   let bestScore = 0, bestRef = null;
-  STATE.sinapiBase.forEach(s => {
-    const up = s.descricao.toUpperCase();
+  allRefs.forEach(s => {
+    const up = String(s.descricao || '').toUpperCase();
     let score = 0;
     words.forEach(w => { if (up.includes(w)) score++; });
     if (score > bestScore && score >= 2) { bestScore = score; bestRef = s; }
   });
 
   if (bestRef) {
-    return { ...item, refSinapi: bestRef.precoMedio, refDesc: bestRef.descricao, refUnid: bestRef.unidade,
-             sugestao: bestRef.codigoSinapi, matchTipo: 'parcial', selecionado: true };
+    return { ...item, refSinapi: bestRef.precoMedio || bestRef.preco || 0, refDesc: bestRef.descricao, refUnid: bestRef.unidade,
+             sugestao: bestRef.codigoSinapi || bestRef.codigo, matchTipo: 'parcial', selecionado: true };
   }
 
   return { ...item, refSinapi: 0, matchTipo: 'nenhum', selecionado: true };
@@ -3364,7 +3920,7 @@ function persistirImportacaoComoExtracao(status = '') {
     fileName: r.fileName || r.name,
     tipo: r.tipo || (SPREADSHEET_EXTS.includes(r.ext) ? 'Planilha Orçamentária' : 'Documento Técnico'),
     confianca: r.confianca || (r.metodo && /ocr/i.test(r.metodo) ? 72 : 86),
-    itemsCount: r.items?.length || r.itemsCount || 0,
+    itemsCount: (r.items?.length || 0) + (r.insumos?.length || 0) + (r.composicoes?.length || 0) || r.itemsCount || 0,
     text: r.rawText || r.textPreview || ''
   }));
   IMP.extracaoId = docsPersistirExtracao({
@@ -4111,6 +4667,9 @@ const LINKS_ESTADUAIS = {
 
 // ─── LOOKUP UNIFICADO ──────────────────────────────────────
 function lookupPreco(cod) {
+  const code = String(cod || '').toUpperCase();
+  const imported = (STATE.insumosImportados || []).find(i => String(i.codigoSinapi || i.codigo || '').toUpperCase() === code);
+  if (imported) return { preco: imported.precoMedio || imported.preco || 0, fonte: 'Base importada', item: imported };
   // Returns { preco, fonte, item } searching in priority order
   for (const baseKey of PRIORIDADE_BASES) {
     const base = BASES[baseKey];
@@ -4127,6 +4686,7 @@ function lookupPreco(cod) {
 function getAllItems() {
   // Merge all base items for search
   const all = [];
+  (STATE.insumosImportados || []).forEach(i => all.push({ ...i, _base: 'Base importada', _baseTipo: 'local' }));
   // Original sinapiBase first
   STATE.sinapiBase.forEach(i => all.push({ ...i, _base: 'SINAPI', _baseTipo: 'federal' }));
   Object.entries(BASES).forEach(([key, base]) => {

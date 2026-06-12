@@ -1002,6 +1002,53 @@
     </button>
   </div>
 
+  <!-- Passo 2: Mapeamento inteligente de planilhas -->
+  <div class="card" style="margin-bottom:16px;display:none" id="imp-card-mapping">
+    <div class="sec-header">
+      <div class="sec-title">&#x32;&#xFE0F;&#x20E3; Mapear <span>Colunas da Planilha</span></div>
+      <div class="flex flex-wrap">
+        <span id="imp-map-confidence" class="enc-auto-badge">Detectando layout</span>
+        <button class="btn btn-outline btn-sm" onclick="impVoltarUpload()">Trocar arquivo</button>
+      </div>
+    </div>
+    <div class="ana-text-block" style="min-height:auto;margin-bottom:12px">
+      Confira a finalidade da planilha e diga ao TLPlanly o que cada coluna representa. A sugestão é automática, mas você pode corrigir antes de importar.
+    </div>
+    <div class="grid grid-3" style="gap:12px;margin-bottom:12px">
+      <div>
+        <label class="form-label">Arquivo / aba</label>
+        <select id="imp-map-source" class="form-select" onchange="impSelecionarPlanilhaMapeada(this.value)"></select>
+      </div>
+      <div>
+        <label class="form-label">Finalidade da importação</label>
+        <select id="imp-map-purpose" class="form-select" onchange="impAlterarFinalidadeMapeamento(this.value)">
+          <option value="orcamento">Itens de orçamento</option>
+          <option value="insumos">Cadastro de insumos</option>
+          <option value="composicoes">Composições CPU</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Linha de cabeçalho</label>
+        <select id="imp-map-header" class="form-select" onchange="impAlterarLinhaCabecalho(this.value)"></select>
+      </div>
+    </div>
+    <div class="sheet-map-layout">
+      <div>
+        <div class="sec-title" style="font-size:13px;margin-bottom:8px">Campos do <span>Sistema</span></div>
+        <div id="imp-map-fields" class="sheet-map-fields"></div>
+      </div>
+      <div>
+        <div class="sec-title" style="font-size:13px;margin-bottom:8px">Prévia dos <span>Dados</span></div>
+        <div id="imp-map-preview" class="sheet-preview-grid"></div>
+      </div>
+    </div>
+    <div id="imp-map-issues" style="margin-top:12px"></div>
+    <div class="flex flex-wrap mt-4">
+      <button class="btn btn-gold" onclick="confirmarMapeamentoPlanilha()">&#10003; Confirmar Importação</button>
+      <button class="btn btn-outline" onclick="impReaplicarSugestao()">Reaplicar sugestão</button>
+    </div>
+  </div>
+
   <!-- Passo 2: Progresso -->
   <div class="card" style="margin-bottom:16px;display:none" id="imp-card-progress">
     <div class="sec-header"><div class="sec-title">&#x32;&#xFE0F;&#x20E3; Processando <span>Arquivos</span></div></div>
