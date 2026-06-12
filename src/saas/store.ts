@@ -28,6 +28,16 @@ export type ProjectRecord = {
   updatedAt: string;
 };
 
+export type SaasStoreHealth = {
+  mode: 'postgres' | 'file';
+  database: boolean;
+  ready: boolean;
+  users?: number;
+  projects?: number;
+  checkedAt: string;
+  detail?: string;
+};
+
 type TenantRecord = {
   id: string;
   name: string;
@@ -52,6 +62,7 @@ type StoreData = {
 export interface SaasStore {
   readonly mode: 'postgres' | 'file';
   init(): Promise<void>;
+  health(): Promise<SaasStoreHealth>;
   createUser(input: {
     name: string;
     email: string;
@@ -104,6 +115,18 @@ export class FileSaasStore implements SaasStore {
     } else {
       this.persist();
     }
+  }
+
+  async health(): Promise<SaasStoreHealth> {
+    return {
+      mode: this.mode,
+      database: false,
+      ready: true,
+      users: this.data.users.length,
+      projects: this.data.projects.length,
+      checkedAt: nowIso(),
+      detail: 'Persistencia local em arquivo. Configure DATABASE_URL para ativar PostgreSQL.',
+    };
   }
 
   private persist(): void {
@@ -222,6 +245,11 @@ export class PostgresSaasStore implements SaasStore {
 
   async init(): Promise<void> {
     await this.pool.query(`
+      create table if not exists saas_schema_migrations (
+        version text primary key,
+        applied_at timestamptz not null default now()
+      );
+
       create table if not exists saas_tenants (
         id text primary key,
         name text not null,
@@ -257,8 +285,37 @@ export class PostgresSaasStore implements SaasStore {
         updated_at timestamptz not null default now()
       );
       create index if not exists saas_projects_tenant_updated_idx on saas_projects (tenant_id, updated_at desc);
+      create index if not exists saas_sessions_expires_idx on saas_sessions (expires_at);
+      insert into saas_schema_migrations (version) values ('2026-06-12-saas-core')
+      on conflict (version) do nothing;
       delete from saas_sessions where expires_at <= now();
     `);
+  }
+
+  async health(): Promise<SaasStoreHealth> {
+    try {
+      const result = await this.pool.query(`
+        select
+          (select count(*)::int from saas_users) as users,
+          (select count(*)::int from saas_projects) as projects
+      `);
+      return {
+        mode: this.mode,
+        database: true,
+        ready: true,
+        users: Number(result.rows[0]?.users || 0),
+        projects: Number(result.rows[0]?.projects || 0),
+        checkedAt: nowIso(),
+      };
+    } catch (err: any) {
+      return {
+        mode: this.mode,
+        database: true,
+        ready: false,
+        checkedAt: nowIso(),
+        detail: err?.message || 'Falha ao consultar PostgreSQL.',
+      };
+    }
   }
 
   async createUser(input: {

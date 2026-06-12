@@ -458,11 +458,16 @@ app.delete('/api/projects/:id', requireAuth, async (req: AuthedRequest, res: Res
 });
 
 app.get('/api/saas/status', async (_req: Request, res: Response) => {
+  const persistence = await saasStore.health();
   res.json({
-    persistence: saasStore.mode,
-    database: saasStore.mode === 'postgres',
+    persistence: persistence.mode,
+    database: persistence.database,
+    ready: persistence.ready,
+    users: persistence.users,
+    projects: persistence.projects,
     auth: true,
-    timestamp: new Date().toISOString(),
+    detail: persistence.detail,
+    timestamp: persistence.checkedAt,
   });
 });
 
@@ -611,7 +616,8 @@ app.get('/api/referencia', (_req: Request, res: Response) => {
 });
 
 // ── GET /health ───────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
+  const persistence = await saasStore.health();
   res.json({
     status: 'ok',
     anthropic: !!anthropic,
@@ -624,8 +630,11 @@ app.get('/health', (_req, res) => {
     costAware: true,
     fallbackModel: SONNET_MODEL,
     deepseekModel: DEEPSEEK_MODEL,
-    persistence: saasStore.mode,
-    database: saasStore.mode === 'postgres',
+    persistence: persistence.mode,
+    database: persistence.database,
+    databaseReady: persistence.ready,
+    users: persistence.users,
+    projects: persistence.projects,
     historyMessages: MAX_HISTORY_MESSAGES,
     maxMessageChars: MAX_MESSAGE_CHARS,
     timestamp: new Date().toISOString(),

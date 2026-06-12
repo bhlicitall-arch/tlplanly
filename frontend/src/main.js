@@ -20,6 +20,7 @@ let STATE = {
   backups: [],
   gruposCusto: [],
   insumosImportados: [],
+  cpuBiblioteca: [],
   sinapiBase: [],     // { codigoSinapi, descricao, unidade, precoMedio, ... }
   sinapiMes: '',
   auditResultados: [],
@@ -62,6 +63,7 @@ try {
     STATE.backups = p.backups || [];
     STATE.gruposCusto = p.gruposCusto || [];
     STATE.insumosImportados = p.insumosImportados || [];
+    STATE.cpuBiblioteca = p.cpuBiblioteca || [];
     STATE.descontoProposta = p.descontoProposta || null;
     const legacyDefaultBDI = isLegacyDefaultBDI(p);
     STATE.bdiConfigured = !legacyDefaultBDI
@@ -179,6 +181,7 @@ function normalizeState() {
   STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
   STATE.gruposCusto = normalizarGruposCusto(STATE.gruposCusto);
   STATE.insumosImportados = Array.isArray(STATE.insumosImportados) ? STATE.insumosImportados : [];
+  STATE.cpuBiblioteca = Array.isArray(STATE.cpuBiblioteca) ? STATE.cpuBiblioteca : [];
   STATE.descontoProposta = STATE.descontoProposta && typeof STATE.descontoProposta === 'object' ? STATE.descontoProposta : null;
   STATE.config = {
     uf:'MG',
@@ -223,6 +226,9 @@ function saveState() {
 }
 
 function persistedState() {
+  if (typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA)) {
+    STATE.cpuBiblioteca = CPU_BIBLIOTECA;
+  }
   return {
     orcamento: STATE.orcamento,
     planejamento: STATE.planejamento,
@@ -233,6 +239,7 @@ function persistedState() {
     backups: STATE.backups,
     gruposCusto: STATE.gruposCusto,
     insumosImportados: STATE.insumosImportados,
+    cpuBiblioteca: STATE.cpuBiblioteca,
     descontoProposta: STATE.descontoProposta,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
@@ -253,6 +260,7 @@ function applyPersistedState(payload) {
   STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
   STATE.gruposCusto = Array.isArray(payload.gruposCusto) ? payload.gruposCusto : [];
   STATE.insumosImportados = Array.isArray(payload.insumosImportados) ? payload.insumosImportados : [];
+  STATE.cpuBiblioteca = Array.isArray(payload.cpuBiblioteca) ? payload.cpuBiblioteca : [];
   STATE.descontoProposta = payload.descontoProposta && typeof payload.descontoProposta === 'object' ? payload.descontoProposta : null;
   const legacyDefaultBDI = isLegacyDefaultBDI(payload);
   STATE.bdiConfigured = !legacyDefaultBDI
@@ -270,6 +278,11 @@ function applyPersistedState(payload) {
 }
 
 function refreshAppFromState() {
+  if (typeof CPU_BIBLIOTECA !== 'undefined') {
+    CPU_BIBLIOTECA = Array.isArray(STATE.cpuBiblioteca) ? STATE.cpuBiblioteca : [];
+    try { localStorage.setItem('tlplanly_cpu_lib', JSON.stringify(CPU_BIBLIOTECA)); } catch(e) {}
+    if (typeof cpuRenderBiblioteca === 'function') cpuRenderBiblioteca();
+  }
   const c = STATE.bdiComponents || {};
   const setVal = (id, value) => {
     const el = document.getElementById(id);
@@ -6468,16 +6481,23 @@ let CPU = {
   encPct: 127.5,
 };
 
-let CPU_BIBLIOTECA = [];   // composições salvas
+let CPU_BIBLIOTECA = Array.isArray(STATE.cpuBiblioteca) ? STATE.cpuBiblioteca : [];   // composições salvas
 
 // Persiste biblioteca
 function cpuSaveLib() {
-  try { localStorage.setItem('tlplanly_cpu_lib', JSON.stringify(CPU_BIBLIOTECA)); } catch(e){}
+  STATE.cpuBiblioteca = Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
+  try { localStorage.setItem('tlplanly_cpu_lib', JSON.stringify(STATE.cpuBiblioteca)); } catch(e){}
+  saveState();
 }
 function cpuLoadLib() {
   try {
-    const s = localStorage.getItem('tlplanly_cpu_lib');
-    if (s) CPU_BIBLIOTECA = JSON.parse(s);
+    if (Array.isArray(STATE.cpuBiblioteca) && STATE.cpuBiblioteca.length) {
+      CPU_BIBLIOTECA = STATE.cpuBiblioteca;
+    } else {
+      const s = localStorage.getItem('tlplanly_cpu_lib');
+      if (s) CPU_BIBLIOTECA = JSON.parse(s);
+    }
+    STATE.cpuBiblioteca = Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
   } catch(e){}
 }
 
