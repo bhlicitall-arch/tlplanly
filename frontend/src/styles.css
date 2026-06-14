@@ -142,6 +142,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .grid-2{grid-template-columns:repeat(2,1fr)}
 .grid-3{grid-template-columns:repeat(3,1fr)}
 .grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-6{grid-template-columns:repeat(6,1fr)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;transition:all var(--transition)}
 .card.dragover-card{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,166,35,.14)}
 .card-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
@@ -174,6 +175,15 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
   color:var(--text);font-size:13px;transition:all var(--transition);outline:none;
 }
 .form-input:focus,.form-select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,166,35,.12)}
+.advanced-discount-box{
+  margin-top:14px;padding-top:14px;border-top:1px solid var(--border);
+}
+.calc-preview{
+  margin-top:14px;padding:12px;border:1px solid rgba(245,166,35,.25);
+  background:rgba(245,166,35,.08);border-radius:var(--radius);
+  font-size:13px;color:var(--text);
+}
+.calc-preview span{color:var(--text2);font-size:12px;line-height:1.45}
 /* ── TABLE ───────────────────────────────────────────────────── */
 .tbl-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--border)}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -276,7 +286,7 @@ tbody td{padding:10px 14px;color:var(--text);vertical-align:middle}
 @media(max-width:900px){
   #sidebar{display:none}
   #main{margin-left:0}
-  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+  .grid-2,.grid-3,.grid-4,.grid-6{grid-template-columns:1fr}
   .bdi-grid{grid-template-columns:1fr}
 }
 /* ── MISC ────────────────────────────────────────────────────── */

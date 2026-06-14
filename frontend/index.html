@@ -40,6 +40,8 @@
   <div class="nav-item active" onclick="showView('dashboard')"><span class="nav-icon">&#9632;</span>Dashboard</div>
   <div class="nav-item" onclick="showView('elaborar')"><span class="nav-icon">&#128196;</span>Elaborar Orçamento</div>
   <div class="nav-item" onclick="showView('cpu')"><span class="nav-icon">&#9881;</span>Composições (CPU)<span class="nav-badge" style="background:var(--blue,#1976d2)">3</span></div>
+  <div class="nav-item" onclick="showView('custos')"><span class="nav-icon">&#9201;</span>Custos Horários</div>
+  <div class="nav-item" onclick="showView('cotacoes')"><span class="nav-icon">&#128179;</span>Cotações</div>
   <div class="nav-item" onclick="showView('importar')"><span class="nav-icon">&#128196;</span>Importar Planilha/PDF<span class="nav-badge" style="background:var(--green);display:inline">2A</span></div>
   <div class="nav-item" onclick="showView('analisador')"><span class="nav-icon">&#128220;</span>Analisar Documentos<span class="nav-badge" style="background:var(--gold);display:inline">IA</span></div>
   <div class="nav-item" onclick="showView('bdi')"><span class="nav-icon">&#9881;</span>BDI / Encargos</div>
@@ -47,6 +49,7 @@
   <div class="nav-item" onclick="showView('memoria')"><span class="nav-icon">&#128203;</span>Memória de Cálculo</div>
   <div class="nav-section" style="margin-top:8px">Gestão da Obra</div>
   <div class="nav-item" onclick="showView('planejamento')"><span class="nav-icon">&#128197;</span>Planejamento</div>
+  <div class="nav-item" onclick="showView('frentes')"><span class="nav-icon">&#9874;</span>Frentes de Serviço</div>
   <div class="nav-item" onclick="showView('medicoes')"><span class="nav-icon">&#128202;</span>Medições</div>
   <div class="nav-item" onclick="showView('quantitativos')"><span class="nav-icon">&#128290;</span>Quantitativos</div>
   <div class="nav-item" onclick="showView('documentos')"><span class="nav-icon">&#128451;</span>Central de Documentos</div>
@@ -67,6 +70,11 @@
 <div id="view-dashboard" class="view active">
   <div class="page-title">Dashboard <span class="gold-text">TLPlanly</span></div>
   <div class="page-sub">Visão geral do orçamento ativo</div>
+  <div class="flex flex-wrap" style="margin-bottom:16px">
+    <button class="btn btn-outline btn-sm" onclick="exportarDashboardHTML()">Exportar Dashboard HTML</button>
+    <button class="btn btn-outline btn-sm" onclick="showView('frentes')">Frentes de serviço</button>
+    <button class="btn btn-outline btn-sm" onclick="showView('cotacoes')">Banco de cotações</button>
+  </div>
 
   <div class="grid grid-4" style="margin-bottom:20px">
     <div class="card">
@@ -199,6 +207,30 @@
       </div>
     </div>
     <div id="desconto-preview" class="preg-preview"></div>
+    <div class="advanced-discount-box">
+      <div class="sec-title" style="font-size:14px;margin-bottom:10px">Desconto <span>avançado por seleção</span></div>
+      <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Alvo</label>
+          <select id="desconto-adv-target" class="form-select">
+            <option value="categoria">Categoria</option>
+            <option value="capitulo">Capítulo / estrutura</option>
+            <option value="classe-a">Itens Classe A</option>
+            <option value="todos">Todos os itens</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Filtro</label>
+          <input id="desconto-adv-filtro" class="form-input" placeholder="Ex: Materiais ou 01"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Desconto (%)</label>
+          <input id="desconto-adv-pct" class="form-input" type="number" min="0" max="100" step="0.01" placeholder="Ex: 8"/>
+        </div>
+        <button class="btn btn-outline" onclick="aplicarDescontoAvancado()">Aplicar seleção</button>
+      </div>
+      <div class="text-sm" style="color:var(--text2);margin-top:8px">Use quando o desconto vencedor precisar ser distribuído por grupo, capítulo ou itens críticos da Curva ABC.</div>
+    </div>
   </div>
 
   <div class="card">
@@ -1455,6 +1487,165 @@
           <button class="btn btn-gold btn-sm" onclick="cpuUsarDaBiblioteca()">&#10133; Usar no Orçamento</button>
         </div>
         <div id="cpu-ficha-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ CUSTOS HORÁRIOS ═══════════════ -->
+<div id="view-custos" class="view">
+  <div class="page-title">Custos <span class="gold-text">Horários</span></div>
+  <div class="page-sub">Calcule equipamentos e mão de obra com memória de cálculo para usar em CPUs e orçamento</div>
+
+  <div class="grid grid-2" style="gap:20px;align-items:start">
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Equipamento <span>por hora</span></div></div>
+      <div class="grid grid-2" style="gap:10px">
+        <div><label class="form-label">Código</label><input id="eq-cod" class="form-input" placeholder="Ex: EQ-001"/></div>
+        <div><label class="form-label">Equipamento</label><input id="eq-nome" class="form-input" placeholder="Ex: Betoneira 400 L"/></div>
+        <div><label class="form-label">Valor de aquisição</label><input id="eq-aquisicao" class="form-input" type="number" min="0" step="0.01"/></div>
+        <div><label class="form-label">Vida útil (h)</label><input id="eq-vida" class="form-input" type="number" min="1" step="1" value="10000"/></div>
+        <div><label class="form-label">Fator depreciação</label><input id="eq-fator" class="form-input" type="number" min="0" step="0.01" value="0.9"/></div>
+        <div><label class="form-label">Operador (R$/h)</label><input id="eq-operador" class="form-input" type="number" min="0" step="0.01"/></div>
+        <div><label class="form-label">Combustível/energia (R$/h)</label><input id="eq-combustivel" class="form-input" type="number" min="0" step="0.01"/></div>
+        <div><label class="form-label">Manutenção (R$/h)</label><input id="eq-manutencao" class="form-input" type="number" min="0" step="0.01"/></div>
+      </div>
+      <div id="eq-preview" class="calc-preview"></div>
+      <div class="flex flex-wrap mt-4">
+        <button class="btn btn-outline btn-sm" onclick="custosEquipamentoCalcular()">Calcular</button>
+        <button class="btn btn-gold btn-sm" onclick="custosEquipamentoSalvar()">Salvar custo horário</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Mão de obra <span>por hora</span></div></div>
+      <div class="grid grid-2" style="gap:10px">
+        <div><label class="form-label">Código</label><input id="mo-cod" class="form-input" placeholder="Ex: MO-001"/></div>
+        <div><label class="form-label">Cargo/função</label><input id="mo-cargo" class="form-input" placeholder="Ex: Pedreiro"/></div>
+        <div><label class="form-label">Salário mensal</label><input id="mo-salario" class="form-input" type="number" min="0" step="0.01"/></div>
+        <div><label class="form-label">Benefícios mensais</label><input id="mo-beneficios" class="form-input" type="number" min="0" step="0.01"/></div>
+        <div><label class="form-label">Encargos (%)</label><input id="mo-encargos" class="form-input" type="number" min="0" step="0.01" value="127.5"/></div>
+        <div><label class="form-label">Horas produtivas/mês</label><input id="mo-horas" class="form-input" type="number" min="1" step="1" value="189"/></div>
+      </div>
+      <div id="mo-preview" class="calc-preview"></div>
+      <div class="flex flex-wrap mt-4">
+        <button class="btn btn-outline btn-sm" onclick="custosMaoObraCalcular()">Calcular</button>
+        <button class="btn btn-gold btn-sm" onclick="custosMaoObraSalvar()">Salvar mão de obra</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="sec-header">
+      <div class="sec-title">Memória de <span>custos horários</span></div>
+      <div class="flex">
+        <button class="btn btn-outline btn-sm" onclick="custosHorariosExportarExcel()">Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="custosHorariosExportarPDF()">PDF</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Tipo</th><th>Código</th><th>Descrição</th><th>Custo horário</th><th>Memória</th><th>Ações</th></tr></thead>
+        <tbody id="custos-lista"><tr><td colspan="6" class="empty-state" style="padding:24px">Nenhum custo horário salvo.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ COTAÇÕES ═══════════════ -->
+<div id="view-cotacoes" class="view">
+  <div class="page-title">Banco de <span class="gold-text">Cotações</span></div>
+  <div class="page-sub">Importe ou cadastre preços de mercado e atualize CPUs/orçamento por código do insumo</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-header">
+      <div class="sec-title">Entrada de <span>cotações</span></div>
+      <div class="flex">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('cot-file').click()">Importar Excel/CSV</button>
+        <input id="cot-file" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="cotacaoImportFileSelect(event)"/>
+        <button class="btn btn-outline btn-sm" onclick="cotacoesExportarExcel()">Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="cotacoesExportarPDF()">PDF</button>
+      </div>
+    </div>
+    <div class="grid grid-6" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Código</label><input id="cot-cod" class="form-input" placeholder="Código do insumo"/></div>
+      <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="cot-desc" class="form-input" placeholder="Descrição do item cotado"/></div>
+      <div><label class="form-label">Fornecedor</label><input id="cot-fornecedor" class="form-input" placeholder="Fornecedor"/></div>
+      <div><label class="form-label">Unidade</label><input id="cot-unid" class="form-input" placeholder="un"/></div>
+      <div><label class="form-label">Preço</label><input id="cot-preco" class="form-input" type="number" min="0" step="0.01"/></div>
+      <div><label class="form-label">Grupo</label><select id="cot-grupo" class="form-select"><option>Material</option><option>Mão de Obra</option><option>Equipamento</option><option>Transporte</option><option>Serviço</option></select></div>
+      <button class="btn btn-gold" onclick="cotacaoAdicionar()">Adicionar cotação</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-header"><div class="sec-title">Atualizar <span>custos</span></div></div>
+    <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Critério</label><select id="cot-criterio" class="form-select"><option value="menor">Menor preço</option><option value="media">Média</option><option value="mediana">Mediana</option><option value="menor-seguranca">Menor preço + margem</option></select></div>
+      <div><label class="form-label">Margem de segurança (%)</label><input id="cot-margem" class="form-input" type="number" min="0" step="0.01" value="0"/></div>
+      <div><label class="form-label">Aplicar em</label><select id="cot-alvo" class="form-select"><option value="ambos">CPUs e orçamento</option><option value="cpu">Biblioteca de CPUs</option><option value="orcamento">Orçamento ativo</option></select></div>
+      <button class="btn btn-gold" onclick="cotacaoAplicar()">Aplicar aos custos</button>
+    </div>
+    <div id="cot-aplicacao" class="text-sm" style="color:var(--text2);margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <div class="sec-header"><div class="sec-title">Cotações <span>registradas</span></div><span id="cot-count" class="text-sm" style="color:var(--text2)">0 registros</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Fornecedor</th><th>Un</th><th>Preço</th><th>Grupo</th><th></th></tr></thead>
+        <tbody id="cot-lista"><tr><td colspan="7" class="empty-state" style="padding:24px">Nenhuma cotação cadastrada.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ FRENTES DE SERVIÇO ═══════════════ -->
+<div id="view-frentes" class="view">
+  <div class="page-title">Frentes de <span class="gold-text">Serviço</span></div>
+  <div class="page-sub">Organize o orçamento por local de execução, equipe ou etapa da obra</div>
+
+  <div class="grid grid-4" style="margin-bottom:16px">
+    <div class="card"><div class="card-title">Frentes</div><div class="card-value" id="fr-kpi-count">0</div><div class="card-sub">cadastradas</div></div>
+    <div class="card"><div class="card-title">Itens vinculados</div><div class="card-value gold" id="fr-kpi-itens">0</div><div class="card-sub">do orçamento</div></div>
+    <div class="card"><div class="card-title">Valor vinculado</div><div class="card-value green" id="fr-kpi-valor">R$ 0,00</div><div class="card-sub">sem BDI</div></div>
+    <div class="card"><div class="card-title">Sem frente</div><div class="card-value red" id="fr-kpi-pendente">0</div><div class="card-sub">itens pendentes</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="sec-header">
+      <div class="sec-title">Cadastro <span>de frente</span></div>
+      <div class="flex">
+        <button class="btn btn-outline btn-sm" onclick="frentesAutoCriar()">Criar por capítulo</button>
+        <button class="btn btn-outline btn-sm" onclick="frentesExportarExcel()">Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="frentesExportarPDF()">PDF</button>
+      </div>
+    </div>
+    <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Código</label><input id="fr-cod" class="form-input" placeholder="Ex: F01"/></div>
+      <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="fr-nome" class="form-input" placeholder="Ex: Bloco A - Fundação"/></div>
+      <div><label class="form-label">Valor realizado</label><input id="fr-realizado" class="form-input" type="number" min="0" step="0.01" value="0"/></div>
+      <button class="btn btn-gold" onclick="frentesAdicionar()">Adicionar frente</button>
+    </div>
+  </div>
+
+  <div class="grid grid-2" style="gap:20px;align-items:start">
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Resumo <span>por frente</span></div></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Cód.</th><th>Frente</th><th>Planejado</th><th>Realizado</th><th>Status</th><th></th></tr></thead>
+          <tbody id="fr-lista"><tr><td colspan="6" class="empty-state" style="padding:24px">Nenhuma frente cadastrada.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sec-header"><div class="sec-title">Vincular <span>itens do orçamento</span></div></div>
+      <div class="tbl-wrap" style="max-height:560px">
+        <table>
+          <thead><tr><th>Item</th><th>Descrição</th><th>Total</th><th>Frente</th></tr></thead>
+          <tbody id="fr-itens"><tr><td colspan="4" class="empty-state" style="padding:24px">Importe ou elabore um orçamento para vincular itens.</td></tr></tbody>
+        </table>
       </div>
     </div>
   </div>

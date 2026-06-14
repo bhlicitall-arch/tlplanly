@@ -21,6 +21,10 @@ let STATE = {
   gruposCusto: [],
   insumosImportados: [],
   cpuBiblioteca: [],
+  equipamentosHorarios: [],
+  maoObraHoraria: [],
+  cotacoesCustos: [],
+  frentesServico: [],
   sinapiBase: [],     // { codigoSinapi, descricao, unidade, precoMedio, ... }
   sinapiMes: '',
   auditResultados: [],
@@ -64,6 +68,10 @@ try {
     STATE.gruposCusto = p.gruposCusto || [];
     STATE.insumosImportados = p.insumosImportados || [];
     STATE.cpuBiblioteca = p.cpuBiblioteca || [];
+    STATE.equipamentosHorarios = p.equipamentosHorarios || [];
+    STATE.maoObraHoraria = p.maoObraHoraria || [];
+    STATE.cotacoesCustos = p.cotacoesCustos || [];
+    STATE.frentesServico = p.frentesServico || [];
     STATE.descontoProposta = p.descontoProposta || null;
     const legacyDefaultBDI = isLegacyDefaultBDI(p);
     STATE.bdiConfigured = !legacyDefaultBDI
@@ -182,6 +190,10 @@ function normalizeState() {
   STATE.gruposCusto = normalizarGruposCusto(STATE.gruposCusto);
   STATE.insumosImportados = Array.isArray(STATE.insumosImportados) ? STATE.insumosImportados : [];
   STATE.cpuBiblioteca = Array.isArray(STATE.cpuBiblioteca) ? STATE.cpuBiblioteca : [];
+  STATE.equipamentosHorarios = Array.isArray(STATE.equipamentosHorarios) ? STATE.equipamentosHorarios : [];
+  STATE.maoObraHoraria = Array.isArray(STATE.maoObraHoraria) ? STATE.maoObraHoraria : [];
+  STATE.cotacoesCustos = Array.isArray(STATE.cotacoesCustos) ? STATE.cotacoesCustos : [];
+  STATE.frentesServico = Array.isArray(STATE.frentesServico) ? STATE.frentesServico : [];
   STATE.descontoProposta = STATE.descontoProposta && typeof STATE.descontoProposta === 'object' ? STATE.descontoProposta : null;
   STATE.config = {
     uf:'MG',
@@ -240,6 +252,10 @@ function persistedState() {
     gruposCusto: STATE.gruposCusto,
     insumosImportados: STATE.insumosImportados,
     cpuBiblioteca: STATE.cpuBiblioteca,
+    equipamentosHorarios: STATE.equipamentosHorarios,
+    maoObraHoraria: STATE.maoObraHoraria,
+    cotacoesCustos: STATE.cotacoesCustos,
+    frentesServico: STATE.frentesServico,
     descontoProposta: STATE.descontoProposta,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
@@ -261,6 +277,10 @@ function applyPersistedState(payload) {
   STATE.gruposCusto = Array.isArray(payload.gruposCusto) ? payload.gruposCusto : [];
   STATE.insumosImportados = Array.isArray(payload.insumosImportados) ? payload.insumosImportados : [];
   STATE.cpuBiblioteca = Array.isArray(payload.cpuBiblioteca) ? payload.cpuBiblioteca : [];
+  STATE.equipamentosHorarios = Array.isArray(payload.equipamentosHorarios) ? payload.equipamentosHorarios : [];
+  STATE.maoObraHoraria = Array.isArray(payload.maoObraHoraria) ? payload.maoObraHoraria : [];
+  STATE.cotacoesCustos = Array.isArray(payload.cotacoesCustos) ? payload.cotacoesCustos : [];
+  STATE.frentesServico = Array.isArray(payload.frentesServico) ? payload.frentesServico : [];
   STATE.descontoProposta = payload.descontoProposta && typeof payload.descontoProposta === 'object' ? payload.descontoProposta : null;
   const legacyDefaultBDI = isLegacyDefaultBDI(payload);
   STATE.bdiConfigured = !legacyDefaultBDI
@@ -301,6 +321,9 @@ function refreshAppFromState() {
   if (typeof renderElaborar === 'function') renderElaborar();
   if (typeof renderDashboard === 'function') renderDashboard();
   if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
+  if (typeof custosHorariosRender === 'function') custosHorariosRender();
+  if (typeof cotacoesRender === 'function') cotacoesRender();
+  if (typeof frentesServicoRender === 'function') frentesServicoRender();
   if (typeof backupRender === 'function') backupRender();
   if (typeof docsRender === 'function') docsRender();
 }
@@ -656,6 +679,9 @@ function showView(id) {
   if (id==='dashboard') renderDashboard();
   if (id==='curvaABC') gerarCurvaABC();
   if (id==='memoria') renderMemoria();
+  if (id==='custos') custosHorariosRender();
+  if (id==='cotacoes') cotacoesRender();
+  if (id==='frentes') frentesServicoRender();
   if (id==='planejamento') planejamentoRender();
   if (id==='medicoes') medicoesRender();
   if (id==='quantitativos') quantRender();
@@ -982,6 +1008,7 @@ function orcamentoSubtotalAtual() {
 }
 
 function descontoPregaoBaseLabel(base = 'com-bdi') {
+  if (base === 'avancado') return 'Seleção avançada';
   return base === 'sem-bdi' ? 'Subtotal sem BDI' : 'Total com BDI';
 }
 
@@ -1121,6 +1148,95 @@ function aplicarDescontoPregao() {
   if (document.getElementById('view-relatorio')?.classList.contains('active')) renderRelatorioPreview();
   preencherSelectsOperacionais();
   toast(`Planilha readequada para ${fmtMoeda(dados.final)}.`, 'success');
+}
+
+function itensDescontoAvancado(target, filtro) {
+  const filtroKey = textoChave(filtro);
+  if (target === 'todos') return STATE.orcamento.slice();
+  if (target === 'categoria') {
+    return STATE.orcamento.filter(it => !filtroKey || textoChave(it.cat).includes(filtroKey) || filtroKey.includes(textoChave(it.cat)));
+  }
+  if (target === 'capitulo') {
+    return STATE.orcamento.filter(it => !filtroKey || textoChave(it.capitulo || it.cat).includes(filtroKey) || filtroKey.includes(textoChave(it.capitulo || it.cat)));
+  }
+  if (target === 'classe-a') {
+    const subtotal = orcamentoSubtotalAtual();
+    let acum = 0;
+    return [...STATE.orcamento]
+      .sort((a, b) => itemValor(b) - itemValor(a))
+      .filter((it, idx) => {
+        if (subtotal <= 0) return false;
+        acum += itemValor(it) / subtotal * 100;
+        return idx === 0 || acum <= 80;
+      });
+  }
+  return [];
+}
+
+function aplicarDescontoAvancado() {
+  normalizeState();
+  if (!STATE.orcamento.length) {
+    toast('Não há itens no orçamento para aplicar desconto.', 'error');
+    return;
+  }
+  const target = document.getElementById('desconto-adv-target')?.value || 'categoria';
+  const filtro = document.getElementById('desconto-adv-filtro')?.value || '';
+  const pct = readNumeroCampo('desconto-adv-pct');
+  if (pct <= 0 || pct >= 100) {
+    toast('Informe um desconto entre 0% e 100%.', 'error');
+    return;
+  }
+  const itens = itensDescontoAvancado(target, filtro).filter(it => (Number(it.qtd) || 0) > 0);
+  if (!itens.length) {
+    toast('Nenhum item encontrado para o filtro informado.', 'error');
+    return;
+  }
+
+  const subtotalAntes = orcamentoSubtotalAtual();
+  const totalAntes = totalComBDI(subtotalAntes);
+  const snapshot = STATE.orcamento.map(it => ({
+    id: it.id,
+    preco: it.preco,
+    totalLinha: it.totalLinha,
+    descontoPregaoPct: it.descontoPregaoPct
+  }));
+
+  const fator = 1 - pct / 100;
+  itens.forEach(it => {
+    const qtd = Number(it.qtd) || 1;
+    it.preco = roundUnitPrice((itemValor(it) * fator) / qtd);
+    it.totalLinha = 0;
+    it.descontoPregaoPct = roundMoney(pct);
+    it.descontoAvancadoAlvo = target;
+  });
+
+  const subtotalDepois = orcamentoSubtotalAtual();
+  const totalDepois = totalComBDI(subtotalDepois);
+  STATE.descontoProposta = {
+    aplicadoEm: new Date().toISOString(),
+    base: 'avancado',
+    alvo: target,
+    filtro,
+    original: roundMoney(totalAntes),
+    final: roundMoney(totalDepois),
+    percentual: roundMoney(pct),
+    descontoRealSistema: subtotalAntes > 0 ? roundMoney((1 - subtotalDepois / subtotalAntes) * 100) : roundMoney(pct),
+    fatorAplicacao: Number(fator.toFixed(8)),
+    subtotalAntes: roundMoney(subtotalAntes),
+    totalAntes: roundMoney(totalAntes),
+    subtotalDepois: roundMoney(subtotalDepois),
+    totalDepois: roundMoney(totalDepois),
+    alvoSubtotal: roundMoney(subtotalDepois),
+    residuoFinal: 0,
+    itemAjuste: `${itens.length} itens selecionados`,
+    snapshot
+  };
+
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  renderDescontoPregaoResumo(STATE.descontoProposta);
+  toast(`Desconto de ${pct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% aplicado em ${itens.length} itens.`, 'success');
 }
 
 function desfazerDescontoPregao() {
@@ -2151,6 +2267,9 @@ window.addEventListener('DOMContentLoaded', () => {
   renderBDIComp();
   renderElaborar();
   renderDashboard();
+  custosHorariosRender();
+  cotacoesRender();
+  frentesServicoRender();
   preencherSelectsOperacionais();
   loadSinapiBase();
   cloudInit();
@@ -2210,6 +2329,596 @@ function preencherSelectsOperacionais() {
   if (qt) qt.innerHTML = itemOptions || '<option value="">Nenhum item no orçamento</option>';
   const doc = document.getElementById('doc-item');
   if (doc) doc.innerHTML = `<option value="obra">Obra / Geral</option>${itemOptions}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MELHORIAS DOS ÁUDIOS — CUSTOS, COTAÇÕES E FRENTES
+// ═══════════════════════════════════════════════════════════
+function readNumeroCampo(id) {
+  return parseNumeroBR(document.getElementById(id)?.value || '');
+}
+
+function textoChave(value) {
+  return String(value || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function codigoChave(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function recalcularPrecoCpu(cpu) {
+  const insumos = Array.isArray(cpu?.insumos) ? cpu.insumos : [];
+  const direto = insumos.reduce((s, i) => s + (Number(i.coef) || 0) * (Number(i.preco) || 0), 0);
+  cpu.precoUnitario = roundUnitPrice(direto);
+  return cpu.precoUnitario;
+}
+
+function custosEquipamentoCalcular() {
+  const aquisicao = readNumeroCampo('eq-aquisicao');
+  const vida = Math.max(1, readNumeroCampo('eq-vida') || 1);
+  const fator = readNumeroCampo('eq-fator') || 0;
+  const operador = readNumeroCampo('eq-operador');
+  const combustivel = readNumeroCampo('eq-combustivel');
+  const manutencao = readNumeroCampo('eq-manutencao');
+  const depreciacao = aquisicao * fator / vida;
+  const custoHora = depreciacao + operador + combustivel + manutencao;
+  const memoria = `Depreciação ${fmtMoeda(depreciacao)}/h + operador ${fmtMoeda(operador)}/h + combustível/energia ${fmtMoeda(combustivel)}/h + manutenção ${fmtMoeda(manutencao)}/h`;
+  const preview = document.getElementById('eq-preview');
+  if (preview) {
+    preview.innerHTML = `<strong>Custo horário:</strong> ${fmtMoeda(custoHora)}<br><span>${escapeHtml(memoria)}</span>`;
+  }
+  return { depreciacao, operador, combustivel, manutencao, custoHora, memoria };
+}
+
+function custosEquipamentoSalvar() {
+  normalizeState();
+  const calc = custosEquipamentoCalcular();
+  const nome = document.getElementById('eq-nome')?.value?.trim();
+  if (!nome || calc.custoHora <= 0) {
+    toast('Informe equipamento e valores para calcular o custo horário.', 'error');
+    return;
+  }
+  const cod = document.getElementById('eq-cod')?.value?.trim() || `EQ-${String(STATE.equipamentosHorarios.length + 1).padStart(3, '0')}`;
+  const registro = {
+    id: makeId('eq'),
+    tipo: 'equipamento',
+    cod,
+    nome,
+    aquisicao: readNumeroCampo('eq-aquisicao'),
+    vidaHoras: readNumeroCampo('eq-vida'),
+    fatorDepreciacao: readNumeroCampo('eq-fator'),
+    operadorHora: readNumeroCampo('eq-operador'),
+    combustivelHora: readNumeroCampo('eq-combustivel'),
+    manutencaoHora: readNumeroCampo('eq-manutencao'),
+    custoHora: roundUnitPrice(calc.custoHora),
+    memoria: calc.memoria,
+    criadoEm: new Date().toISOString()
+  };
+  STATE.equipamentosHorarios.push(registro);
+  saveState();
+  custosHorariosRender();
+  toast('Custo horário de equipamento salvo.', 'success');
+}
+
+function custosMaoObraCalcular() {
+  const salario = readNumeroCampo('mo-salario');
+  const beneficios = readNumeroCampo('mo-beneficios');
+  const encargos = readNumeroCampo('mo-encargos');
+  const horas = Math.max(1, readNumeroCampo('mo-horas') || 189);
+  const base = salario + beneficios;
+  const encargosValor = base * encargos / 100;
+  const custoHora = (base + encargosValor) / horas;
+  const memoria = `(${fmtMoeda(salario)} salário + ${fmtMoeda(beneficios)} benefícios) + ${encargos.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% encargos / ${horas} h produtivas`;
+  const preview = document.getElementById('mo-preview');
+  if (preview) {
+    preview.innerHTML = `<strong>Custo horário:</strong> ${fmtMoeda(custoHora)}<br><span>${escapeHtml(memoria)}</span>`;
+  }
+  return { salario, beneficios, encargos, horas, encargosValor, custoHora, memoria };
+}
+
+function custosMaoObraSalvar() {
+  normalizeState();
+  const calc = custosMaoObraCalcular();
+  const cargo = document.getElementById('mo-cargo')?.value?.trim();
+  if (!cargo || calc.custoHora <= 0) {
+    toast('Informe cargo e valores para calcular a mão de obra.', 'error');
+    return;
+  }
+  const cod = document.getElementById('mo-cod')?.value?.trim() || `MO-${String(STATE.maoObraHoraria.length + 1).padStart(3, '0')}`;
+  const registro = {
+    id: makeId('mo'),
+    tipo: 'mao-obra',
+    cod,
+    cargo,
+    salarioMensal: calc.salario,
+    beneficiosMensais: calc.beneficios,
+    encargosPct: calc.encargos,
+    horasProdutivasMes: calc.horas,
+    custoHora: roundUnitPrice(calc.custoHora),
+    memoria: calc.memoria,
+    criadoEm: new Date().toISOString()
+  };
+  STATE.maoObraHoraria.push(registro);
+  saveState();
+  custosHorariosRender();
+  toast('Custo horário de mão de obra salvo.', 'success');
+}
+
+function custoHorarioRegistros() {
+  normalizeState();
+  return [
+    ...STATE.equipamentosHorarios.map(r => ({ ...r, grupo:'Equipamento', desc:r.nome, insumoTipo:'E' })),
+    ...STATE.maoObraHoraria.map(r => ({ ...r, grupo:'Mão de Obra', desc:r.cargo, insumoTipo:'S' }))
+  ].sort((a, b) => String(a.cod).localeCompare(String(b.cod), 'pt-BR'));
+}
+
+function custosHorariosRender() {
+  const tbody = document.getElementById('custos-lista');
+  if (!tbody) return;
+  const rows = custoHorarioRegistros();
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="padding:24px">Nenhum custo horário salvo.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><span class="badge badge-ok">${escapeHtml(r.grupo)}</span></td>
+      <td class="td-mono">${escapeHtml(r.cod)}</td>
+      <td>${escapeHtml(r.desc)}</td>
+      <td><strong>${fmtMoeda(r.custoHora)}</strong></td>
+      <td style="max-width:420px;color:var(--text2)">${escapeHtml(r.memoria)}</td>
+      <td><button class="btn btn-outline btn-sm" onclick="custosHorarioEnviarCPU('${escapeHtml(r.tipo)}','${escapeHtml(r.id)}')">Enviar CPU</button></td>
+    </tr>
+  `).join('');
+}
+
+function custosHorarioEnviarCPU(tipo, id) {
+  const source = tipo === 'equipamento'
+    ? STATE.equipamentosHorarios.find(r => r.id === id)
+    : STATE.maoObraHoraria.find(r => r.id === id);
+  if (!source) {
+    toast('Registro de custo horário não encontrado.', 'error');
+    return;
+  }
+  const desc = source.nome || source.cargo || 'Custo horário';
+  const cod = source.cod || makeId('cpu');
+  const insTipo = tipo === 'equipamento' ? 'E' : 'S';
+  const cpu = {
+    id: makeId('cpu'),
+    cod,
+    desc,
+    unid: 'h',
+    tipo: tipo === 'equipamento' ? 'Equipamentos' : 'Mão de Obra',
+    prod: 1,
+    encargos: STATE.config.enc || 'nd',
+    encPct: tipo === 'mao-obra' ? Number(source.encargosPct || 0) : 0,
+    insumos: [{ cod, desc, unid:'h', tipo:insTipo, coef:1, preco:Number(source.custoHora) || 0 }],
+    precoUnitario: Number(source.custoHora) || 0,
+    origem: 'custos-horarios',
+    memoria: source.memoria
+  };
+  const idx = CPU_BIBLIOTECA.findIndex(c => codigoChave(c.cod) === codigoChave(cod));
+  if (idx >= 0) CPU_BIBLIOTECA[idx] = { ...CPU_BIBLIOTECA[idx], ...cpu, id: CPU_BIBLIOTECA[idx].id };
+  else CPU_BIBLIOTECA.push(cpu);
+  cpuSaveLib();
+  if (typeof cpuRenderBiblioteca === 'function') cpuRenderBiblioteca();
+  toast('Custo horário enviado para a biblioteca de CPUs.', 'success');
+}
+
+function custosHorariosRows() {
+  const rows = [
+    ['CUSTOS HORÁRIOS - TLPlanly'],
+    [`Emitido em ${new Date().toLocaleString('pt-BR')}`],
+    [],
+    ['Tipo','Código','Descrição','Custo horário','Memória']
+  ];
+  custoHorarioRegistros().forEach(r => rows.push([r.grupo, r.cod, r.desc, valorMoeda(r.custoHora), r.memoria]));
+  return rows;
+}
+
+function custosHorariosExportarExcel() {
+  exportRowsToExcel('custos_horarios_TLPlanly', [{ name:'Custos horários', rows:custosHorariosRows() }]);
+}
+
+function custosHorariosExportarPDF() {
+  exportHtmlToPDF('Custos Horários - TLPlanly', rowsToHtmlTable(custosHorariosRows()), 'custos_horarios_TLPlanly');
+}
+
+function cotacaoAdicionar() {
+  normalizeState();
+  const preco = readNumeroCampo('cot-preco');
+  const cod = document.getElementById('cot-cod')?.value?.trim();
+  const desc = document.getElementById('cot-desc')?.value?.trim();
+  if ((!cod && !desc) || preco <= 0) {
+    toast('Informe código/descrição e preço da cotação.', 'error');
+    return;
+  }
+  STATE.cotacoesCustos.push({
+    id: makeId('cot'),
+    cod,
+    desc,
+    fornecedor: document.getElementById('cot-fornecedor')?.value?.trim() || 'Fornecedor não informado',
+    unid: document.getElementById('cot-unid')?.value?.trim() || 'UN',
+    preco,
+    grupo: document.getElementById('cot-grupo')?.value || 'Material',
+    origem: 'manual',
+    criadoEm: new Date().toISOString()
+  });
+  ['cot-cod','cot-desc','cot-fornecedor','cot-unid','cot-preco'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  saveState();
+  cotacoesRender();
+  toast('Cotação adicionada.', 'success');
+}
+
+function cotacaoMapHeader(header) {
+  const map = {};
+  const aliases = {
+    cod: ['codigo','cod','referencia','item','insumo'],
+    desc: ['descricao','descrição','produto','servico','serviço','item cotado'],
+    fornecedor: ['fornecedor','empresa','loja','origem'],
+    unid: ['un','unid','unidade'],
+    preco: ['preco','preço','valor','custo','unitario','unitário'],
+    grupo: ['grupo','categoria','tipo','classe']
+  };
+  header.forEach((h, idx) => {
+    const n = textoChave(h).toLowerCase();
+    Object.entries(aliases).forEach(([field, words]) => {
+      if (map[field] !== undefined) return;
+      if (words.some(w => n.includes(textoChave(w).toLowerCase()))) map[field] = idx;
+    });
+  });
+  return map;
+}
+
+async function cotacaoImportFileSelect(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    let rows = [];
+    if (/\.csv$/i.test(file.name)) {
+      const text = await file.text();
+      rows = text.split(/\r?\n/).filter(Boolean).map(line => line.split(/;|,/));
+    } else {
+      if (!window.XLSX) throw new Error('Biblioteca XLSX não carregou.');
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type:'array', raw:false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+    }
+    const headerIdx = rows.findIndex(r => (r || []).filter(Boolean).length >= 3);
+    const header = rows[headerIdx] || [];
+    const map = cotacaoMapHeader(header);
+    const dataRows = rows.slice(headerIdx + 1);
+    let count = 0;
+    dataRows.forEach(r => {
+      const preco = parseNumeroBR(r[map.preco] ?? '');
+      const cod = String(r[map.cod] ?? '').trim();
+      const desc = String(r[map.desc] ?? '').trim();
+      if ((!cod && !desc) || preco <= 0) return;
+      STATE.cotacoesCustos.push({
+        id: makeId('cot'),
+        cod,
+        desc,
+        fornecedor: String(r[map.fornecedor] ?? file.name).trim() || file.name,
+        unid: String(r[map.unid] ?? 'UN').trim() || 'UN',
+        preco,
+        grupo: String(r[map.grupo] ?? 'Material').trim() || 'Material',
+        origem: file.name,
+        criadoEm: new Date().toISOString()
+      });
+      count++;
+    });
+    saveState();
+    cotacoesRender();
+    toast(`${count} cotações importadas.`, count ? 'success' : 'error');
+  } catch (err) {
+    toast('Erro ao importar cotações: ' + err.message, 'error');
+  } finally {
+    event.target.value = '';
+  }
+}
+
+function cotacoesRender() {
+  const tbody = document.getElementById('cot-lista');
+  const count = document.getElementById('cot-count');
+  if (!tbody) return;
+  normalizeState();
+  if (count) count.textContent = `${STATE.cotacoesCustos.length} registros`;
+  if (!STATE.cotacoesCustos.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:24px">Nenhuma cotação cadastrada.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = STATE.cotacoesCustos.map(c => `
+    <tr>
+      <td class="td-mono">${escapeHtml(c.cod || '—')}</td>
+      <td>${escapeHtml(c.desc || '—')}</td>
+      <td>${escapeHtml(c.fornecedor || '—')}</td>
+      <td>${escapeHtml(c.unid || 'UN')}</td>
+      <td><strong>${fmtMoeda(c.preco)}</strong></td>
+      <td>${escapeHtml(c.grupo || '—')}</td>
+      <td><button class="btn btn-outline btn-sm" onclick="cotacaoRemover('${escapeHtml(c.id)}')">Remover</button></td>
+    </tr>
+  `).join('');
+}
+
+function cotacaoRemover(id) {
+  STATE.cotacoesCustos = STATE.cotacoesCustos.filter(c => c.id !== id);
+  saveState();
+  cotacoesRender();
+}
+
+function cotacaoEscolherPreco(cod, desc, criterio, margemPct = 0) {
+  const keyCod = codigoChave(cod);
+  const keyDesc = textoChave(desc);
+  const candidatas = STATE.cotacoesCustos.filter(c => {
+    const cCod = codigoChave(c.cod);
+    const cDesc = textoChave(c.desc);
+    return (keyCod && cCod === keyCod) || (!keyCod && keyDesc && cDesc === keyDesc) || (keyDesc && cDesc && (cDesc.includes(keyDesc) || keyDesc.includes(cDesc)));
+  }).map(c => Number(c.preco) || 0).filter(v => v > 0).sort((a, b) => a - b);
+  if (!candidatas.length) return null;
+  let preco = candidatas[0];
+  if (criterio === 'media') preco = candidatas.reduce((s, v) => s + v, 0) / candidatas.length;
+  if (criterio === 'mediana') preco = candidatas[Math.floor(candidatas.length / 2)];
+  if (criterio === 'menor-seguranca') preco = candidatas[0] * (1 + margemPct / 100);
+  return roundUnitPrice(preco);
+}
+
+function cotacaoAplicar() {
+  normalizeState();
+  if (!STATE.cotacoesCustos.length) {
+    toast('Cadastre ou importe cotações antes de aplicar.', 'error');
+    return;
+  }
+  const criterio = document.getElementById('cot-criterio')?.value || 'menor';
+  const margem = readNumeroCampo('cot-margem');
+  const alvo = document.getElementById('cot-alvo')?.value || 'ambos';
+  let atualizadosCpu = 0;
+  let atualizadosOrc = 0;
+
+  if (alvo === 'ambos' || alvo === 'cpu') {
+    CPU_BIBLIOTECA.forEach(cpu => {
+      let mudou = false;
+      (cpu.insumos || []).forEach(ins => {
+        const preco = cotacaoEscolherPreco(ins.cod, ins.desc, criterio, margem);
+        if (preco !== null) {
+          ins.preco = preco;
+          ins.origemCotacao = criterio;
+          atualizadosCpu++;
+          mudou = true;
+        }
+      });
+      if (mudou) recalcularPrecoCpu(cpu);
+    });
+    cpuSaveLib();
+    if (typeof cpuRenderBiblioteca === 'function') cpuRenderBiblioteca();
+  }
+
+  if (alvo === 'ambos' || alvo === 'orcamento') {
+    const snapshot = STATE.orcamento.map(it => ({ id:it.id, preco:it.preco, totalLinha:it.totalLinha }));
+    STATE.orcamento.forEach(it => {
+      const preco = cotacaoEscolherPreco(it.cod, it.desc, criterio, margem);
+      if (preco !== null) {
+        it.preco = preco;
+        it.totalLinha = 0;
+        it.origemCotacao = criterio;
+        atualizadosOrc++;
+      }
+    });
+    if (atualizadosOrc) {
+      invalidarDescontoPregao('preços atualizados por cotação');
+      STATE.ultimaAtualizacaoCotacao = { aplicadoEm:new Date().toISOString(), criterio, margem, alvo, atualizadosOrc, snapshot };
+    }
+  }
+
+  saveState();
+  renderElaborar();
+  renderDashboard();
+  cotacoesRender();
+  const msg = `${atualizadosCpu} insumos de CPU e ${atualizadosOrc} itens do orçamento atualizados.`;
+  const box = document.getElementById('cot-aplicacao');
+  if (box) box.textContent = msg;
+  toast(msg, (atualizadosCpu || atualizadosOrc) ? 'success' : 'info');
+}
+
+function cotacoesRows() {
+  const rows = [
+    ['BANCO DE COTAÇÕES - TLPlanly'],
+    [`Emitido em ${new Date().toLocaleString('pt-BR')}`],
+    [],
+    ['Código','Descrição','Fornecedor','Unidade','Preço','Grupo','Origem']
+  ];
+  STATE.cotacoesCustos.forEach(c => rows.push([c.cod, c.desc, c.fornecedor, c.unid, valorMoeda(c.preco), c.grupo, c.origem || 'manual']));
+  return rows;
+}
+
+function cotacoesExportarExcel() {
+  exportRowsToExcel('cotacoes_TLPlanly', [{ name:'Cotações', rows:cotacoesRows() }]);
+}
+
+function cotacoesExportarPDF() {
+  exportHtmlToPDF('Banco de Cotações - TLPlanly', rowsToHtmlTable(cotacoesRows()), 'cotacoes_TLPlanly');
+}
+
+function frentesAdicionar() {
+  normalizeState();
+  const nome = document.getElementById('fr-nome')?.value?.trim();
+  if (!nome) {
+    toast('Informe a descrição da frente de serviço.', 'error');
+    return;
+  }
+  const cod = document.getElementById('fr-cod')?.value?.trim() || `F${String(STATE.frentesServico.length + 1).padStart(2, '0')}`;
+  STATE.frentesServico.push({
+    id: makeId('fr'),
+    cod,
+    nome,
+    realizado: readNumeroCampo('fr-realizado'),
+    criadoEm: new Date().toISOString()
+  });
+  ['fr-cod','fr-nome','fr-realizado'].forEach(id => { const el = document.getElementById(id); if (el) el.value = id === 'fr-realizado' ? '0' : ''; });
+  saveState();
+  frentesServicoRender();
+  toast('Frente de serviço cadastrada.', 'success');
+}
+
+function frentesAutoCriar() {
+  normalizeState();
+  const existentes = new Set(STATE.frentesServico.map(f => textoChave(f.nome)));
+  const capitulos = [...new Set(STATE.orcamento.map(it => it.capitulo || it.cat || 'Serviços'))].filter(Boolean);
+  let count = 0;
+  capitulos.forEach((cap, idx) => {
+    if (existentes.has(textoChave(cap))) return;
+    STATE.frentesServico.push({ id:makeId('fr'), cod:`F${String(STATE.frentesServico.length + 1).padStart(2, '0')}`, nome:cap, realizado:0, criadoEm:new Date().toISOString() });
+    count++;
+  });
+  saveState();
+  frentesServicoRender();
+  toast(`${count} frentes criadas por capítulo.`, count ? 'success' : 'info');
+}
+
+function frentePlanejado(frenteId) {
+  return STATE.orcamento.filter(it => it.frenteId === frenteId).reduce((s, it) => s + itemValor(it), 0);
+}
+
+function frenteVincularItem(itemId, frenteId) {
+  const item = STATE.orcamento.find(it => it.id === itemId);
+  if (!item) return;
+  item.frenteId = frenteId || '';
+  saveState();
+  frentesServicoRender();
+}
+
+function frenteRemover(id) {
+  STATE.frentesServico = STATE.frentesServico.filter(f => f.id !== id);
+  STATE.orcamento.forEach(it => { if (it.frenteId === id) it.frenteId = ''; });
+  saveState();
+  frentesServicoRender();
+}
+
+function frentesServicoRender() {
+  const lista = document.getElementById('fr-lista');
+  const itens = document.getElementById('fr-itens');
+  if (!lista && !itens) return;
+  normalizeState();
+  const fronts = STATE.frentesServico;
+  const vinculados = STATE.orcamento.filter(it => it.frenteId).length;
+  const valorVinculado = STATE.orcamento.filter(it => it.frenteId).reduce((s, it) => s + itemValor(it), 0);
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('fr-kpi-count', fronts.length);
+  setText('fr-kpi-itens', vinculados);
+  setText('fr-kpi-valor', fmtMoeda(valorVinculado));
+  setText('fr-kpi-pendente', Math.max(0, STATE.orcamento.length - vinculados));
+
+  if (lista) {
+    if (!fronts.length) {
+      lista.innerHTML = '<tr><td colspan="6" class="empty-state" style="padding:24px">Nenhuma frente cadastrada.</td></tr>';
+    } else {
+      lista.innerHTML = fronts.map(f => {
+        const planejado = frentePlanejado(f.id);
+        const realizado = Number(f.realizado) || 0;
+        const pct = planejado > 0 ? Math.min(999, realizado / planejado * 100) : 0;
+        const status = planejado > 0 ? `${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : 'Sem itens';
+        return `<tr>
+          <td class="td-mono">${escapeHtml(f.cod)}</td>
+          <td>${escapeHtml(f.nome)}</td>
+          <td>${fmtMoeda(planejado)}</td>
+          <td><input class="table-input num" value="${Number(f.realizado || 0)}" onchange="frenteAtualizarRealizado('${escapeHtml(f.id)}', this.value)"/></td>
+          <td><span class="badge ${pct > 100 ? 'badge-warn' : 'badge-ok'}">${escapeHtml(status)}</span></td>
+          <td><button class="btn btn-outline btn-sm" onclick="frenteRemover('${escapeHtml(f.id)}')">Remover</button></td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  if (itens) {
+    if (!STATE.orcamento.length) {
+      itens.innerHTML = '<tr><td colspan="4" class="empty-state" style="padding:24px">Importe ou elabore um orçamento para vincular itens.</td></tr>';
+    } else {
+      const options = `<option value="">Sem frente</option>${fronts.map(f => `<option value="${f.id}">${escapeHtml(f.cod)} - ${escapeHtml(f.nome)}</option>`).join('')}`;
+      itens.innerHTML = STATE.orcamento.map((it, idx) => `
+        <tr>
+          <td class="td-mono">${idx + 1}</td>
+          <td>${escapeHtml((it.desc || '').slice(0, 90))}</td>
+          <td>${fmtMoeda(itemValor(it))}</td>
+          <td><select class="form-select" onchange="frenteVincularItem('${escapeHtml(it.id)}', this.value)">${options.replace(`value="${it.frenteId || ''}"`, `value="${it.frenteId || ''}" selected`)}</select></td>
+        </tr>
+      `).join('');
+    }
+  }
+}
+
+function frenteAtualizarRealizado(id, value) {
+  const f = STATE.frentesServico.find(x => x.id === id);
+  if (!f) return;
+  f.realizado = parseNumeroBR(value);
+  saveState();
+  frentesServicoRender();
+}
+
+function frentesRows() {
+  const rows = [
+    ['FRENTES DE SERVIÇO - TLPlanly'],
+    [`Emitido em ${new Date().toLocaleString('pt-BR')}`],
+    [],
+    ['Código','Frente','Planejado','Realizado','Itens vinculados']
+  ];
+  STATE.frentesServico.forEach(f => rows.push([
+    f.cod,
+    f.nome,
+    valorMoeda(frentePlanejado(f.id)),
+    valorMoeda(f.realizado || 0),
+    STATE.orcamento.filter(it => it.frenteId === f.id).length
+  ]));
+  rows.push([], ['Item','Descrição','Total sem BDI','Frente']);
+  STATE.orcamento.forEach((it, idx) => {
+    const f = STATE.frentesServico.find(x => x.id === it.frenteId);
+    rows.push([idx + 1, it.desc, valorMoeda(itemValor(it)), f ? `${f.cod} - ${f.nome}` : 'Sem frente']);
+  });
+  return rows;
+}
+
+function frentesExportarExcel() {
+  exportRowsToExcel('frentes_servico_TLPlanly', [{ name:'Frentes', rows:frentesRows() }]);
+}
+
+function frentesExportarPDF() {
+  exportHtmlToPDF('Frentes de Serviço - TLPlanly', rowsToHtmlTable(frentesRows()), 'frentes_servico_TLPlanly');
+}
+
+function exportarDashboardHTML() {
+  normalizeState();
+  const sub = orcamentoSubtotalAtual();
+  const total = totalComBDI(sub);
+  const porCat = {};
+  STATE.orcamento.forEach(it => {
+    const key = it.cat || it.capitulo || 'Sem categoria';
+    porCat[key] = (porCat[key] || 0) + itemValor(it);
+  });
+  const top = [...STATE.orcamento].map((it, idx) => ({ ...it, idx, total:itemValor(it) })).sort((a, b) => b.total - a.total).slice(0, 15);
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Dashboard TLPlanly</title><style>
+    body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f5f7fb;color:#172033}
+    header{background:#102a43;color:#fff;padding:24px 32px} h1{margin:0;font-size:26px} main{padding:28px;max-width:1180px;margin:auto}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card{background:#fff;border:1px solid #d9e2ec;border-radius:10px;padding:18px}
+    .k{font-size:12px;text-transform:uppercase;color:#63758a;font-weight:700}.v{font-size:26px;font-weight:900;margin-top:6px}.gold{color:#a86400}
+    table{width:100%;border-collapse:collapse;background:#fff;margin-top:18px}th,td{border:1px solid #d9e2ec;padding:9px;text-align:left;font-size:13px}th{background:#e7eef7}
+    .bar{height:10px;background:#f5a623;border-radius:999px}
+  </style></head><body><header><h1>Dashboard TLPlanly</h1><p>${escapeHtml(document.getElementById('orcNome')?.value || 'Orçamento ativo')} · ${new Date().toLocaleString('pt-BR')}</p></header><main>
+    <section class="grid">
+      <div class="card"><div class="k">Itens</div><div class="v">${STATE.orcamento.length}</div></div>
+      <div class="card"><div class="k">Subtotal</div><div class="v">${fmtMoeda(sub)}</div></div>
+      <div class="card"><div class="k">BDI</div><div class="v gold">${bdiText('N/C')}</div></div>
+      <div class="card"><div class="k">Total com BDI</div><div class="v">${fmtMoeda(total)}</div></div>
+    </section>
+    <h2>Distribuição por categoria</h2>
+    <table><tr><th>Categoria</th><th>Total</th><th>Participação</th></tr>${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([cat,val]) => `<tr><td>${escapeHtml(cat)}</td><td>${fmtMoeda(val)}</td><td><div class="bar" style="width:${Math.max(2, total ? val / sub * 100 : 0)}%"></div></td></tr>`).join('')}</table>
+    <h2>Top itens de custo</h2>
+    <table><tr><th>#</th><th>Código</th><th>Descrição</th><th>Total</th></tr>${top.map((it, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(it.cod)}</td><td>${escapeHtml(it.desc)}</td><td>${fmtMoeda(it.total)}</td></tr>`).join('')}</table>
+  </main></body></html>`;
+  downloadText(html, `${safeFileName(document.getElementById('orcNome')?.value || 'dashboard')}_dashboard_TLPlanly.html`, 'text/html');
+  toast('Dashboard HTML exportado.', 'success');
 }
 
 function planejamentoGerarDoOrcamento() {
@@ -2890,6 +3599,13 @@ function backupPayload() {
     quantitativos: STATE.quantitativos,
     documentos: STATE.documentos,
     extracoes: STATE.extracoes,
+    gruposCusto: STATE.gruposCusto,
+    insumosImportados: STATE.insumosImportados,
+    cpuBiblioteca: STATE.cpuBiblioteca,
+    equipamentosHorarios: STATE.equipamentosHorarios,
+    maoObraHoraria: STATE.maoObraHoraria,
+    cotacoesCustos: STATE.cotacoesCustos,
+    frentesServico: STATE.frentesServico,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
     bdiComponents: STATE.bdiComponents,
@@ -2915,6 +3631,10 @@ function backupRestaurar(id) {
   saveState();
   renderElaborar();
   renderDashboard();
+  custosHorariosRender();
+  cotacoesRender();
+  frentesServicoRender();
+  preencherSelectsOperacionais();
   backupRender();
   toast('Backup restaurado.', 'success');
 }
@@ -6336,6 +7056,25 @@ function exportarExcelProfissional() {
   ws8['!cols'] = [{wch:20},{wch:32},{wch:42},{wch:60},{wch:32},{wch:20}];
   XLSX.utils.book_append_sheet(wb, ws8, 'Anexos');
 
+  // ── Abas operacionais: custos, cotações e frentes ──
+  if ((STATE.equipamentosHorarios || []).length || (STATE.maoObraHoraria || []).length) {
+    const wsCustos = XLSX.utils.aoa_to_sheet(custosHorariosRows());
+    wsCustos['!cols'] = [{wch:18},{wch:16},{wch:42},{wch:16},{wch:70}];
+    XLSX.utils.book_append_sheet(wb, wsCustos, 'Custos Horários');
+  }
+
+  if ((STATE.cotacoesCustos || []).length) {
+    const wsCot = XLSX.utils.aoa_to_sheet(cotacoesRows());
+    wsCot['!cols'] = [{wch:16},{wch:48},{wch:28},{wch:10},{wch:16},{wch:18},{wch:26}];
+    XLSX.utils.book_append_sheet(wb, wsCot, 'Cotações');
+  }
+
+  if ((STATE.frentesServico || []).length) {
+    const wsFr = XLSX.utils.aoa_to_sheet(frentesRows());
+    wsFr['!cols'] = [{wch:12},{wch:42},{wch:18},{wch:18},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, wsFr, 'Frentes');
+  }
+
   if (bloqueados.length) {
     const bloqData = [
       ['LINHAS BLOQUEADAS PELA AUDITORIA DE EXTRAÇÃO'],
@@ -6920,6 +7659,30 @@ const COPILOT_KB = {
     chips: ['Ir para Elaborar','Meu orçamento atual','Como exportar?','Ir para Relatório']
   },
 
+  desconto_avancado: {
+    q: ['desconto avançado','desconto avancado','desconto por grupo','desconto por categoria','desconto classe a','desconto por capitulo'],
+    r: `**Desconto avançado por seleção**\n\nUse quando a proposta vencedora não puder receber o mesmo desconto em todos os itens.\n\n1. Abra **Elaborar Orçamento**\n2. No bloco **Readequar Proposta do Pregão**, use a área **Desconto avançado por seleção**\n3. Escolha o alvo: Categoria, Capítulo, Itens Classe A ou Todos\n4. Informe o filtro, quando aplicável\n5. Informe o percentual\n6. Clique em **Aplicar seleção**\n\nO TLPlanly altera apenas os itens selecionados, mantém histórico para desfazer e registra a memória do ajuste na exportação.`,
+    chips: ['Ir para Elaborar','O que é Curva ABC?','Como exportar?']
+  },
+
+  custos_horarios: {
+    q: ['custo horário','custo horario','equipamento por hora','mão de obra por hora','mao de obra por hora','convenção coletiva','convencao coletiva','salário mensal','salario mensal'],
+    r: `**Custos Horários**\n\nUse este módulo para calcular custos próprios antes de montar uma CPU.\n\n**Equipamento:** informe aquisição, vida útil, fator de depreciação, operador, combustível/energia e manutenção. O sistema calcula o custo por hora e guarda a memória.\n\n**Mão de obra:** informe salário mensal, benefícios, encargos e horas produtivas. O sistema calcula o custo horário conforme a base usada pela empresa ou convenção coletiva.\n\nDepois clique em **Enviar CPU** para transformar esse custo em composição reutilizável.`,
+    chips: ['Ir para Custos Horários','Ir para Composições','Como criar CPU?']
+  },
+
+  cotacoes: {
+    q: ['banco de cotações','banco de cotacoes','cotação','cotacao','preços de mercado','precos de mercado','atualizar insumo por cotação','atualizar cpu por cotação'],
+    r: `**Banco de Cotações**\n\nUse quando quiser atualizar insumos e CPUs com preços de fornecedores.\n\n1. Abra **Cotações**\n2. Cadastre manualmente ou importe Excel/CSV\n3. O sistema usa código e descrição para encontrar o insumo correspondente\n4. Escolha critério: menor preço, média, mediana ou menor preço com margem\n5. Clique em **Aplicar aos custos**\n\nA aplicação pode atualizar só a biblioteca de CPUs, só o orçamento ativo ou ambos.`,
+    chips: ['Ir para Cotações','Ir para Composições','Ir para Elaborar']
+  },
+
+  frentes_servico: {
+    q: ['frente de serviço','frentes de serviço','frente de servico','frentes de servico','controle por frente','obra por frente','local de execução','local de execucao'],
+    r: `**Frentes de Serviço**\n\nUse para separar o orçamento por local, etapa, equipe ou frente física da obra.\n\n1. Abra **Frentes de Serviço**\n2. Cadastre as frentes ou clique em **Criar por capítulo**\n3. Vincule cada item do orçamento à frente correta\n4. Acompanhe valor planejado, realizado e pendências\n5. Exporte em Excel ou PDF\n\nEsse módulo ajuda no acompanhamento de obra, medição e controle por setor.`,
+    chips: ['Ir para Frentes de Serviço','Ir para Planejamento','Ir para Medições']
+  },
+
   // ── BDI ────────────────────────────────────────────────
   bdi_oque: {
     q: ['o que é bdi','bdi significa','definição bdi','conceito bdi','bdi é'],
@@ -7025,7 +7788,7 @@ const COPILOT_KB = {
   // ── EXPORTAÇÃO ────────────────────────────────────────
   exportar: {
     q: ['exportar','gerar planilha','relatório','gerar excel','planilha excel','pdf edital','imprimir'],
-    r: `**Como exportar a planilha orçamentária:** 📤\n\n1. Acesse **Exportar / Relatório** no menu\n2. Preencha os dados da obra (nome, órgão, RT, CREA, ART/RRT)\n3. Escolha a aba desejada para pré-visualizar\n4. Clique em **Excel (.xlsx) Profissional** ou **PDF Profissional**\n\nO Excel leva: Planilha Orçamentária, BDI, Curva ABC, Encargos, Planejamento, Medições, Quantitativos e Anexos. O PDF gera uma versão pronta para salvar, imprimir ou anexar ao processo.\n\n✅ O formato segue padrão exigido pelo **TCU/CGU/editais públicos** e também serve para acompanhamento de obra.`,
+    r: `**Como exportar a planilha orçamentária:** 📤\n\n1. Acesse **Exportar / Relatório** no menu\n2. Preencha os dados da obra (nome, órgão, RT, CREA, ART/RRT)\n3. Escolha a aba desejada para pré-visualizar\n4. Clique em **Excel (.xlsx) Profissional** ou **PDF Profissional**\n\nO Excel leva: Planilha Orçamentária, BDI, Curva ABC, Encargos, Planejamento, Medições, Quantitativos, Anexos, Custos Horários, Cotações e Frentes de Serviço. O PDF gera uma versão pronta para salvar, imprimir ou anexar ao processo.\n\n✅ O formato segue padrão exigido pelo **TCU/CGU/editais públicos** e também serve para acompanhamento de obra.`,
     chips: ['Ir para Relatório','Modelo de relatório','Como configurar moeda']
   },
 
@@ -7076,10 +7839,13 @@ const COPILOT_KB = {
 const VIEW_CONTEXT = {
   dashboard:    { nome: 'Dashboard', dica: 'Aqui você vê o resumo do orçamento ativo — totais, Curva ABC e itens críticos.' },
   elaborar:     { nome: 'Elaborar Orçamento', dica: 'Crie itens próprios, pesquise SINAPI ou importe Excel/PDF. Depois ajuste descrição, unidade, quantidade, preço, capítulo e categoria direto na planilha.' },
+  custos:       { nome: 'Custos Horários', dica: 'Calcule custos horários de equipamentos e mão de obra, salve a memória e envie como CPU reutilizável.' },
+  cotacoes:     { nome: 'Cotações', dica: 'Cadastre ou importe preços de fornecedores e aplique aos insumos da biblioteca de CPUs e do orçamento ativo.' },
   bdi:          { nome: 'BDI & Encargos', dica: 'Configure os componentes do BDI conforme o Decreto 7983/2013 e escolha o regime de encargos.' },
   curvaABC:     { nome: 'Curva ABC', dica: 'Gere a análise de Pareto do orçamento para identificar os itens de maior impacto financeiro.' },
   memoria:      { nome: 'Memória de Cálculo', dica: 'Veja o detalhamento de cada item com encargos sociais, BDI e referência SINAPI.' },
   planejamento: { nome: 'Planejamento', dica: 'Gere tarefas do orçamento, ajuste datas, dependências, Gantt e Curva S.' },
+  frentes:      { nome: 'Frentes de Serviço', dica: 'Organize os itens do orçamento por local de execução, etapa ou equipe e acompanhe planejado x realizado.' },
   medicoes:     { nome: 'Medições', dica: 'Registre quantidades executadas por período e acompanhe saldo, avanço e excedentes.' },
   quantitativos:{ nome: 'Quantitativos', dica: 'Crie fórmulas auxiliares vinculadas aos serviços e aplique o resultado à quantidade contratada.' },
   analisador:   { nome: 'Analisador de Documentos', dica: 'Anexe edital, TR, ETP, projeto básico, memorial e projetos para gerar uma pré-planilha revisável com serviços, confiança e pendências.' },
@@ -7121,6 +7887,9 @@ function copilotDetectPendingAction(txt) {
   if (!asksToContinue) return null;
 
   if (/(desconto pregao|desconto do pregao|planilha ajustada|readequar proposta|valor vencedor|proposta vencedora)/.test(norm)) return copilotActionForView('elaborar');
+  if (/(custo horario|custos horarios|equipamento por hora|mao de obra por hora|convencao coletiva)/.test(norm)) return copilotActionForView('custos');
+  if (/(banco de cotacoes|cotacoes|precos de mercado|preco de fornecedor|fornecedor)/.test(norm)) return copilotActionForView('cotacoes');
+  if (/(frente de servico|frentes de servico|controle por frente|local de execucao)/.test(norm)) return copilotActionForView('frentes');
   if (/(moeda|cotacao|dolar|euro|modelo padrao)/.test(norm)) return copilotActionForView('config');
   if (/(analisar documentos|projeto basico|termo de referencia|etp|memorial|estimativa por documento|gerar orcamento pelo projeto|documentos da obra)/.test(norm)) return copilotActionForView('analisador');
   if (/(relatorio|exportar|pdf final|gerar pdf|baixar)/.test(norm)) return copilotActionForView('relatorio');
@@ -7429,7 +8198,7 @@ async function copilotResponder(txt) {
 
   const localFirst = /^(ir|abrir|acessar)\b/.test(norm)
     || /^(meu orcamento atual|o que posso fazer aqui|sim me guie)$/.test(norm)
-    || /^(manual|abrir manual|guia|como operar|o que e bdi|como importar|como exportar|como calcular bdi|o que e sinapi|o que e curva abc|limite bdi|desconto pregao|planilha ajustada|readequar proposta)/.test(norm);
+    || /^(manual|abrir manual|guia|como operar|o que e bdi|como importar|como exportar|como calcular bdi|o que e sinapi|o que e curva abc|limite bdi|desconto pregao|desconto avancado|planilha ajustada|readequar proposta|custo horario|custos horarios|banco de cotacoes|frente de servico)/.test(norm);
 
   // Comandos de navegação e chips previsíveis são locais para não prender o usuário em chamadas externas.
   if (!localFirst) {
@@ -7449,6 +8218,20 @@ async function copilotResponder(txt) {
             'pregoeiro pediu planilha','duas horas planilha','ajustar planilha pregão',
             'ajustar planilha pregao','reduzir proposta','desconto linear'],
       entry:'desconto_pregao' },
+    { keys:['desconto avancado','desconto avançado','desconto por grupo','desconto por categoria',
+            'desconto por capitulo','desconto por capítulo','desconto classe a','desconto seletivo'],
+      entry:'desconto_avancado' },
+    { keys:['custo horario','custos horarios','custo horário','custos horários','equipamento por hora',
+            'mao de obra por hora','mão de obra por hora','convencao coletiva','convenção coletiva',
+            'salario mensal','salário mensal','calcular hora equipamento'],
+      entry:'custos_horarios' },
+    { keys:['banco de cotacoes','banco de cotações','cotacoes de fornecedor','cotações de fornecedor',
+            'precos de mercado','preços de mercado','atualizar cpu por cotacao','atualizar cpu por cotação',
+            'atualizar insumo por cotacao','atualizar insumo por cotação'],
+      entry:'cotacoes' },
+    { keys:['frente de servico','frente de serviço','frentes de servico','frentes de serviço',
+            'controle por frente','local de execucao','local de execução','obra por frente'],
+      entry:'frentes_servico' },
     // Onboarding / tutorial
     { keys:['sim me guie','como comecar','comecar','iniciar','tutorial','por onde comecar','primeiro passo',
             'como usar o sistema','me guie','ajuda','help','nao sei','nao entendo','como funciona',
@@ -7563,12 +8346,15 @@ async function copilotResponder(txt) {
   // ══ NAVEGAÇÃO DIRETA ══════════════════════════════════════
   if (/^ir para( o)? modulo$|^abrir( o)? modulo$|^acessar( o)? modulo$/.test(norm)) {
     copilotBotMsg('Claro. Qual módulo você quer abrir?');
-    copilotSetChips(['Ir para Elaborar','Ir para Planejamento','Ir para Medições','Ir para Quantitativos','Ir para Importar','Ir para Relatório']);
+    copilotSetChips(['Ir para Elaborar','Ir para Custos Horários','Ir para Cotações','Ir para Frentes de Serviço','Ir para Importar','Ir para Relatório']);
     return;
   }
 
   const navMap = [
     { keys:['ir para bdi','abrir bdi','acessar bdi','modulo bdi','ir para encargos'], view:'bdi' },
+    { keys:['ir para custos horarios','ir para custos horários','abrir custos horarios','abrir custos horários','ir para custo horario','ir para custo horário'], view:'custos' },
+    { keys:['ir para cotacoes','ir para cotações','abrir cotacoes','abrir cotações','ir para banco de cotacoes','ir para banco de cotações'], view:'cotacoes' },
+    { keys:['ir para frentes','ir para frente de servico','ir para frente de serviço','ir para frentes de servico','ir para frentes de serviço','abrir frentes'], view:'frentes' },
     { keys:['ir para curva','ir para abc','abrir abc','curva abc'], view:'curvaABC' },
     { keys:['ir para elaborar','ir para orcamento','abrir orcamento'], view:'elaborar' },
     { keys:['ir para memoria','ir para memoria calculo'], view:'memoria' },
