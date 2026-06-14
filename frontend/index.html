@@ -802,6 +802,27 @@
   <div class="page-title">Bases de <span class="gold-text">Referência</span></div>
   <div class="page-sub">Gerencie as tabelas de preços ativas — SINAPI, SICRO 3 e bases estaduais</div>
 
+  <div class="card" style="margin-bottom:20px">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Carregamento <span>em lote</span></div>
+        <div class="text-sm" style="color:var(--text2);margin-top:4px">Arraste todos os arquivos da competência: onerado/não desonerado, desonerado, produtos/insumos, serviços/composições e bases separadas.</div>
+      </div>
+      <button class="btn btn-gold btn-sm" onclick="document.getElementById('bases-file-inp').click()">Selecionar lote</button>
+    </div>
+    <div class="upload-zone upload-zone-compact" id="basesUploadZone" onclick="document.getElementById('bases-file-inp').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="basesDrop(event)">
+      <div class="upload-icon">&#128452;</div>
+      <p>Arraste múltiplas planilhas de bases aqui</p>
+      <small>SINAPI, SICRO, ORSE, SEINFRA, EMOP, SUDECAP, GOINFRA, DAER. Aceita .xlsx, .xls e .csv. ZIP ainda deve ser extraído antes do envio.</small>
+    </div>
+    <input id="bases-file-inp" type="file" accept=".xlsx,.xls,.csv,.zip" multiple style="display:none" onchange="basesFileSelect(event)"/>
+    <div id="bases-file-chip" style="margin-top:12px;display:none"></div>
+    <div id="bases-lote-status" class="base-lote-status" style="display:none"></div>
+  </div>
+
   <!-- Cards das bases -->
   <div class="grid grid-3" style="margin-bottom:20px" id="bases-cards">
 
@@ -819,7 +840,7 @@
       <button class="btn btn-outline btn-sm" style="width:100%" onclick="document.getElementById('sinapi-file-inp').click()">
         &#128228; Carregar XLSX/ZIP SINAPI
       </button>
-      <input id="sinapi-file-inp" type="file" accept=".xlsx,.zip" style="display:none" onchange="carregarSINAPI(event)"/>
+      <input id="sinapi-file-inp" type="file" accept=".xlsx,.xls,.csv,.zip" multiple style="display:none" onchange="carregarSINAPI(event)"/>
       <div style="margin-top:6px;font-size:11px;color:var(--text3);text-align:center">
         ou use a base padrão carregada pelo servidor
       </div>
@@ -839,7 +860,7 @@
       <button class="btn btn-outline btn-sm" style="width:100%" onclick="document.getElementById('sicro-file-inp').click()">
         &#128228; Carregar XLSX SICRO 3
       </button>
-      <input id="sicro-file-inp" type="file" accept=".xlsx,.xls" style="display:none" onchange="carregarSICRO(event)"/>
+      <input id="sicro-file-inp" type="file" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="carregarSICRO(event)"/>
       <div style="margin-top:6px;font-size:11px;color:var(--text3);text-align:center">
         <a href="https://www.gov.br/dnit/pt-br/assuntos/planejamento-e-pesquisa/custos-e-pagamentos" 
            target="_blank" style="color:var(--gold)">Baixar em dnit.gov.br &#8599;</a>
@@ -859,7 +880,7 @@
       <div class="sep" style="margin:12px 0"></div>
       <div style="margin-bottom:8px">
         <select id="est-tipo" class="form-select" style="font-size:12px" onchange="atualizarLinksEstadual()">
-          <option value="seinfra-mg">SEINFRA-MG (Minas Gerais)</option>
+          <option value="seinfra-mg">DER-MG / SEINFRA-MG (Minas Gerais)</option>
           <option value="orse-se">ORSE-SE (Sergipe)</option>
           <option value="emop-rj">EMOP-RJ (Rio de Janeiro)</option>
           <option value="seinfra-ce">SEINFRA-CE (Ceará)</option>
@@ -872,7 +893,7 @@
       <button class="btn btn-outline btn-sm" style="width:100%" onclick="document.getElementById('est-file-inp').click()">
         &#128228; Carregar XLSX Estadual
       </button>
-      <input id="est-file-inp" type="file" accept=".xlsx,.xls" style="display:none" onchange="carregarEstadual(event)"/>
+      <input id="est-file-inp" type="file" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="carregarEstadual(event)"/>
       <div style="margin-top:6px;font-size:11px;text-align:center">
         <a id="est-link" href="#" target="_blank" style="color:var(--gold)">Acessar site oficial &#8599;</a>
       </div>

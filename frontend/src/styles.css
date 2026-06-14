@@ -506,6 +506,13 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .base-stat{font-size:24px;font-weight:900;color:var(--text);margin:8px 0 2px}
 .base-loaded{color:var(--green)}
 .base-empty{color:var(--text3)}
+.base-lote-status{margin-top:12px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg3)}
+.base-lote-row{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:9px 12px;border-top:1px solid var(--border);font-size:12px}
+.base-lote-row:first-child{border-top:none}
+.base-lote-row strong{color:var(--text);max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.base-lote-row span{color:var(--text2);text-align:right}
+.base-lote-row.ok span{color:var(--green)}
+.base-lote-row.bad span{color:var(--red)}
 .ocr-progress{margin-top:12px;padding:12px;background:var(--bg3);border-radius:var(--radius);display:none}
 .ocr-page-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin-top:8px}
 .ocr-page-thumb{background:var(--bg4);border-radius:4px;padding:6px;text-align:center;font-size:11px;color:var(--text3)}

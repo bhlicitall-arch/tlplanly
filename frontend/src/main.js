@@ -6006,7 +6006,7 @@ let BASES = {
 let PRIORIDADE_BASES = ['estadual', 'sinapi', 'sicro'];
 
 const LINKS_ESTADUAIS = {
-  'seinfra-mg': { nome: 'SEINFRA-MG', url: 'http://www.infraestrutura.mg.gov.br/municipio/consulta-a-planilha-de-precos-seinfra', desc: 'Secretaria de Infraestrutura — Minas Gerais' },
+  'seinfra-mg': { nome: 'DER-MG / SEINFRA-MG', url: 'https://portal.der.mg.gov.br/portal-servicos-frontend/dynamic-menu/10', desc: 'Planilha estadual de preços — DER-MG / Minas Gerais' },
   'orse-se':    { nome: 'ORSE-SE',    url: 'https://orse.cehop.se.gov.br/',                                                         desc: 'CEHOP — Sergipe' },
   'emop-rj':    { nome: 'EMOP-RJ',    url: 'https://www.rj.gov.br/emop/catalogos-emop',                                             desc: 'Empresa de Obras Públicas — Rio de Janeiro' },
   'seinfra-ce': { nome: 'SEINFRA-CE', url: 'https://www.seinfra.ce.gov.br/tabela-de-custos/',                                       desc: 'Secretaria de Infraestrutura — Ceará' },
@@ -6019,264 +6019,401 @@ const LINKS_ESTADUAIS = {
 // ─── LOOKUP UNIFICADO ──────────────────────────────────────
 function lookupPreco(cod) {
   const code = String(cod || '').toUpperCase();
-  const imported = (STATE.insumosImportados || []).find(i => String(i.codigoSinapi || i.codigo || '').toUpperCase() === code);
+  const imported = escolherItemReferencia((STATE.insumosImportados || []).filter(i => String(i.codigoSinapi || i.codigo || '').toUpperCase() === code));
   if (imported) return { preco: imported.precoMedio || imported.preco || 0, fonte: 'Base importada', item: imported };
   // Returns { preco, fonte, item } searching in priority order
   for (const baseKey of PRIORIDADE_BASES) {
     const base = BASES[baseKey];
     if (!base.loaded || !base.items.length) continue;
-    const found = base.items.find(i => i.codigoSinapi === cod || i.codigo === cod);
+    const found = escolherItemReferencia(base.items.filter(i => String(i.codigoSinapi || i.codigo || '').toUpperCase() === code));
     if (found) return { preco: found.precoMedio || found.preco || 0, fonte: base.nome, item: found };
   }
   // Fallback to STATE.sinapiBase (original)
-  const fb = STATE.sinapiBase.find(i => i.codigoSinapi === cod);
+  const fb = escolherItemReferencia(STATE.sinapiBase.filter(i => String(i.codigoSinapi || i.codigo || '').toUpperCase() === code));
   if (fb) return { preco: fb.precoMedio, fonte: 'SINAPI (padrão)', item: fb };
   return null;
+}
+
+function baseRegimeScore(item) {
+  const regime = baseNormText(item?.regime || (item?.desonerado ? 'desonerado' : 'onerado'));
+  const enc = STATE.config?.enc === 'd' ? 'desonerado' : 'onerado';
+  const isDesonerado = regime.includes('desonerado') && !regime.includes('nao');
+  const isOnerado = regime.includes('onerado') && !isDesonerado || regime.includes('nao');
+  if (enc === 'desonerado' && isDesonerado) return 3;
+  if (enc === 'onerado' && isOnerado) return 3;
+  if (regime.includes('nao informado')) return 1;
+  return 0;
+}
+
+function escolherItemReferencia(items) {
+  return (items || []).slice().sort((a, b) => baseRegimeScore(b) - baseRegimeScore(a))[0] || null;
 }
 
 function getAllItems() {
   // Merge all base items for search
   const all = [];
   (STATE.insumosImportados || []).forEach(i => all.push({ ...i, _base: 'Base importada', _baseTipo: 'local' }));
-  // Original sinapiBase first
+  // Original sinapiBase first, but avoid duplicating it again through BASES.sinapi.
   STATE.sinapiBase.forEach(i => all.push({ ...i, _base: 'SINAPI', _baseTipo: 'federal' }));
   Object.entries(BASES).forEach(([key, base]) => {
+    if (key === 'sinapi') return;
     if (base.loaded) {
       base.items.forEach(i => all.push({ ...i, _base: base.nome, _baseTipo: base.tipo }));
     }
   });
-  return all;
+  return dedupeBaseItems(all).sort((a, b) => baseRegimeScore(b) - baseRegimeScore(a));
 }
 
-// ─── SICRO 3 LOADER ────────────────────────────────────────
-async function carregarSICRO(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  toast('Carregando SICRO 3...', 'info');
+function dedupeBaseItems(items) {
+  const byKey = new Map();
+  (items || []).forEach(item => {
+    const cod = String(item.codigoSinapi || item.codigo || '').trim().toUpperCase();
+    const desc = String(item.descricao || '').trim().toUpperCase();
+    const key = [
+      cod || desc.slice(0, 80),
+      String(item.fonte || item._base || '').trim().toUpperCase(),
+      String(item.regime || '').trim().toUpperCase(),
+      String(item.natureza || item.categoria || '').trim().toUpperCase()
+    ].join('|');
+    if (!byKey.has(key)) byKey.set(key, item);
+  });
+  return [...byKey.values()];
+}
 
-  try {
-    const ab = await file.arrayBuffer();
-    const wb = XLSX.read(ab, { type: 'array' });
-    const items = [];
+function baseNormText(value) {
+  return String(value || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
 
-    // SICRO has multiple sheets: Insumos, Composicoes, etc.
-    wb.SheetNames.forEach(sheetName => {
-      const ws = wb.Sheets[sheetName];
-      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+function parseBaseNumber(value) {
+  return parseNumeroBR(value);
+}
 
-      // Find header
-      let headerRow = -1;
-      let colCod=-1, colDesc=-1, colUnid=-1, colPreco=-1, colCat=-1;
-      for (let r = 0; r < Math.min(15, raw.length); r++) {
-        const row = raw[r].map(c => String(c).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''));
-        row.forEach((cell, ci) => {
-          if (/cod|item/.test(cell) && colCod < 0) colCod = ci;
-          if (/desc|especif|servic/.test(cell) && colDesc < 0) colDesc = ci;
-          if (/unid|^un$|^und$/.test(cell) && colUnid < 0) colUnid = ci;
-          if (/prec|custo|unit|valor/.test(cell) && colPreco < 0) colPreco = ci;
-          if (/categ|tipo|classe/.test(cell) && colCat < 0) colCat = ci;
-        });
-        if (colCod >= 0 && colDesc >= 0) { headerRow = r; break; }
-      }
-      if (headerRow < 0) return;
+function detectarRegimeBase(fileName = '', sheetName = '') {
+  const n = baseNormText(fileName + ' ' + sheetName);
+  if (/\b(isd|csd|nao\s*desonerad|naodesonerad|onerad[ao]?)\b/.test(n)) return 'onerado';
+  if (/\b(icd|ccd|desonerad[ao]?)\b/.test(n)) return 'desonerado';
+  return 'não informado';
+}
 
-      for (let r = headerRow + 1; r < raw.length; r++) {
-        const row = raw[r];
-        if (!row || row.every(c => !c)) continue;
-        const cod = String(row[colCod] || '').trim();
-        const desc = colDesc >= 0 ? String(row[colDesc] || '').trim() : '';
-        const unid = colUnid >= 0 ? String(row[colUnid] || '').trim() : 'UN';
-        const precoRaw = colPreco >= 0 ? row[colPreco] : 0;
-        const preco = parseFloat(String(precoRaw).replace(/[^\d.,]/g,'').replace(',','.')) || 0;
-        const cat = colCat >= 0 ? String(row[colCat] || '').trim() : sheetName;
-        if (!cod || desc.length < 3) continue;
-        items.push({ codigoSinapi: cod, codigo: cod, descricao: desc, unidade: unid || 'UN',
-                     precoMedio: preco, dataReferencia: new Date().toLocaleDateString('pt-BR'),
-                     desonerado: false, fonte: 'SICRO3/DNIT', categoria: cat });
-      }
-    });
+function detectarNaturezaBase(fileName = '', sheetName = '') {
+  const n = baseNormText(fileName + ' ' + sheetName);
+  if (/\b(servic|servico|compos|cpu|csd|ccd|custo\s+unitario|preco\s+unitario\s+de\s+serv)\b/.test(n)) return 'serviços/composições';
+  if (/\b(produt|insum|material|isd|icd|preco\s+ref\s+insum)\b/.test(n)) return 'produtos/insumos';
+  return 'itens';
+}
 
-    if (!items.length) { toast('Nenhum item encontrado no arquivo SICRO', 'error'); return; }
+function detectarBaseArquivo(file, sheets, forced = 'auto') {
+  if (forced && forced !== 'auto') return forced;
+  const sample = (sheets || []).slice(0, 4).map(s => {
+    const rows = (s.raw || []).slice(0, 12).map(r => (r || []).join(' ')).join(' ');
+    return s.name + ' ' + rows;
+  }).join(' ');
+  const n = baseNormText(file.name + ' ' + sample);
+  if (/\b(sicro|dnit|sicor)\b/.test(n)) return 'sicro';
+  if (/\b(sinapi|caixa|ibge|isd|icd|csd|ccd)\b/.test(n)) return 'sinapi';
+  return 'estadual';
+}
 
-    BASES.sicro.items = items;
-    BASES.sicro.loaded = true;
-
-    document.getElementById('sicro-count').textContent = items.length.toLocaleString('pt-BR');
-    document.getElementById('sicro-count').className = 'base-stat base-loaded';
-    document.getElementById('sicro-info').textContent = 'insumos e composições SICRO 3';
-    document.getElementById('sicro-status-dot').textContent = '● Carregado';
-    document.getElementById('sicro-status-dot').style.color = 'var(--green)';
-    document.getElementById('base-card-sicro').classList.add('active');
-
-    renderPrioridade();
-    atualizarTotalBases();
-    toast(`SICRO 3: ${items.length.toLocaleString('pt-BR')} itens carregados`, 'success');
-  } catch(err) {
-    toast('Erro ao carregar SICRO: ' + err.message, 'error');
-    console.error(err);
+async function lerPlanilhaBase(file) {
+  const ext = getFileExt(file);
+  if (ext === 'zip') {
+    throw new Error('ZIP ainda deve ser extraído antes do envio. Arraste os XLSX internos.');
   }
+  if (!window.XLSX) throw new Error('Biblioteca XLSX não carregou.');
+  const data = ext === 'csv' ? await file.text() : await file.arrayBuffer();
+  const wb = XLSX.read(data, { type: ext === 'csv' ? 'string' : 'array', raw: false, cellDates: false });
+  return wb.SheetNames.map(name => ({
+    name,
+    raw: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: false })
+  }));
 }
 
-// ─── SINAPI XLSX DIRETO ────────────────────────────────────
-async function carregarSINAPI(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  toast('Carregando SINAPI...', 'info');
-  try {
-    // Reuse the existing lerArquivo logic via XLSX
-    const ab = await file.arrayBuffer();
-    let items = [];
-    const ext = file.name.split('.').pop().toLowerCase();
+function encontrarCabecalhoGenerico(raw, maxRows = 25) {
+  let headerRow = -1, colCod = -1, colDesc = -1, colUnid = -1, colPreco = -1, colCat = -1;
+  for (let r = 0; r < Math.min(maxRows, raw.length); r++) {
+    const row = (raw[r] || []).map(c => baseNormText(c));
+    row.forEach((cell, ci) => {
+      if (/\b(cod|codigo|item|referencia)\b/.test(cell) && colCod < 0) colCod = ci;
+      if (/\b(desc|descricao|especific|servic|insum|produto)\b/.test(cell) && colDesc < 0) colDesc = ci;
+      if (/\b(unid|unidade|^un$|^und$)\b/.test(cell) && colUnid < 0) colUnid = ci;
+      if (/\b(prec|preco|custo|unit|valor)\b/.test(cell) && colPreco < 0) colPreco = ci;
+      if (/\b(categ|categoria|tipo|classe|grupo|familia)\b/.test(cell) && colCat < 0) colCat = ci;
+    });
+    if (colCod >= 0 && colDesc >= 0) { headerRow = r; break; }
+  }
+  return { headerRow, colCod, colDesc, colUnid, colPreco, colCat };
+}
 
-    if (ext === 'zip') {
-      toast('ZIP detectado — extraia o XLSX interno e carregue diretamente', 'error');
-      return;
-    }
-
-    const wb = XLSX.read(ab, { type: 'array' });
-    // SINAPI nacional: aba ISD/ICD/ISE
-    const abaNames = ['ISD','ICD','ISE'];
-    let ws = null, abaNome = '';
-    for (const an of abaNames) {
-      ws = wb.Sheets[an];
-      if (ws) { abaNome = an; break; }
-    }
-
-    if (!ws) ws = wb.Sheets[wb.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-    // Detect UF column from config
-    const uf = (STATE.config.uf || 'MG').toUpperCase();
-    let headerRow = -1, colCod=-1, colDesc=-1, colUnid=-1, colUF=-1;
-
-    // SINAPI nacional: row 10 (idx 9) is header with UFs
-    for (let r = 0; r < Math.min(15, raw.length); r++) {
+function parseBaseGenerica(sheets, file, options = {}) {
+  const items = [];
+  (sheets || []).forEach(sheet => {
+    const raw = sheet.raw || [];
+    const cols = encontrarCabecalhoGenerico(raw, 25);
+    if (cols.headerRow < 0) return;
+    const regime = detectarRegimeBase(file.name, sheet.name);
+    const natureza = detectarNaturezaBase(file.name, sheet.name);
+    for (let r = cols.headerRow + 1; r < raw.length; r++) {
       const row = raw[r];
-      const rowStr = row.map(c => String(c).toUpperCase());
-      const ufIdx = rowStr.findIndex(c => c.trim() === uf);
-      if (ufIdx >= 0) { headerRow = r; colUF = ufIdx; colCod = 1; colDesc = 2; colUnid = 3; break; }
-    }
-
-    // Fallback: generic layout
-    if (headerRow < 0) {
-      for (let r = 0; r < Math.min(15, raw.length); r++) {
-        const row = raw[r].map(c => String(c).toLowerCase());
-        row.forEach((cell, ci) => {
-          if (/cod/.test(cell) && colCod < 0) colCod = ci;
-          if (/desc/.test(cell) && colDesc < 0) colDesc = ci;
-          if (/unid/.test(cell) && colUnid < 0) colUnid = ci;
-          if (/prec|custo/.test(cell) && colUF < 0) colUF = ci;
-        });
-        if (colCod >= 0 && colDesc >= 0) { headerRow = r; break; }
-      }
-    }
-
-    if (headerRow < 0) { toast('Layout SINAPI não reconhecido', 'error'); return; }
-
-    for (let r = headerRow + 1; r < raw.length; r++) {
-      const row = raw[r];
-      if (!row || row.every(c => !c)) continue;
-      const cod = String(row[colCod] || '').trim();
-      if (!cod || isNaN(Number(cod))) continue;
-      const preco = parseFloat(String(row[colUF] || '0').replace(',','.')) || 0;
-      if (preco <= 0) continue;
+      if (!row || row.every(c => c === null || c === undefined || c === '')) continue;
+      const cod = String(row[cols.colCod] || '').trim();
+      const desc = cols.colDesc >= 0 ? String(row[cols.colDesc] || '').trim() : '';
+      if (!cod && !desc) continue;
+      if (desc.length < 3) continue;
+      const unid = cols.colUnid >= 0 ? normalizarUnidadeImportacao(row[cols.colUnid] || 'UN') : 'UN';
+      const preco = cols.colPreco >= 0 ? parseBaseNumber(row[cols.colPreco]) : 0;
+      const cat = cols.colCat >= 0 ? String(row[cols.colCat] || '').trim() : sheet.name;
       items.push({
         codigoSinapi: cod,
-        descricao: String(row[colDesc] || '').trim(),
-        unidade: colUnid >= 0 ? String(row[colUnid] || '').trim() : 'UN',
+        codigo: cod,
+        descricao: desc,
+        unidade: unid || 'UN',
         precoMedio: preco,
         dataReferencia: new Date().toLocaleDateString('pt-BR'),
-        desonerado: false,
-        fonte: `SINAPI/CAIXA/${abaNome||''}/${uf}`
+        desonerado: regime === 'desonerado',
+        regime,
+        natureza,
+        categoria: cat || natureza,
+        fonte: options.fonte || file.name,
+        origemArquivo: file.name,
+        aba: sheet.name
       });
     }
-
-    if (!items.length) { toast('Nenhum item SINAPI encontrado', 'error'); return; }
-
-    // Merge into STATE.sinapiBase
-    STATE.sinapiBase = items;
-    STATE.sinapiMes = new Date().toLocaleDateString('pt-BR', { month:'2-digit', year:'numeric' });
-    BASES.sinapi.items = items;
-    BASES.sinapi.loaded = true;
-
-    document.getElementById('sinapi-count-b').textContent = items.length.toLocaleString('pt-BR');
-    document.getElementById('sinapi-count-b').className = 'base-stat base-loaded';
-    document.getElementById('sinapi-mes-b').textContent = `insumos — UF: ${uf}`;
-    document.getElementById('sinapi-status-dot').textContent = '● Carregado';
-    document.getElementById('sinapi-status-dot').style.color = 'var(--green)';
-
-    renderPrioridade();
-    atualizarTotalBases();
-    toast(`SINAPI: ${items.length.toLocaleString('pt-BR')} itens (${uf})`, 'success');
-  } catch(err) {
-    toast('Erro ao carregar SINAPI: ' + err.message, 'error');
-    console.error(err);
-  }
+  });
+  return dedupeBaseItems(items);
 }
 
-// ─── ESTADUAL LOADER ───────────────────────────────────────
-async function carregarEstadual(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const subtipo = document.getElementById('est-tipo').value;
-  const info = LINKS_ESTADUAIS[subtipo] || {};
-  toast(`Carregando ${info.nome || 'base estadual'}...`, 'info');
+function parseSinapiSheets(sheets, file) {
+  const uf = (STATE.config.uf || 'MG').toUpperCase();
+  const items = [];
+  (sheets || []).forEach(sheet => {
+    const raw = sheet.raw || [];
+    const regime = detectarRegimeBase(file.name, sheet.name);
+    const natureza = detectarNaturezaBase(file.name, sheet.name);
+    let headerRow = -1, colCod = -1, colDesc = -1, colUnid = -1, colPreco = -1;
 
-  try {
-    const ab = await file.arrayBuffer();
-    const wb = XLSX.read(ab, { type: 'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-    let headerRow = -1, colCod=-1, colDesc=-1, colUnid=-1, colPreco=-1;
     for (let r = 0; r < Math.min(20, raw.length); r++) {
-      const row = raw[r].map(c => String(c).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''));
-      row.forEach((cell, ci) => {
-        if (/cod|item/.test(cell) && colCod < 0) colCod = ci;
-        if (/desc|servic|especif/.test(cell) && colDesc < 0) colDesc = ci;
-        if (/unid|^un$|^und$/.test(cell) && colUnid < 0) colUnid = ci;
-        if (/prec|custo|unit|valor/.test(cell) && colPreco < 0) colPreco = ci;
-      });
-      if (colCod >= 0 && colDesc >= 0) { headerRow = r; break; }
+      const rowStr = (raw[r] || []).map(c => String(c).trim().toUpperCase());
+      const ufIdx = rowStr.findIndex(c => c === uf);
+      if (ufIdx >= 0) {
+        headerRow = r;
+        colPreco = ufIdx;
+        colCod = rowStr.findIndex(c => /COD|CODIGO|CÓDIGO/.test(c));
+        colDesc = rowStr.findIndex(c => /DESC|DESCRICAO|DESCRIÇÃO/.test(c));
+        colUnid = rowStr.findIndex(c => /UNID|UNIDADE|^UN$/.test(c));
+        if (colCod < 0) colCod = 1;
+        if (colDesc < 0) colDesc = 2;
+        if (colUnid < 0) colUnid = 3;
+        break;
+      }
     }
-    if (headerRow < 0) { toast('Cabeçalho não encontrado no arquivo estadual', 'error'); return; }
 
-    const items = [];
+    if (headerRow < 0) {
+      const cols = encontrarCabecalhoGenerico(raw, 25);
+      headerRow = cols.headerRow;
+      colCod = cols.colCod;
+      colDesc = cols.colDesc;
+      colUnid = cols.colUnid;
+      colPreco = cols.colPreco;
+    }
+    if (headerRow < 0 || colCod < 0 || colDesc < 0) return;
+
     for (let r = headerRow + 1; r < raw.length; r++) {
       const row = raw[r];
-      if (!row || row.every(c => !c)) continue;
+      if (!row || row.every(c => c === null || c === undefined || c === '')) continue;
       const cod = String(row[colCod] || '').trim();
-      const desc = colDesc >= 0 ? String(row[colDesc] || '').trim() : '';
-      if (!desc || desc.length < 3) continue;
-      const unid = colUnid >= 0 ? String(row[colUnid] || '').trim() : 'UN';
-      const preco = colPreco >= 0 ? parseFloat(String(row[colPreco]||'0').replace(/[^\d.,]/g,'').replace(',','.')) : 0;
-      items.push({ codigoSinapi: cod, codigo: cod, descricao: desc, unidade: unid || 'UN',
-                   precoMedio: preco, dataReferencia: new Date().toLocaleDateString('pt-BR'),
-                   desonerado: false, fonte: info.nome || subtipo });
+      const desc = String(row[colDesc] || '').trim();
+      const preco = parseBaseNumber(row[colPreco] || 0);
+      if (!cod || desc.length < 3 || preco <= 0) continue;
+      items.push({
+        codigoSinapi: cod,
+        codigo: cod,
+        descricao: desc,
+        unidade: colUnid >= 0 ? normalizarUnidadeImportacao(row[colUnid] || 'UN') : 'UN',
+        precoMedio: preco,
+        dataReferencia: new Date().toLocaleDateString('pt-BR'),
+        desonerado: regime === 'desonerado',
+        regime,
+        natureza,
+        categoria: natureza,
+        fonte: `SINAPI/CAIXA/${sheet.name}/${uf}`,
+        origemArquivo: file.name,
+        aba: sheet.name
+      });
     }
+  });
+  return dedupeBaseItems(items);
+}
 
-    if (!items.length) { toast('Nenhum item encontrado no arquivo estadual', 'error'); return; }
+function baseItemKey(item) {
+  return [
+    String(item.codigoSinapi || item.codigo || '').trim().toUpperCase(),
+    String(item.fonte || '').trim().toUpperCase(),
+    String(item.regime || '').trim().toUpperCase(),
+    String(item.natureza || item.categoria || '').trim().toUpperCase()
+  ].join('|');
+}
 
-    BASES.estadual.items = items;
-    BASES.estadual.loaded = true;
-    BASES.estadual.subtipo = subtipo;
-    BASES.estadual.nome = info.nome || subtipo;
-
-    document.getElementById('est-count').textContent = items.length.toLocaleString('pt-BR');
-    document.getElementById('est-count').className = 'base-stat base-loaded';
-    document.getElementById('est-info').textContent = `itens — ${info.nome}`;
-    document.getElementById('est-nome').textContent = info.nome || 'Base Estadual';
-    document.getElementById('est-desc').textContent = info.desc || '';
-    document.getElementById('est-status-dot').textContent = '● Carregado';
-    document.getElementById('est-status-dot').style.color = 'var(--green)';
-    document.getElementById('base-card-estadual').classList.add('active');
-
-    renderPrioridade();
-    atualizarTotalBases();
-    toast(`${info.nome}: ${items.length.toLocaleString('pt-BR')} itens carregados`, 'success');
-  } catch(err) {
-    toast('Erro ao carregar base estadual: ' + err.message, 'error');
+function mergeBaseItems(baseKey, items, options = {}) {
+  const base = BASES[baseKey];
+  if (!base || !items.length) return 0;
+  const existing = options.replace ? [] : (base.items || []);
+  const byKey = new Map(existing.map(i => [baseItemKey(i), i]));
+  items.forEach(i => byKey.set(baseItemKey(i), i));
+  base.items = [...byKey.values()];
+  base.loaded = base.items.length > 0;
+  if (options.nome) base.nome = options.nome;
+  if (options.subtipo) base.subtipo = options.subtipo;
+  if (baseKey === 'sinapi') {
+    STATE.sinapiBase = base.items;
+    STATE.sinapiMes = new Date().toLocaleDateString('pt-BR', { month:'2-digit', year:'numeric' });
   }
+  return items.length;
+}
+
+function resumoVariantesBase(items) {
+  const grupos = new Map();
+  (items || []).forEach(i => {
+    const label = [i.regime || 'regime não informado', i.natureza || 'itens'].filter(Boolean).join(' · ');
+    grupos.set(label, (grupos.get(label) || 0) + 1);
+  });
+  return [...grupos.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count]) => `${count.toLocaleString('pt-BR')} ${label}`)
+    .join(' | ');
+}
+
+function atualizarCardsBases() {
+  if (BASES.sinapi.loaded || STATE.sinapiBase.length) {
+    const count = BASES.sinapi.items.length || STATE.sinapiBase.length;
+    setText('sinapi-count-b', count.toLocaleString('pt-BR'));
+    const el = document.getElementById('sinapi-count-b');
+    if (el) el.className = 'base-stat base-loaded';
+    setText('sinapi-mes-b', resumoVariantesBase(BASES.sinapi.items || STATE.sinapiBase) || `insumos — ${STATE.sinapiMes || ''}`);
+    const dot = document.getElementById('sinapi-status-dot');
+    if (dot) { dot.textContent = '● Carregado'; dot.style.color = 'var(--green)'; }
+  }
+  if (BASES.sicro.loaded) {
+    setText('sicro-count', BASES.sicro.items.length.toLocaleString('pt-BR'));
+    const el = document.getElementById('sicro-count');
+    if (el) el.className = 'base-stat base-loaded';
+    setText('sicro-info', resumoVariantesBase(BASES.sicro.items) || 'insumos e composições SICRO 3');
+    const dot = document.getElementById('sicro-status-dot');
+    if (dot) { dot.textContent = '● Carregado'; dot.style.color = 'var(--green)'; }
+    document.getElementById('base-card-sicro')?.classList.add('active');
+  }
+  if (BASES.estadual.loaded) {
+    const info = LINKS_ESTADUAIS[BASES.estadual.subtipo] || {};
+    setText('est-count', BASES.estadual.items.length.toLocaleString('pt-BR'));
+    const el = document.getElementById('est-count');
+    if (el) el.className = 'base-stat base-loaded';
+    setText('est-info', resumoVariantesBase(BASES.estadual.items) || `itens — ${BASES.estadual.nome}`);
+    setText('est-nome', BASES.estadual.nome || info.nome || 'Base Estadual');
+    setText('est-desc', info.desc || '');
+    const dot = document.getElementById('est-status-dot');
+    if (dot) { dot.textContent = '● Carregado'; dot.style.color = 'var(--green)'; }
+    document.getElementById('base-card-estadual')?.classList.add('active');
+  }
+  renderPrioridade();
+  atualizarTotalBases();
+}
+
+function basesRenderArquivos(files, resultados = []) {
+  const chip = document.getElementById('bases-file-chip');
+  if (chip) {
+    if (!files?.length) {
+      chip.style.display = 'none';
+      chip.innerHTML = '';
+    } else {
+      chip.style.display = 'block';
+      chip.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${files.map((f, idx) => `<div class="file-chip">📊 <span>${escapeHtml(f.name)}</span> <span style="color:var(--text3)">(${(f.size/1024).toFixed(0)} KB)</span></div>`).join('')}
+      </div>`;
+    }
+  }
+  const status = document.getElementById('bases-lote-status');
+  if (!status) return;
+  if (!resultados.length) { status.style.display = 'none'; status.innerHTML = ''; return; }
+  status.style.display = 'block';
+  status.innerHTML = resultados.map(r => `
+    <div class="base-lote-row ${r.ok ? 'ok' : 'bad'}">
+      <strong>${escapeHtml(r.fileName)}</strong>
+      <span>${r.ok ? `${escapeHtml(r.baseNome)} · ${r.count.toLocaleString('pt-BR')} itens · ${escapeHtml(r.resumo || '')}` : escapeHtml(r.erro || 'Erro')}</span>
+    </div>
+  `).join('');
+}
+
+async function carregarBasesArquivos(files, forced = 'auto') {
+  const validos = (files || []).filter(f => ['xlsx','xls','csv','zip'].includes(getFileExt(f)));
+  if (!validos.length) { toast('Selecione planilhas .xlsx, .xls ou .csv.', 'error'); return; }
+  basesRenderArquivos(validos);
+  toast(`Carregando ${validos.length} arquivo(s) de base...`, 'info');
+  const resultados = [];
+
+  for (const file of validos) {
+    try {
+      const sheets = await lerPlanilhaBase(file);
+      const tipo = detectarBaseArquivo(file, sheets, forced);
+      const subtipo = tipo === 'estadual' ? (document.getElementById('est-tipo')?.value || 'seinfra-mg') : '';
+      const infoEst = LINKS_ESTADUAIS[subtipo] || {};
+      let items = [];
+      let baseNome = '';
+
+      if (tipo === 'sinapi') {
+        items = parseSinapiSheets(sheets, file);
+        baseNome = 'SINAPI';
+        mergeBaseItems('sinapi', items, { nome: 'SINAPI' });
+      } else if (tipo === 'sicro') {
+        items = parseBaseGenerica(sheets, file, { fonte: 'SICRO3/DNIT' });
+        baseNome = 'SICRO 3';
+        mergeBaseItems('sicro', items, { nome: 'SICRO 3' });
+      } else {
+        items = parseBaseGenerica(sheets, file, { fonte: infoEst.nome || subtipo || file.name });
+        baseNome = infoEst.nome || 'Base Estadual';
+        mergeBaseItems('estadual', items, { nome: baseNome, subtipo });
+      }
+
+      if (!items.length) throw new Error('Nenhum item reconhecido no layout.');
+      resultados.push({ ok: true, fileName: file.name, base: tipo, baseNome, count: items.length, resumo: resumoVariantesBase(items) });
+    } catch(err) {
+      resultados.push({ ok: false, fileName: file.name, erro: err.message || String(err) });
+    }
+    basesRenderArquivos(validos, resultados);
+  }
+
+  atualizarCardsBases();
+  saveState();
+  const ok = resultados.filter(r => r.ok);
+  const fail = resultados.length - ok.length;
+  toast(`${ok.length} arquivo(s) carregado(s).${fail ? ` ${fail} com erro.` : ''}`, fail ? 'info' : 'success');
+}
+
+function basesFileSelect(event) {
+  const files = Array.from(event.target.files || []);
+  carregarBasesArquivos(files, 'auto');
+  event.target.value = '';
+}
+
+function basesDrop(event) {
+  event.preventDefault();
+  document.getElementById('basesUploadZone')?.classList.remove('dragover');
+  carregarBasesArquivos(Array.from(event.dataTransfer?.files || []), 'auto');
+}
+
+async function carregarSICRO(event) {
+  await carregarBasesArquivos(Array.from(event.target.files || []), 'sicro');
+  event.target.value = '';
+}
+
+async function carregarSINAPI(event) {
+  await carregarBasesArquivos(Array.from(event.target.files || []), 'sinapi');
+  event.target.value = '';
+}
+
+async function carregarEstadual(event) {
+  await carregarBasesArquivos(Array.from(event.target.files || []), 'estadual');
+  event.target.value = '';
 }
 
 function atualizarLinksEstadual() {
@@ -6525,17 +6662,10 @@ function selecionarInsumo(cod) {
   loadSinapiBase = async function() {
     await orig();
     if (STATE.sinapiBase.length > 0) {
-      const el = document.getElementById('sinapi-count-b');
-      const elMes = document.getElementById('sinapi-mes-b');
-      if (el) { el.textContent = STATE.sinapiBase.length.toLocaleString('pt-BR'); el.className = 'base-stat base-loaded'; }
-      if (elMes) elMes.textContent = `insumos — ${STATE.sinapiMes||''}`;
-      document.getElementById('sinapi-status-dot').textContent = '● Carregado';
-      document.getElementById('sinapi-status-dot').style.color = 'var(--green)';
       BASES.sinapi.items = STATE.sinapiBase;
       BASES.sinapi.loaded = true;
     }
-    renderPrioridade();
-    atualizarTotalBases();
+    atualizarCardsBases();
     atualizarLinksEstadual();
   };
 })();
