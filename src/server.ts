@@ -357,12 +357,41 @@ Manual completo disponivel em /manual e em /docs/manual_usuario_tlplanly.html.`;
 const SYSTEM_PROMPT = BASE_PROMPT + OPERATION_MANUAL_CONTEXT + SKILLS_CONTEXT;
 
 // ── SaaS Auth + Persistencia ─────────────────────────────────────────────
+app.get('/api/plans', async (_req: Request, res: Response) => {
+  const plans = await saasStore.listPlans();
+  res.json({ plans });
+});
+
+app.post('/api/auth/validate-coupon', async (req: Request, res: Response) => {
+  const { couponCode } = req.body || {};
+  const validation = await saasStore.validateCoupon(couponCode);
+  if (!validation.valid) {
+    res.status(400).json({ valid: false, error: validation.reason || 'Cupom invalido.' });
+    return;
+  }
+  res.json({
+    valid: true,
+    coupon: {
+      code: validation.coupon?.code,
+      expiresAt: validation.coupon?.expiresAt || null,
+      maxUses: validation.coupon?.maxUses,
+      usedCount: validation.coupon?.usedCount,
+      trialDays: validation.coupon?.trialDays || 0,
+    },
+    plan: validation.plan,
+  });
+});
+
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   try {
-    const { name, email, password, orgName } = req.body || {};
+    const { name, email, password, orgName, couponCode } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
     if (!name || !normalizedEmail) {
       res.status(400).json({ error: 'Nome e e-mail sao obrigatorios.' });
+      return;
+    }
+    if (!couponCode || !String(couponCode).trim()) {
+      res.status(400).json({ error: 'Cupom ou codigo de autorizacao obrigatorio.' });
       return;
     }
     assertPassword(password);
@@ -373,6 +402,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       passwordHash: hash,
       passwordSalt: salt,
       orgName,
+      couponCode,
     });
     await createUserSession(res, user);
     res.status(201).json({ user, persistence: saasStore.mode });
@@ -397,6 +427,11 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      planId: user.planId,
+      planName: user.planName,
+      planStatus: user.planStatus,
+      planExpiresAt: user.planExpiresAt,
+      seats: user.seats,
     };
     await createUserSession(res, publicUser);
     res.json({ user: publicUser, persistence: saasStore.mode });

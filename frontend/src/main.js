@@ -55,6 +55,14 @@ let CLOUD = {
 
 const AUTH_REQUIRED = true;
 
+let PRICING_PLANS = [
+  { id:'trial_authorized', name:'Teste Autorizado', description:'Acesso controlado para demonstracao assistida por cupom.', annualMonthlyPriceCents:0, monthlyPriceCents:0, includedUsers:1, maxProjects:2, maxAiMessagesMonthly:50, maxOcrPagesMonthly:20, features:['7 dias de avaliacao','Importacao limitada','SINAPI/SICRO/ORSE','Copilot limitado'], sortOrder:10 },
+  { id:'professional', name:'Profissional', description:'Para engenheiro, arquiteto, orcamentista ou consultor individual.', annualMonthlyPriceCents:6200, monthlyPriceCents:8900, includedUsers:1, maxProjects:20, maxAiMessagesMonthly:800, maxOcrPagesMonthly:150, features:['Orcamentos completos','Importacao Excel/PDF','BDI, encargos e curva ABC','Readequacao de proposta','Exportacao Excel/PDF'], sortOrder:20 },
+  { id:'team', name:'Equipe', description:'Para pequenas equipes de engenharia e construtoras em crescimento.', annualMonthlyPriceCents:10500, monthlyPriceCents:14990, includedUsers:3, maxProjects:80, maxAiMessagesMonthly:2500, maxOcrPagesMonthly:500, features:['Ate 3 usuarios','OCR em lote','Composicoes proprias','Auditoria SINAPI/BDI','Relatorios tecnicos'], sortOrder:30 },
+  { id:'licitacoes_pro', name:'Licitacoes Pro', description:'Para empresas que atuam com pregoes, propostas e controle de conformidade.', annualMonthlyPriceCents:21900, monthlyPriceCents:31400, includedUsers:5, maxProjects:250, maxAiMessagesMonthly:8000, maxOcrPagesMonthly:1500, features:['Ate 5 usuarios','Relatorio TCU/CGU','Readequacao avancada de propostas','Auditoria avancada','Prioridade em bases oficiais'], sortOrder:40 },
+  { id:'public_control', name:'Orgao Publico / Controle', description:'Para fiscalizacao, controle interno, municipios e equipes com governanca.', annualMonthlyPriceCents:0, monthlyPriceCents:0, includedUsers:10, maxProjects:1000, maxAiMessagesMonthly:20000, maxOcrPagesMonthly:5000, features:['Usuarios 10+','Ambiente isolado','Painel administrativo','Auditoria TCU/CGU','API e integracoes sob proposta'], sortOrder:50 }
+];
+
 // Load from localStorage
 try {
   const s = localStorage.getItem('tlplanly_state');
@@ -347,6 +355,92 @@ async function cloudApi(path, options = {}) {
   return data;
 }
 
+function priceText(cents) {
+  const value = Number(cents || 0);
+  if (!value) return 'Sob proposta';
+  return (value / 100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }) + '/mes';
+}
+
+function planUsageText(plan) {
+  const users = plan.includedUsers >= 10 ? '10+ usuarios' : `${plan.includedUsers} usuario${plan.includedUsers > 1 ? 's' : ''}`;
+  const projects = plan.maxProjects >= 1000 ? 'obras amplas' : `${plan.maxProjects} obras`;
+  return `${users} · ${projects}`;
+}
+
+function planCard(plan, compact=false) {
+  const isPro = plan.id === 'licitacoes_pro';
+  const features = (plan.features || []).slice(0, compact ? 3 : 6)
+    .map(feature => `<li>${escapeHtml(feature)}</li>`).join('');
+  return `<div class="pricing-card ${isPro ? 'featured' : ''}">
+    ${isPro ? '<div class="pricing-ribbon">Mais completo</div>' : ''}
+    <div class="pricing-name">${escapeHtml(plan.name)}</div>
+    <div class="pricing-desc">${escapeHtml(plan.description || '')}</div>
+    <div class="pricing-price">${priceText(plan.annualMonthlyPriceCents)}</div>
+    <div class="pricing-note">${plan.monthlyPriceCents ? 'valor no anual · mensal cheio ' + priceText(plan.monthlyPriceCents) : 'comercial sob validacao'}</div>
+    <div class="pricing-usage">${escapeHtml(planUsageText(plan))}</div>
+    <ul class="pricing-features">${features}</ul>
+    ${compact ? '' : '<button class="btn btn-outline btn-sm" onclick="cloudOpen()">Solicitar / usar cupom</button>'}
+  </div>`;
+}
+
+function renderPricingPlans() {
+  const ordered = [...PRICING_PLANS].sort((a, b) => (a.sortOrder || 100) - (b.sortOrder || 100));
+  const main = document.getElementById('pricing-cards');
+  if (main) main.innerHTML = ordered.map(plan => planCard(plan)).join('');
+  const mini = document.getElementById('login-pricing-cards');
+  if (mini) mini.innerHTML = ordered.filter(plan => plan.id !== 'trial_authorized').slice(0, 3).map(plan => planCard(plan, true)).join('');
+}
+
+async function pricingInit() {
+  try {
+    const data = await cloudApi('/api/plans');
+    if (Array.isArray(data.plans) && data.plans.length) PRICING_PLANS = data.plans;
+  } catch {}
+  renderPricingPlans();
+}
+
+function showPricingDetails() {
+  if (!authIsLocked()) {
+    cloudClose();
+    showView('planos');
+    return;
+  }
+  const el = document.getElementById('login-pricing-cards');
+  if (el) el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+async function cloudValidateCoupon() {
+  const input = document.getElementById('cloud-coupon');
+  const status = document.getElementById('coupon-status');
+  const couponCode = input?.value?.trim() || '';
+  if (!couponCode) {
+    if (status) {
+      status.textContent = 'Obrigatorio para criar conta. O cupom pode ter prazo e limite de uso.';
+      status.className = 'form-help';
+    }
+    return false;
+  }
+  try {
+    const data = await cloudApi('/api/auth/validate-coupon', {
+      method: 'POST',
+      body: JSON.stringify({ couponCode })
+    });
+    if (status) {
+      const exp = data.coupon?.expiresAt ? ' · expira em ' + new Date(data.coupon.expiresAt).toLocaleDateString('pt-BR') : '';
+      const uses = data.coupon?.maxUses ? ` · usos ${data.coupon.usedCount}/${data.coupon.maxUses}` : '';
+      status.textContent = `Cupom valido: ${data.plan?.name || 'plano autorizado'}${exp}${uses}`;
+      status.className = 'form-help ok';
+    }
+    return true;
+  } catch (err) {
+    if (status) {
+      status.textContent = err.message || 'Cupom invalido, expirado ou sem usos disponiveis.';
+      status.className = 'form-help error';
+    }
+    return false;
+  }
+}
+
 function authIsLocked() {
   return AUTH_REQUIRED && !CLOUD.user;
 }
@@ -460,6 +554,11 @@ function cloudRender() {
   const org = CLOUD.user.tenantName || CLOUD.user.tenant || 'Cliente TLPlanly';
   const orgEl = document.getElementById('cloud-user-org');
   if (orgEl) orgEl.textContent = `Cliente: ${org}`;
+  const planEl = document.getElementById('cloud-plan-name');
+  if (planEl) {
+    const expires = CLOUD.user.planExpiresAt ? ` · expira em ${new Date(CLOUD.user.planExpiresAt).toLocaleDateString('pt-BR')}` : '';
+    planEl.textContent = `${CLOUD.user.planName || 'Plano autorizado'}${expires}`;
+  }
   const isolation = document.getElementById('cloud-isolation-text');
   if (isolation) isolation.textContent = `Ambiente "${org}" isolado. Outros clientes nao podem listar, abrir, alterar ou apagar estas obras.`;
   const select = document.getElementById('cloud-projects');
@@ -529,11 +628,15 @@ async function cloudRegister() {
     const email = document.getElementById('cloud-email').value.trim();
     const password = document.getElementById('cloud-password').value;
     const orgName = document.getElementById('cloud-org').value.trim();
+    const couponCode = document.getElementById('cloud-coupon').value.trim();
     if (!name || !email || !password) throw new Error('Informe nome, e-mail e senha.');
+    if (!couponCode) throw new Error('Informe o cupom ou codigo de autorizacao.');
+    const couponOk = await cloudValidateCoupon();
+    if (!couponOk) throw new Error('Cupom invalido, expirado ou sem usos disponiveis.');
     cloudSetStatus('Criando conta...');
     const data = await cloudApi('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ name, email, password, orgName })
+      body: JSON.stringify({ name, email, password, orgName, couponCode })
     });
     CLOUD.user = data.user;
     CLOUD.persistence = data.persistence || 'local';
@@ -738,6 +841,7 @@ function showView(id) {
   if (id==='backups') backupRender();
   if (id==='analisador') analisadorRender();
   if (id==='relatorio') renderRelatorioPreview();
+  if (id==='planos') renderPricingPlans();
   if (id==='config') syncConfigForm();
   if (id==='sinapi') renderSinapiBase();
   if (id==='bdi') { syncBDIInputsFromState(); renderBDIState(); showEncargos('nd'); renderBDIComp(); }
@@ -2320,6 +2424,7 @@ window.addEventListener('DOMContentLoaded', () => {
   cotacoesRender();
   frentesServicoRender();
   preencherSelectsOperacionais();
+  pricingInit();
   cloudInit();
 });
 

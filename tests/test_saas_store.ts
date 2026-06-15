@@ -11,6 +11,13 @@ async function main(): Promise<void> {
   const store = new FileSaasStore(storePath);
   await store.init();
 
+  const plans = await store.listPlans();
+  assert.ok(plans.some(plan => plan.id === 'professional'));
+
+  const couponValidation = await store.validateCoupon('TLPLANLY-DEMO-7D');
+  assert.equal(couponValidation.valid, true);
+  assert.equal(couponValidation.plan?.id, 'trial_authorized');
+
   const pwd = hashPassword('senha-forte-123');
   const user = await store.createUser({
     name: 'Carlos',
@@ -18,12 +25,18 @@ async function main(): Promise<void> {
     passwordHash: pwd.hash,
     passwordSalt: pwd.salt,
     orgName: 'TechLicense',
+    couponCode: 'TLPLANLY-DEMO-7D',
   });
 
   assert.equal(user.email, 'carlos@exemplo.com');
   assert.equal(user.role, 'admin');
   assert.equal(user.tenantName, 'TechLicense');
+  assert.equal(user.planId, 'trial_authorized');
+  assert.equal(user.planName, 'Teste Autorizado');
   assert.equal(verifyPassword('senha-forte-123', pwd.salt, pwd.hash), true);
+
+  const couponAfterUse = await store.validateCoupon('TLPLANLY-DEMO-7D');
+  assert.equal(couponAfterUse.coupon?.usedCount, 1);
 
   const storedUser = await store.findUserByEmail('carlos@exemplo.com');
   assert.ok(storedUser);
@@ -63,8 +76,10 @@ async function main(): Promise<void> {
     passwordHash: otherPwd.hash,
     passwordSalt: otherPwd.salt,
     orgName: 'Outro Orgao',
+    couponCode: 'TLPLANLY-PRO-2026',
   });
   assert.equal(otherUser.tenantName, 'Outro Orgao');
+  assert.equal(otherUser.planId, 'professional');
   assert.equal((await store.listProjects(otherUser)).length, 0);
   assert.equal(await store.getProject(otherUser, project.id), null);
   assert.equal(await store.updateProject(otherUser, project.id, {

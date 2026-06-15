@@ -60,6 +60,7 @@
   <div class="nav-item" onclick="showView('relatorio')"><span class="nav-icon">&#128438;</span>Exportar / Relatório</div>
   <div class="nav-section" style="margin-top:8px">Sistema</div>
   <div class="nav-item" onclick="showView('bases')"><span class="nav-icon">&#128452;</span>Bases de Referência</div>
+  <div class="nav-item" onclick="showView('planos')"><span class="nav-icon">&#128179;</span>Planos e Preços</div>
   <div class="nav-item" onclick="showView('config')"><span class="nav-icon">&#9881;</span>Configurações</div>
 </nav>
 
@@ -1672,6 +1673,43 @@
   </div>
 </div>
 
+<!-- ═══════════════ PLANOS E PREÇOS ═══════════════ -->
+<div id="view-planos" class="view">
+  <div class="page-title">Planos e <span class="gold-text">Preços</span></div>
+  <div class="page-sub">Acesso controlado por cupom, planos por usuario e funcionalidades, com posicionamento cerca de 30% abaixo das referencias publicas analisadas.</div>
+
+  <div class="pricing-hero">
+    <div>
+      <div class="sec-title">Cadastro <span>somente autorizado</span></div>
+      <p>Para criar conta, o usuario precisa informar um cupom valido. Cada cupom pode ter prazo de expiracao, limite de usos e plano vinculado.</p>
+    </div>
+    <button class="btn btn-gold" onclick="cloudOpen()">Tenho um codigo</button>
+  </div>
+
+  <div id="pricing-cards" class="pricing-grid"></div>
+
+  <div class="card mt-4">
+    <div class="sec-header"><div class="sec-title">Controle de <span>cupons</span></div></div>
+    <div class="grid grid-3">
+      <div class="metric-card">
+        <div class="metric-label">Prazo</div>
+        <div class="metric-value">Expiracao</div>
+        <div class="metric-sub">bloqueia cupom vencido automaticamente</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Uso</div>
+        <div class="metric-value">Limite</div>
+        <div class="metric-sub">permite cupom de uso unico ou lote controlado</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Plano</div>
+        <div class="metric-value">Vinculo</div>
+        <div class="metric-sub">cada codigo libera o plano autorizado</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <!-- CLOUD ACCOUNT -->
@@ -1707,10 +1745,22 @@
         <label class="form-label">Organizacao</label>
         <input id="cloud-org" class="form-input" placeholder="Construtora ou orgao"/>
       </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Cupom ou codigo de autorizacao</label>
+        <input id="cloud-coupon" class="form-input" autocomplete="off" placeholder="Ex.: TLPLANLY-DEMO-7D" onblur="cloudValidateCoupon()"/>
+        <small id="coupon-status" class="form-help">Obrigatorio para criar conta. O cupom pode ter prazo e limite de uso.</small>
+      </div>
     </div>
     <div class="cloud-actions">
       <button class="btn btn-gold" onclick="cloudLogin()">Entrar</button>
       <button class="btn btn-outline" onclick="cloudRegister()">Criar conta</button>
+    </div>
+    <div class="login-pricing">
+      <div class="login-pricing-head">
+        <strong>Planos TLPlanly</strong>
+        <button class="btn btn-outline btn-sm" onclick="renderPricingPlans();showPricingDetails()">Ver detalhes</button>
+      </div>
+      <div id="login-pricing-cards" class="pricing-mini-grid"></div>
     </div>
   </div>
 
@@ -1746,7 +1796,7 @@
       <button class="btn btn-outline" onclick="cloudLoadSelectedProject()">Carregar</button>
       <button class="btn btn-outline" onclick="cloudCreateProject()">Nova obra</button>
     </div>
-    <div class="cloud-note">O TLPlanly continua salvando localmente. Com conta ativa, o orcamento tambem fica persistido por obra.</div>
+    <div class="cloud-note">Plano ativo: <strong id="cloud-plan-name">Aguardando plano</strong>. Com conta ativa, o orcamento fica persistido por obra e isolado por cliente.</div>
   </div>
 </div>
 
