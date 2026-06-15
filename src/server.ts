@@ -337,21 +337,29 @@ const OPERATION_MANUAL_CONTEXT = `
 
 ## Manual Operacional TLPlanly
 Quando o usuario perguntar como operar o sistema, use este roteiro:
-- **Central de Documentos**: anexar edital, TR, ETP, projeto basico, memorial, planilhas, pranchas e fotos; selecionar lote; analisar agora; reabrir revisoes; manter rastreabilidade.
-- **Importar Planilha/PDF**: aceitar Excel, CSV, PDF digital, PDF escaneado e imagem; OCR entra quando PDF nao tem texto util; revisar match SINAPI antes de confirmar.
-- **Analisar Documentos**: usar quando nao existe planilha pronta; classifica documentos, extrai escopo/especificacoes, sugere servicos, mostra confianca e pendencias.
-- **Elaborar Orcamento**: ajustar codigo, descricao, unidade, quantidade, preco, referencia, categoria e capitulo; criar item proprio ou usar SINAPI.
+- **Acesso e planos**: login obrigatorio; cadastro exige codigo autorizado; Planos e Precos mostra Teste Autorizado, Profissional, Equipe, Licitacoes Pro e Orgao Publico/Controle.
+- **Dashboard**: resumo de totais, BDI, itens criticos, graficos e atalhos.
+- **Configuracoes**: UF, tolerancia, regime de encargos, tipo de obra, moeda e modelo de relatorio.
+- **Bases de Referencia**: carregar lote SINAPI/SICRO/ORSE/estaduais/DER-MG com arquivos onerados, desonerados, produtos, insumos, servicos e composicoes.
 - **BDI / Encargos**: preencher AC, S, R, DF, L e I; escolher tipo de obra; conferir limite TCU; clicar em Aplicar ao Orcamento.
+- **Elaborar Orcamento**: criar do zero, pesquisar bases, importar Excel/PDF, ajustar codigo, descricao, unidade, quantidade, preco, referencia, categoria e capitulo; readequar proposta de pregao por valor vencedor/desconto.
+- **Importar Planilha/PDF**: aceitar Excel, CSV, PDF digital, PDF escaneado e imagem; mapear colunas; bloquear cabecalhos/restos de PDF; revisar antes de confirmar.
+- **OCR**: usar quando PDF/imagem nao tem texto aproveitavel; revisar virgulas, unidades e quantidades.
+- **Central de Documentos**: anexar edital, TR, ETP, projeto basico, memorial, planilhas, pranchas e fotos; selecionar lote; analisar; reabrir revisoes; manter rastreabilidade.
+- **Analisar Documentos**: usar quando nao existe planilha pronta; classifica documentos, extrai escopo/especificacoes, sugere servicos, mostra confianca e pendencias.
 - **Composicoes (CPU)**: criar composicoes analiticas com insumos, coeficientes, encargos e custo unitario.
+- **Custos Horarios**: cadastrar equipamentos, mao de obra e custos operacionais por hora.
+- **Cotacoes**: cadastrar/importar precos de fornecedores e aplicar por menor preco, media, mediana ou margem.
+- **Frentes de Servico**: organizar itens por local, etapa ou equipe; acompanhar planejado e realizado.
 - **Curva ABC**: gerar depois do orcamento para priorizar itens de maior impacto.
 - **Analise SINAPI**: comparar precos com referencia; revisar conforme, alerta, critico e nao encontrado.
 - **Conformidade BDI**: verificar BDI contra limites de referencia.
 - **Planejamento, Medicoes e Quantitativos**: transformar planilha em cronograma, acompanhar executado e criar memoria quantitativa.
+- **Backups**: criar ponto de restauracao antes de importacoes, desconto de pregao ou grandes alteracoes.
 - **Exportar / Relatorio**: preencher dados da obra, responsavel, CREA/CAU e ART/RRT; exportar Excel/PDF profissional.
-- **Backups**: criar ponto de restauracao antes de importacoes ou grandes alteracoes.
 
 Regra de ouro: nada extraido de documentos, OCR ou PDF deve entrar automaticamente no orcamento sem revisao humana.
-Manual completo disponivel em /manual e em /docs/manual_usuario_tlplanly.html.`;
+Manual completo versao 2.0 disponivel em /manual e em /docs/manual_usuario_tlplanly.html.`;
 
 // System prompt final = base + manual operacional + skills carregados dinamicamente
 const SYSTEM_PROMPT = BASE_PROMPT + OPERATION_MANUAL_CONTEXT + SKILLS_CONTEXT;

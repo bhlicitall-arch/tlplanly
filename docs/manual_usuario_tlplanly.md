@@ -1,653 +1,963 @@
-# Manual de Operação do TLPlanly
+# Manual de Instruções do TLPlanly
 
-Versão: 1.0
-Produto: TLPlanly-Orçamentos
-Público: usuários sem conhecimento técnico em sistemas, construtoras, fiscais, analistas de licitação e órgãos públicos.
+Versão: 2.0  
+Atualização: 15/06/2026  
+Produto: TLPlanly-Orçamentos  
+Público: construtoras, orçamentistas, engenheiros, fiscais, analistas de licitação, órgãos públicos e equipes de controle.
 
 ---
 
 ## 1. O que é o TLPlanly
 
-O TLPlanly é uma plataforma para criar, importar, revisar, auditar e exportar orçamentos de obras. Ele pode ser usado por dois perfis:
+O TLPlanly é uma plataforma SaaS para elaborar, importar, revisar, auditar, planejar e exportar orçamentos de obras. Ele pode ser usado para:
 
-- **Construtor / orçamentista:** monta planilhas, ajusta quantidades, cria composições, calcula BDI e exporta relatórios.
-- **Auditor / órgão público:** confere se preços, BDI, descontos e referências estão conformes com SINAPI, SICRO, legislação e boas práticas.
+- criar planilhas orçamentárias do zero;
+- importar planilhas em Excel, CSV, PDF digital, PDF escaneado e imagens;
+- anexar edital, termo de referência, ETP, projeto básico, memorial, pranchas e documentos da obra;
+- rodar OCR quando o arquivo estiver digitalizado;
+- revisar extrações antes de enviar ao orçamento;
+- calcular BDI e encargos sociais;
+- montar composições de preço unitário;
+- comparar preços com SINAPI, SICRO, ORSE e bases estaduais;
+- gerar Curva ABC, memória de cálculo e relatórios;
+- readequar planilha após desconto de pregão;
+- organizar planejamento, medições, quantitativos, frentes de serviço, custos horários e cotações.
 
-Frase-guia:
+Frase operacional:
 
-> Anexe documentos ou planilhas. O TLPlanly monta uma primeira versão para revisão, calcula, audita e gera relatórios profissionais.
-
----
-
-## 2. Fluxo recomendado para iniciantes
-
-Use esta sequência quando estiver começando:
-
-1. Acesse **Configurações** e confira UF, tolerância, tipo de obra e regime de encargos.
-2. Acesse **Bases de Referência** e confira se a base SINAPI/SICRO/ORSE está carregada.
-3. Acesse **BDI / Encargos** e configure o BDI da obra.
-4. Acesse **Central de Documentos** para anexar edital, TR, ETP, projeto básico, memorial, planilhas e pranchas.
-5. Use **Analisar Documentos** ou **Importar Planilha/PDF** para extrair dados.
-6. Revise a extração. Nada entra automaticamente no orçamento.
-7. Clique em **Enviar para Elaborar Orçamento**.
-8. Ajuste a planilha em **Elaborar Orçamento**.
-9. Gere **Curva ABC**, **Memória de Cálculo**, **Auditoria SINAPI** e **Conformidade BDI**.
-10. Exporte em **Exportar / Relatório**.
+> Anexe documentos ou planilhas. O TLPlanly extrai, organiza, calcula, audita e gera a planilha para revisão e exportação.
 
 ---
 
-## 3. Conta, obras salvas e segurança de dados
+## 2. Acesso, conta e planos
 
-No topo do sistema existe o controle de conta/salvamento:
+O TLPlanly exige login para uso da plataforma.
 
-- **Local:** os dados estão salvos somente no navegador.
-- **Conta:** usuário conectado, mas sem obra ativa.
-- **Pendente:** há alterações aguardando salvamento.
-- **Salvando:** o sistema está gravando a obra.
-- **Salvo:** a obra foi persistida.
-- **Erro:** houve falha no salvamento.
+### Como acessar
 
-Como usar:
+1. Abra o sistema.
+2. Informe e-mail e senha, se já tiver conta.
+3. Para criar conta, preencha nome, e-mail, senha, organização e o código recebido.
+4. Clique em **Criar conta**.
+5. Após entrar, o sistema libera os módulos e cria ou carrega a obra ativa.
 
-1. Clique no ícone de conta/salvamento no topo.
-2. Crie uma conta ou entre com e-mail e senha.
-3. Crie uma **obra/orçamento salvo**.
-4. Trabalhe normalmente. O TLPlanly salva automaticamente.
-5. Antes de sair, confira se o status está **Salvo**.
+### Código de autorização
 
-Boa prática: crie uma obra para cada contratação, edital, empreendimento ou processo.
+O código recebido libera o plano correspondente. Se o código estiver inválido, vencido ou já utilizado, o cadastro será bloqueado.
+
+### Planos
+
+A tela **Planos e Preços** mostra os planos disponíveis:
+
+- **Teste Autorizado:** uso demonstrativo.
+- **Profissional:** uso individual para orçamentistas, engenheiros e consultores.
+- **Equipe:** pequenas equipes de engenharia e construtoras.
+- **Licitações Pro:** empresas que atuam com pregões, propostas e auditoria.
+- **Órgão Público / Controle:** equipes de fiscalização e controle.
+
+### Salvamento
+
+O sistema salva a obra vinculada ao cliente logado. O chip no topo mostra:
+
+- **Entrar:** usuário não autenticado.
+- **Conta:** usuário conectado, mas sem obra selecionada.
+- **Pendente:** existem alterações aguardando salvamento.
+- **Salvando:** gravação em andamento.
+- **Salvo:** obra persistida.
+- **Erro:** falha de salvamento.
+
+Boa prática: confirme o status **Salvo** antes de fechar o navegador.
+
+---
+
+## 3. Fluxo recomendado para iniciantes
+
+Use este roteiro quando estiver começando:
+
+1. Entre na conta.
+2. Abra ou crie a obra.
+3. Vá em **Configurações** e confira UF, tipo de obra, tolerância e encargos.
+4. Vá em **Bases de Referência** e confirme SINAPI/SICRO/ORSE ou carregue as bases necessárias.
+5. Vá em **BDI / Encargos** e configure o BDI.
+6. Se tiver planilha pronta, use **Importar Planilha/PDF**.
+7. Se tiver edital, TR, ETP, projeto básico ou memorial, use **Central de Documentos** ou **Analisar Documentos**.
+8. Revise todos os itens extraídos.
+9. Envie a revisão para **Elaborar Orçamento**.
+10. Ajuste itens, quantidades, preços, capítulos, categorias e composições.
+11. Gere **Curva ABC**, **Memória de Cálculo**, **Análise SINAPI** e **Conformidade BDI**.
+12. Exporte em **Excel** e **PDF**.
+
+Regra principal: nada extraído de documento, OCR ou PDF deve entrar no orçamento sem revisão humana.
 
 ---
 
 ## 4. Modos de operação
 
-No topo existe a alternância entre:
+No topo existem dois modos:
 
-- **Construtor:** foco em montar e ajustar orçamento.
-- **Auditor:** foco em conferir preços, BDI e conformidade.
+- **Construtor:** foco em montar, ajustar, importar e exportar planilhas.
+- **Auditor:** foco em conferir preços, BDI, descontos, referências e conformidade.
 
-Use **Construtor** quando estiver preparando a planilha.
-Use **Auditor** quando estiver analisando proposta de terceiros ou validando desconto/conformidade.
+Use **Construtor** quando estiver preparando uma proposta.  
+Use **Auditor** quando estiver fiscalizando, conferindo proposta de terceiro ou analisando desconto.
 
 ---
 
 ## 5. Dashboard
 
-O **Dashboard** mostra um resumo do orçamento ativo:
+O **Dashboard** mostra a situação geral da obra:
 
+- total do orçamento;
 - quantidade de itens;
-- subtotal;
-- BDI;
+- BDI aplicado;
 - total com BDI;
+- itens acima da referência;
+- gráficos de distribuição;
 - itens críticos;
-- gráficos e visão geral.
+- atalhos para frentes, cotações e exportação.
 
-Use o Dashboard para responder rapidamente:
+Como usar:
 
-- Quanto custa a obra?
-- O BDI está configurado?
-- Existem itens críticos?
-- O orçamento já está pronto para relatório?
+1. Abra **Dashboard**.
+2. Confira se há itens no orçamento.
+3. Verifique se o BDI aparece configurado.
+4. Observe itens críticos e distribuição por categoria.
+5. Use os atalhos para abrir Curva ABC, Frentes ou Cotações.
+
+Também é possível exportar o dashboard em HTML para apresentação rápida.
 
 ---
 
 ## 6. Configurações
 
-A tela **Configurações** define parâmetros gerais da obra:
+A tela **Configurações** define os parâmetros gerais da obra.
 
-- **UF:** estado usado para buscar preços de referência.
-- **Tolerância:** percentual aceito acima da referência antes de virar alerta.
+Campos principais:
+
+- **UF:** estado usado para referências.
+- **Tolerância:** percentual aceito antes de gerar alerta.
 - **Regime de encargos:** desonerado ou não desonerado.
-- **Tipo de obra:** civil, elétrica, fornecimento de material etc.
+- **Tipo de obra:** civil, elétrica, materiais ou outro enquadramento.
 - **Moeda de exibição:** BRL, USD, EUR ou GBP.
-- **Modelo de relatório:** órgão público, construtora, medição ou auditoria.
+- **Cotação da moeda:** usada quando exibir valores convertidos.
+- **Modelo de relatório:** público, construtora, medição ou auditoria.
 
-Passo a passo:
+Como usar:
 
 1. Abra **Configurações**.
-2. Escolha a UF da obra.
-3. Defina tolerância, tipo de obra e regime de encargos.
-4. Salve as configurações.
+2. Escolha a UF correta.
+3. Defina a tolerância de auditoria.
+4. Selecione regime de encargos e tipo de obra.
+5. Ajuste moeda e modelo de relatório, se necessário.
+6. Salve e volte ao orçamento.
 
-Importante: a UF e o regime de encargos afetam a interpretação da base de preços.
+Impacto: UF, encargos e tipo de obra afetam auditoria, BDI e relatório.
 
 ---
 
 ## 7. Bases de Referência
 
-A tela **Bases de Referência** concentra bases como:
+A tela **Bases de Referência** gerencia tabelas de preços.
 
-- SINAPI;
-- SICRO 3;
+Bases previstas:
+
+- SINAPI/CAIXA;
+- SICRO/DNIT;
 - ORSE;
-- bases estaduais/municipais, quando disponíveis.
+- bases estaduais;
+- DER-MG;
+- SUDECAP;
+- EMOP;
+- SEINFRA e bases equivalentes.
 
-Para que serve:
+Funcionalidades:
 
-- buscar preços oficiais;
-- comparar planilhas importadas;
-- auditar propostas;
-- apoiar composições próprias.
+- carregar lote de planilhas;
+- aceitar arquivos onerados e desonerados;
+- aceitar planilhas de produtos, insumos, serviços e composições separadas;
+- carregar XLSX, XLS, CSV e ZIP;
+- buscar por código ou descrição em todas as bases;
+- marcar bases ativas;
+- consultar total de itens disponíveis;
+- usar OCR auxiliar em PDFs escaneados.
 
-Como usar:
+Como carregar bases em lote:
 
 1. Abra **Bases de Referência**.
-2. Confira a base ativa e a UF.
-3. Se necessário, carregue arquivo SINAPI em XLSX/ZIP.
-4. Use a busca unificada para localizar insumos.
+2. Clique em **Selecionar lote** ou arraste arquivos para a área indicada.
+3. Envie todos os arquivos da competência.
+4. Aguarde o processamento.
+5. Confira se os cards das bases indicam que estão ativos.
+6. Use a busca universal para confirmar que os itens foram carregados.
 
-Regra prática:
-
-- edificações, escolas, postos de saúde, reformas: geralmente SINAPI;
-- rodovias, pontes e infraestrutura DNIT: geralmente SICRO;
-- bases estaduais podem complementar referências locais.
+Boa prática: carregue a base de referência antes de auditar ou elaborar orçamento.
 
 ---
 
-## 8. BDI / Encargos
+## 8. BDI e Encargos Sociais
 
-O BDI é o percentual aplicado sobre o custo direto para formar o preço de venda da obra.
+A tela **BDI / Encargos** calcula BDI conforme fórmula adotada para obras públicas:
 
-Componentes do BDI:
+BDI = [(1 + AC + S + R) × (1 + DF) × (1 + L) / (1 - I) - 1] × 100
 
-- **AC:** Administração Central.
-- **S:** Seguros e Garantias.
-- **R:** Riscos.
-- **DF:** Despesas Financeiras.
-- **L:** Lucro.
-- **I:** Tributos.
+Campos:
 
-Como configurar:
+- **AC:** administração central.
+- **S:** seguros.
+- **R:** riscos.
+- **DF:** despesas financeiras.
+- **L:** lucro.
+- **I:** impostos.
+
+Funcionalidades:
+
+- cálculo automático do BDI;
+- alerta de limite TCU;
+- comparação por tipo de obra;
+- aplicação do BDI ao orçamento;
+- alternância de encargos sociais desonerado/não desonerado;
+- composição detalhada para relatório.
+
+Como usar:
 
 1. Abra **BDI / Encargos**.
-2. Preencha os seis componentes.
+2. Preencha os componentes.
 3. Escolha o tipo de obra.
-4. Confira o limite TCU indicado na tela.
-5. Clique em **Aplicar ao Orçamento**.
+4. Confira o BDI calculado.
+5. Verifique o alerta de limite.
+6. Clique em **Aplicar ao Orçamento**.
 
-O sistema não deve usar BDI “de teste” sem confirmação. Se aparecer “Não configurado”, preencha e aplique.
-
-Encargos:
-
-- **Não desonerado:** regime mais comum.
-- **Desonerado:** regime com CPRB, quando aplicável.
-
-Não misture regimes sem justificativa técnica.
+Se o BDI ficar acima do limite, o sistema alerta. Nesses casos, revise os componentes ou prepare justificativa técnica.
 
 ---
 
 ## 9. Elaborar Orçamento
 
-É a tela principal para montar e ajustar a planilha.
+A tela **Elaborar Orçamento** é o centro de montagem da planilha.
 
-Você pode criar orçamento de três formas:
+É possível:
 
-1. **Do zero:** pesquisar item SINAPI ou criar item próprio.
-2. **Por importação:** enviar Excel, CSV, PDF digital, PDF escaneado ou imagem.
-3. **Por documentos:** enviar uma pré-planilha gerada pelo Analisador de Documentos.
+- criar item próprio;
+- pesquisar item SINAPI/base;
+- importar Excel/PDF;
+- ajustar descrição, código, unidade, quantidade e preço;
+- definir categoria e capítulo;
+- reordenar itens;
+- duplicar itens;
+- zerar quantidades sem apagar estrutura;
+- aplicar BDI;
+- conferir total com BDI;
+- enviar dados para Curva ABC, auditoria e relatórios.
 
-Campos da planilha:
+### Criar orçamento do zero
+
+1. Abra **Elaborar Orçamento**.
+2. Pesquise um serviço/insumo na base.
+3. Selecione o item.
+4. Informe quantidade.
+5. Ajuste preço, unidade, capítulo e categoria, se necessário.
+6. Repita até montar a planilha.
+7. Salve e gere relatório.
+
+### Importar dentro de Elaborar
+
+1. Clique em **Importar Excel/PDF**.
+2. Selecione o arquivo.
+3. Revise a extração.
+4. Confirme o envio para orçamento.
+5. Ajuste os itens na tabela editável.
+
+### Readequar proposta de pregão
+
+Use quando o edital possui planilha estimativa e, após o lance, o cliente precisa entregar planilha ajustada.
+
+1. Importe ou monte a planilha estimativa.
+2. Abra o bloco **Readequar Proposta do Pregão**.
+3. Informe valor original ou clique em **Usar total atual**.
+4. Informe valor vencedor ou percentual de desconto.
+5. Clique em **Calcular prévia**.
+6. Confira o fator de ajuste.
+7. Clique em **Aplicar na planilha**.
+8. Exporte Excel e PDF.
+
+### Desconto avançado
+
+Use quando o desconto não deve ser linear para todos os itens.
+
+1. Abra **Desconto avançado por seleção**.
+2. Escolha o alvo: todos, categoria, capítulo ou itens Classe A.
+3. Informe filtro, quando aplicável.
+4. Informe percentual.
+5. Clique em **Aplicar seleção**.
+6. Confira o resumo antes de exportar.
+
+---
+
+## 10. Importar Planilha/PDF
+
+O módulo **Importar Planilha/PDF** extrai itens de arquivos externos.
+
+Tipos aceitos:
+
+- Excel XLSX/XLS;
+- CSV;
+- PDF digital;
+- PDF escaneado;
+- imagens PNG/JPG/TIFF;
+- arquivos vindos de editais.
+
+Funcionalidades:
+
+- upload de lote;
+- pré-visualização;
+- mapeamento inteligente de colunas;
+- mapeamento manual quando o layout é livre;
+- identificação de código, descrição, unidade, quantidade, preço unitário e total;
+- identificação de grupos de custo;
+- identificação de insumos;
+- identificação de composições;
+- validação de números;
+- bloqueio de cabeçalhos, fórmulas, restos de PDF e valores deslocados;
+- geração de memória em Excel/PDF;
+- envio para **Elaborar Orçamento**.
+
+Fluxo:
+
+1. Abra **Importar Planilha/PDF**.
+2. Arraste arquivos ou clique para selecionar.
+3. Escolha páginas inicial/final, se for PDF.
+4. Aguarde extração.
+5. Revise a grade.
+6. Ajuste mapeamento de colunas, se necessário.
+7. Verifique itens bloqueados ou com alerta.
+8. Confirme a importação.
+9. Envie os itens para **Elaborar Orçamento**.
+
+Para arquivos da estrutura TCOP/TOTVS, use a sequência: grupos de custos, insumos e depois composições.
+
+---
+
+## 11. OCR
+
+OCR é a leitura de texto em imagem ou PDF escaneado.
+
+O TLPlanly usa OCR no navegador para:
+
+- PDFs sem texto selecionável;
+- imagens de planilhas;
+- anexos digitalizados;
+- páginas escaneadas de edital.
+
+Como usar:
+
+1. Abra **Bases de Referência** ou **Importar Planilha/PDF**.
+2. Envie PDF escaneado ou imagem.
+3. Escolha idioma OCR, se disponível.
+4. Aguarde progresso por página.
+5. Revise os itens extraídos.
+6. Exporte memória ou envie para orçamento.
+
+Cuidados:
+
+- use arquivos com boa resolução;
+- prefira PDF digital ou Excel quando houver;
+- revise quantidades, vírgulas e unidades;
+- nunca aceite OCR sem conferência.
+
+---
+
+## 12. Central de Documentos da Obra
+
+A **Central de Documentos** organiza todos os arquivos vinculados à obra.
+
+Aceita:
+
+- edital;
+- termo de referência;
+- ETP;
+- projeto básico;
+- memorial descritivo;
+- planilhas;
+- pranchas;
+- PDFs digitais;
+- PDFs escaneados;
+- imagens;
+- Excel e CSV.
+
+Funcionalidades:
+
+- upload em lote;
+- classificação de documentos;
+- contadores de documentos, OCR e extrações;
+- histórico de análises;
+- reabertura de revisão;
+- exportação de dossiê em Excel/PDF;
+- envio para importação ou analisador.
+
+Como usar:
+
+1. Abra **Central de Documentos**.
+2. Arraste o lote de documentos.
+3. Confira tipo e status.
+4. Clique em **Analisar documentos** ou **Importar planilha/PDF**.
+5. Revise os resultados.
+6. Exporte o dossiê quando precisar comprovar rastreabilidade.
+
+---
+
+## 13. Analisador de Documentos da Obra
+
+O **Analisador de Documentos** usa documentos da obra para sugerir uma primeira versão de orçamento.
+
+Ele pode:
+
+- classificar arquivos;
+- extrair escopo;
+- extrair especificações;
+- identificar serviços prováveis;
+- sugerir itens preliminares;
+- cruzar descrição com bases de referência;
+- atribuir confiança;
+- apontar pendências;
+- gerar memória de análise;
+- enviar itens revisados para **Elaborar Orçamento**.
+
+Fluxo:
+
+1. Abra **Analisar Documentos**.
+2. Envie edital, TR, ETP, projeto básico, memorial e pranchas.
+3. Aguarde extração e classificação.
+4. Leia escopo e especificações encontradas.
+5. Revise a lista de serviços sugeridos.
+6. Confira confiança e pendências.
+7. Marque apenas itens válidos.
+8. Clique em **Enviar para Elaborar Orçamento**.
+
+Importante: o analisador gera estimativa preliminar. A responsabilidade técnica continua exigindo revisão humana.
+
+---
+
+## 14. Composições Analíticas (CPU)
+
+A tela **Composições (CPU)** monta composições de preço unitário.
+
+É possível:
+
+- criar CPU própria;
+- adicionar insumos;
+- informar coeficientes;
+- definir unidade;
+- calcular custo unitário;
+- vincular itens ao orçamento;
+- criar biblioteca de composições;
+- exportar biblioteca em Excel/PDF.
+
+Fluxo:
+
+1. Abra **Composições (CPU)**.
+2. Crie uma nova composição.
+3. Informe código, descrição e unidade.
+4. Adicione insumos por código ou descrição.
+5. Informe coeficiente de cada insumo.
+6. Confira custo total.
+7. Salve a composição.
+8. Use a CPU no orçamento ou exporte a biblioteca.
+
+Boa prática: revise coeficientes, encargos e origem dos preços antes de usar a CPU em relatório.
+
+---
+
+## 15. Custos Horários
+
+A tela **Custos Horários** controla equipamentos, mão de obra e custos operacionais por hora.
+
+Use para:
+
+- cadastrar equipamentos;
+- cadastrar mão de obra horária;
+- calcular custo horário produtivo/improdutivo;
+- organizar dados para composições;
+- exportar em Excel/PDF.
+
+Fluxo:
+
+1. Abra **Custos Horários**.
+2. Cadastre equipamento ou equipe.
+3. Informe custo, produtividade ou valor horário.
+4. Revise o total.
+5. Use o valor nas composições ou no orçamento.
+6. Exporte quando necessário.
+
+---
+
+## 16. Banco de Cotações
+
+A tela **Cotações** organiza preços de fornecedores e mercado.
+
+Funcionalidades:
+
+- cadastro manual de cotação;
+- importação Excel/CSV;
+- comparação por código e descrição;
+- aplicação aos custos;
+- escolha de critério: menor preço, média, mediana ou menor preço com margem;
+- atualização de orçamento, CPU ou ambos;
+- exportação em Excel/PDF.
+
+Como usar:
+
+1. Abra **Cotações**.
+2. Cadastre fornecedores ou importe arquivo.
+3. Revise código, descrição, unidade e preço.
+4. Escolha critério de aplicação.
+5. Clique em **Aplicar aos custos**.
+6. Confira o orçamento atualizado.
+7. Exporte o banco de cotações.
+
+---
+
+## 17. Frentes de Serviço
+
+A tela **Frentes de Serviço** separa a obra por local, etapa ou equipe.
+
+É possível:
+
+- cadastrar frentes manualmente;
+- criar frentes por capítulo;
+- vincular itens do orçamento a cada frente;
+- acompanhar planejado e realizado;
+- localizar pendências;
+- exportar Excel/PDF.
+
+Fluxo:
+
+1. Abra **Frentes de Serviço**.
+2. Clique em **Adicionar frente** ou **Criar por capítulo**.
+3. Vincule os itens do orçamento.
+4. Confira valor planejado por frente.
+5. Atualize realizado, quando aplicável.
+6. Exporte o resumo.
+
+---
+
+## 18. Planejamento Físico-Financeiro
+
+A tela **Planejamento** transforma orçamento em cronograma.
+
+Funcionalidades:
+
+- criar tarefas;
+- gerar planejamento a partir do orçamento;
+- informar início e fim;
+- acompanhar percentual físico;
+- distribuir valor financeiro;
+- exportar Excel/PDF.
+
+Como usar:
+
+1. Abra **Planejamento**.
+2. Gere tarefas a partir do orçamento ou cadastre manualmente.
+3. Informe datas.
+4. Ajuste percentuais.
+5. Confira distribuição financeira.
+6. Exporte o planejamento.
+
+---
+
+## 19. Medições
+
+A tela **Medições** acompanha execução da obra.
+
+Use para:
+
+- registrar medições por período;
+- informar quantidades executadas;
+- comparar planejado x executado;
+- manter histórico;
+- gerar relatório de medição;
+- exportar Excel/PDF.
+
+Fluxo:
+
+1. Abra **Medições**.
+2. Crie uma medição.
+3. Informe período.
+4. Preencha quantidades executadas.
+5. Revise totais.
+6. Exporte o relatório.
+
+---
+
+## 20. Quantitativos
+
+A tela **Quantitativos** organiza memória quantitativa.
+
+Funcionalidades:
+
+- vincular quantitativos a itens do orçamento;
+- registrar fórmulas;
+- separar ambientes, trechos ou elementos;
+- justificar quantidades;
+- manter memória de cálculo;
+- exportar dados.
+
+Fluxo:
+
+1. Abra **Quantitativos**.
+2. Escolha item do orçamento.
+3. Registre local, fórmula ou memória.
+4. Informe quantidade calculada.
+5. Revise total.
+6. Use a quantidade na planilha.
+
+---
+
+## 21. Curva ABC
+
+A **Curva ABC** classifica itens por peso financeiro.
+
+Classes:
+
+- **A:** itens mais relevantes financeiramente.
+- **B:** impacto intermediário.
+- **C:** menor impacto individual.
+
+Como usar:
+
+1. Abra **Curva ABC** após montar o orçamento.
+2. Clique para gerar ou atualizar.
+3. Analise itens Classe A.
+4. Use a lista para priorizar auditoria, negociação ou revisão.
+5. Exporte em Excel/PDF pelo relatório.
+
+Boa prática: audite primeiro os itens Classe A.
+
+---
+
+## 22. Memória de Cálculo
+
+A **Memória de Cálculo** detalha como cada item foi calculado.
+
+Mostra:
 
 - código;
 - descrição;
 - unidade;
 - quantidade;
 - preço unitário;
-- referência SINAPI;
-- desvio;
+- subtotal;
+- BDI;
 - total;
-- categoria;
-- capítulo.
-
-Operações úteis:
-
-- adicionar item próprio;
-- duplicar item;
-- mover item para cima/baixo;
-- zerar quantidades;
-- limpar orçamento;
-- exportar JSON da planilha.
-
-Boa prática: após importar, revise descrição, unidade, quantidade e preço item por item.
-
----
-
-## 10. Central de Documentos da Obra
-
-A **Central de Documentos** é o arquivo técnico da obra.
-
-Use para anexar:
-
-- edital;
-- Termo de Referência;
-- ETP;
-- projeto básico;
-- memorial descritivo;
-- planilha orçamentária;
-- pranchas;
-- fotos;
-- ART/RRT;
-- documentos fiscais.
-
-O que a Central mostra:
-
-- total de documentos;
-- lotes de extração;
-- documentos processados por OCR;
-- revisões pendentes;
-- documentos classificados;
-- histórico de extrações.
+- referência;
+- observações.
 
 Como usar:
 
-1. Abra **Central de Documentos**.
-2. Clique em **Selecionar lote**.
-3. Escolha todos os arquivos relacionados à obra.
-4. Clique em **Analisar agora**.
-5. Revise a extração no Analisador.
-6. Envie os itens aprovados para **Elaborar Orçamento**.
-
-Regra principal: documento anexado não altera o orçamento automaticamente. A revisão humana é obrigatória.
+1. Abra **Memória de Cálculo**.
+2. Revise item por item.
+3. Confira se quantidade e preço têm justificativa.
+4. Use a memória no relatório final.
 
 ---
 
-## 11. Importar Planilha / PDF
+## 23. Análise SINAPI
 
-Use quando você já tem uma planilha, edital ou PDF com itens orçamentários.
+A **Análise SINAPI** compara os itens do orçamento com bases de referência.
 
-Formatos aceitos:
+Funcionalidades:
 
-- Excel XLSX/XLS/ODS;
-- CSV;
-- PDF digital;
-- PDF escaneado;
-- PNG, JPG, TIFF.
+- comparação por código;
+- comparação por descrição;
+- fuzzy match;
+- cálculo de desvio;
+- classificação conforme, alerta, crítico ou não encontrado;
+- indicação de possível sobrepreço;
+- resumo financeiro da diferença.
 
-Como importar:
+Como usar:
 
-1. Abra **Importar Planilha/PDF** ou use **Importar planilha** em Elaborar Orçamento.
-2. Selecione um ou vários arquivos.
-3. Clique em **Extrair Dados**.
-4. Aguarde a leitura, OCR, normalização e match com SINAPI.
-5. Revise os itens extraídos.
-6. Escolha se usará preço do edital, SINAPI ou menor valor.
-7. Escolha se irá adicionar ao orçamento atual ou substituir.
-8. Clique em **Confirmar e enviar para Elaboração**.
-
-O que observar na revisão:
-
-- **Match SINAPI:** encontrou referência direta.
-- **Parcial:** encontrou possível correspondência.
-- **Sem match:** exige conferência manual.
-
-Nunca confirme importação sem revisar itens “Parcial” e “Sem match”.
-
----
-
-## 12. OCR para PDF escaneado
-
-OCR é o reconhecimento de texto em imagem.
-
-O TLPlanly usa OCR automaticamente quando:
-
-- o PDF não tem texto selecionável;
-- o arquivo é imagem;
-- a extração digital não encontra itens.
-
-Cuidados:
-
-- use arquivos legíveis;
-- prefira resolução de 200 DPI ou superior;
-- revise números, vírgulas e unidades;
-- confira se a tabela não foi lida fora de ordem.
-
-Depois do OCR, o sistema abre a revisão. Nada entra direto no orçamento.
-
----
-
-## 13. Analisador de Documentos da Obra
-
-Use quando você ainda não tem uma planilha pronta e deseja gerar uma primeira versão do orçamento a partir de documentos técnicos.
-
-Documentos recomendados:
-
-- edital;
-- TR;
-- ETP;
-- projeto básico;
-- memorial;
-- projetos/pranchas;
-- especificações.
-
-O Analisador faz:
-
-- classificação automática dos arquivos;
-- extração de escopo;
-- identificação de especificações;
-- sugestão de serviços;
-- mapeamento para SINAPI quando possível;
-- criação de composições preliminares;
-- indicação de confiança e pendências.
-
-Como operar:
-
-1. Abra **Analisar Documentos** ou envie lote pela **Central de Documentos**.
-2. Selecione os arquivos.
-3. Clique em **Analisar documentos**.
-4. Leia os documentos classificados.
-5. Revise os serviços sugeridos.
-6. Ajuste descrição, unidade, quantidade e preço.
-7. Desmarque o que não quiser usar.
-8. Clique em **Enviar para Elaborar Orçamento**.
-
-A saída é uma estimativa técnica preliminar. O responsável técnico deve validar.
-
----
-
-## 14. Composições (CPU)
-
-CPU significa Composição de Preço Unitário.
-
-Use para criar um serviço próprio com:
-
-- materiais;
-- mão de obra;
-- equipamentos;
-- coeficientes;
-- encargos.
-
-Como criar:
-
-1. Abra **Composições (CPU)**.
-2. Defina código, descrição, unidade e tipo.
-3. Busque insumos SINAPI.
-4. Adicione cada insumo à composição.
-5. Ajuste coeficiente e preço.
-6. Escolha o regime de encargos.
-7. Confira o custo unitário.
-8. Salve na biblioteca ou envie ao orçamento.
-
-Exemplo: para criar “Alvenaria”, adicione tijolo, argamassa, pedreiro e servente com seus coeficientes.
-
----
-
-## 15. Curva ABC
-
-A Curva ABC mostra quais itens têm maior peso financeiro.
-
-Classes:
-
-- **A:** itens que somam até 80% do custo.
-- **B:** itens entre 80% e 95%.
-- **C:** itens finais até 100%.
-
-Como gerar:
-
-1. Monte ou importe o orçamento.
-2. Abra **Curva ABC**.
-3. Clique em **Gerar Curva ABC**.
-4. Revise a tabela e os gráficos.
-
-Use a Classe A para priorizar auditoria, negociação e conferência.
-
----
-
-## 16. Memória de Cálculo
-
-A **Memória de Cálculo** mostra o detalhamento dos itens:
-
-- custo direto;
-- BDI;
-- encargos;
-- total;
-- origem dos dados;
-- referência usada.
-
-Use para justificar orçamento em processo licitatório, relatório técnico ou conferência interna.
-
----
-
-## 17. Análise SINAPI
-
-Use para auditar se a planilha está conforme a referência.
-
-Como operar:
-
-1. Monte ou importe a planilha.
-2. Ative **Modo Auditor**, se for o caso.
+1. Carregue ou confirme a base de referência.
+2. Monte ou importe o orçamento.
 3. Abra **Análise SINAPI**.
 4. Execute a auditoria.
-5. Revise os resultados:
-   - conforme;
-   - alerta;
-   - crítico;
-   - não encontrado.
-
-Itens críticos devem ser justificados, corrigidos ou negociados.
+5. Revise itens críticos.
+6. Ajuste preços ou justifique tecnicamente.
+7. Exporte relatório.
 
 ---
 
-## 18. Conformidade BDI
+## 24. Conformidade BDI
 
-Verifica se o BDI aplicado está compatível com os limites usados como referência pelo TCU.
+A tela **Conformidade BDI** verifica o BDI aplicado.
+
+Ela ajuda a responder:
+
+- o BDI foi configurado?
+- o BDI está dentro do limite de referência?
+- quais componentes foram usados?
+- há necessidade de justificativa?
 
 Como usar:
 
-1. Configure o BDI.
+1. Configure BDI em **BDI / Encargos**.
 2. Abra **Conformidade BDI**.
-3. Confira limite aplicável ao tipo de obra.
-4. Se estiver acima, registre justificativa técnica.
-
-BDI acima do limite não deve ser ignorado.
-
----
-
-## 19. Planejamento
-
-Transforma orçamento em programação físico-financeira.
-
-Como usar:
-
-1. Abra **Planejamento**.
-2. Clique em **Gerar do orçamento**.
-3. Ajuste tarefa, início, fim, dependências e produtividade.
-4. Acompanhe Gantt e Curva S.
-
-Use para prever execução e organizar medições.
+3. Confira o status.
+4. Revise alertas.
+5. Inclua no relatório final.
 
 ---
 
-## 20. Medições
+## 25. Exportar / Relatório
 
-Registra o que foi executado em cada período.
+A tela **Exportar / Relatório** gera entregáveis profissionais.
 
-Como usar:
+Campos:
 
-1. Abra **Medições**.
-2. Crie um período, por exemplo “Medição 01”.
-3. Informe quantidades executadas por item.
-4. Salve a medição.
-5. Confira saldo, avanço e itens excedentes.
+- nome da obra;
+- órgão/cliente;
+- responsável técnico;
+- CREA/CAU;
+- ART/RRT;
+- modelo de relatório;
+- observações.
 
-Use para acompanhamento mensal e fiscalização de contrato.
+Exportações:
+
+- planilha orçamentária em Excel;
+- relatório em PDF;
+- composição BDI;
+- Curva ABC;
+- resumo executivo;
+- anexos operacionais;
+- planejamento;
+- medições;
+- quantitativos;
+- custos horários;
+- cotações;
+- frentes de serviço;
+- memória de readequação de pregão, quando existir.
+
+Fluxo:
+
+1. Abra **Exportar / Relatório**.
+2. Preencha dados da obra.
+3. Escolha o modelo.
+4. Pré-visualize abas.
+5. Gere **Excel Profissional**.
+6. Gere **PDF Profissional**.
+7. Confira o arquivo antes de enviar ao cliente ou órgão.
 
 ---
 
-## 21. Quantitativos
+## 26. Backups e Restauração
 
-Cria memórias auxiliares de quantidade.
+A tela **Backups** cria pontos de restauração.
 
-Como usar:
+Use antes de:
 
-1. Abra **Quantitativos**.
-2. Escolha o item do orçamento.
-3. Cadastre linhas com fórmulas.
-4. Confira o total.
-5. Clique em **Aplicar qtd** para atualizar a quantidade do item.
-
-Exemplo:
-
-`12 * 3.2 + 8 * 2.7`
-
-Use para paredes, pisos, áreas, volumes e medições geométricas simples.
-
----
-
-## 22. Backups
-
-Cria pontos de restauração.
+- importar arquivo grande;
+- aplicar desconto de pregão;
+- alterar BDI;
+- carregar nova base;
+- fazer ajustes em lote.
 
 Como usar:
 
 1. Abra **Backups**.
-2. Informe uma descrição.
-3. Clique em criar backup.
-4. Se precisar, restaure o ponto anterior.
-
-Boa prática: crie backup antes de grandes importações, substituições de orçamento e alterações de BDI.
+2. Crie um ponto de restauração.
+3. Faça as alterações.
+4. Se algo sair errado, restaure o backup.
+5. Exporte o estado completo quando precisar arquivar.
 
 ---
 
-## 23. Exportar / Relatório
+## 27. Copilot TLPlanly
 
-Gera saída profissional para apresentação, licitação ou análise.
+O Copilot é o assistente integrado ao sistema.
 
-Pode incluir:
+Ele ajuda com:
 
-- planilha orçamentária;
+- navegação;
+- explicação de módulos;
 - BDI;
+- SINAPI;
 - Curva ABC;
-- encargos;
+- importação;
+- OCR;
+- auditoria;
+- readequação de proposta;
+- exportação;
+- dúvidas operacionais.
+
+Como usar:
+
+1. Clique no botão do Copilot.
+2. Pergunte em linguagem natural.
+3. Use os botões sugeridos.
+4. Peça orientação da tela atual.
+
+Exemplos:
+
+- Como importar uma planilha?
+- Como usar OCR?
+- Como calcular BDI?
+- Como gerar planilha ajustada após pregão?
+- Como auditar preços?
+- Como exportar PDF?
+
+Se a IA online estiver indisponível, o Copilot usa respostas locais para dúvidas principais.
+
+---
+
+## 28. Planos e Preços
+
+A tela **Planos e Preços** apresenta os planos comerciais.
+
+O usuário pode:
+
+- comparar planos;
+- ver usuários incluídos;
+- ver limites de obras e recursos;
+- entender funções principais de cada plano;
+- clicar em **Tenho um código** para criar conta ou liberar acesso.
+
+Observação: detalhes administrativos de geração e controle de códigos não aparecem para o usuário final.
+
+---
+
+## 29. Roteiros práticos
+
+### Criar orçamento do zero
+
+1. Entre na conta.
+2. Configure UF, encargos e BDI.
+3. Carregue bases.
+4. Abra **Elaborar Orçamento**.
+5. Pesquise itens.
+6. Adicione quantidades.
+7. Crie CPUs, se necessário.
+8. Gere Curva ABC e relatório.
+
+### Importar planilha de edital
+
+1. Abra **Importar Planilha/PDF**.
+2. Envie Excel/PDF.
+3. Revise mapeamento.
+4. Bloqueie itens suspeitos.
+5. Confirme importação.
+6. Envie para **Elaborar Orçamento**.
+7. Ajuste e exporte.
+
+### Analisar edital e documentos
+
+1. Abra **Central de Documentos**.
+2. Envie edital, TR, ETP, projeto básico, memorial e planilhas.
+3. Abra **Analisar Documentos**.
+4. Revise escopo e serviços sugeridos.
+5. Marque itens válidos.
+6. Envie para orçamento.
+
+### Gerar planilha ajustada após pregão
+
+1. Importe planilha estimativa.
+2. Abra **Elaborar Orçamento**.
+3. Use **Readequar Proposta do Pregão**.
+4. Informe valor vencedor ou desconto.
+5. Aplique desconto.
+6. Exporte Excel e PDF.
+
+### Auditar proposta de fornecedor
+
+1. Importe a proposta.
+2. Configure UF, tolerância e BDI.
+3. Carregue bases.
+4. Gere Curva ABC.
+5. Rode **Análise SINAPI**.
+6. Rode **Conformidade BDI**.
+7. Exporte relatório.
+
+### Acompanhar obra
+
+1. Monte orçamento.
+2. Crie frentes de serviço.
+3. Gere planejamento.
+4. Registre quantitativos.
+5. Lance medições.
+6. Exporte relatório de acompanhamento.
+
+---
+
+## 30. Problemas comuns
+
+| Problema | O que fazer |
+|---|---|
+| Código de acesso inválido | Confira se digitou exatamente o código recebido. |
+| Não consigo fechar a tela de login | O login é obrigatório para usar o sistema. |
+| PDF não extraiu itens | Use OCR ou procure a planilha Excel original. |
+| OCR trouxe números errados | Revise vírgulas, unidade e qualidade do arquivo. |
+| Item sem match | Pesquise por descrição, revise código ou use outra base. |
+| BDI aparece não configurado | Preencha componentes e clique em aplicar. |
+| Total parece errado | Verifique quantidade, preço unitário, BDI e item importado. |
+| Exportação incompleta | Confira se o orçamento tem itens e dados da obra preenchidos. |
+| Obra não salvou | Aguarde status Salvo ou reabra o painel de conta. |
+| Base não carregou | Confirme formato do arquivo e tente carregar lote novamente. |
+
+---
+
+## 31. Boas práticas
+
+- Crie uma obra por edital, contrato ou empreendimento.
+- Configure UF e encargos antes de importar.
+- Faça backup antes de grandes alterações.
+- Revise tudo que veio de OCR.
+- Use Curva ABC antes da auditoria.
+- Justifique itens sem referência.
+- Exporte Excel e PDF ao final.
+- Mantenha documentos originais na Central de Documentos.
+- Não entregue planilha readequada sem conferir centavos e totais.
+- Não use estimativa gerada por documentos sem validação técnica.
+
+---
+
+## 32. Glossário
+
+- **BDI:** Benefícios e Despesas Indiretas.
+- **SINAPI:** Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil.
+- **SICRO:** Sistema de Custos Referenciais de Obras do DNIT.
+- **ORSE:** base de referência de obras de Sergipe.
+- **CPU:** Composição de Preço Unitário.
+- **OCR:** reconhecimento de texto em imagem ou PDF escaneado.
+- **Curva ABC:** classificação dos itens por impacto financeiro.
+- **ETP:** Estudo Técnico Preliminar.
+- **TR:** Termo de Referência.
+- **ART/RRT:** responsabilidade técnica do engenheiro ou arquiteto.
+- **Readequação:** ajuste da planilha ao valor vencedor de uma disputa.
+- **Fuzzy match:** comparação aproximada por descrição.
+- **Tenant:** ambiente isolado de cada cliente.
+
+---
+
+## 33. Resumo para apresentação
+
+O TLPlanly une em uma única plataforma:
+
+- elaboração de orçamento;
+- importação inteligente;
+- OCR;
+- análise de documentos;
+- BDI e encargos;
+- CPU;
+- Curva ABC;
+- auditoria SINAPI;
+- conformidade BDI;
+- cotações;
+- custos horários;
+- frentes de serviço;
 - planejamento;
 - medições;
 - quantitativos;
-- anexos/documentos.
+- backups;
+- Copilot;
+- relatórios em Excel e PDF.
 
-Como exportar:
-
-1. Abra **Exportar / Relatório**.
-2. Preencha dados da obra, órgão, responsável técnico, CREA/CAU e ART/RRT.
-3. Escolha o modelo de relatório.
-4. Pré-visualize as abas.
-5. Exporte em Excel ou imprima/salve em PDF.
-
----
-
-## 24. Copilot TLPlanly
-
-O Copilot é o assistente integrado do sistema.
-
-Você pode perguntar:
-
-- “Como importar uma planilha?”
-- “Como configurar BDI?”
-- “Como auditar preços?”
-- “Como usar a Central de Documentos?”
-- “Como gerar Curva ABC?”
-- “O que faço nesta tela?”
-
-O Copilot usa:
-
-- base de conhecimento local;
-- manual operacional;
-- contexto da tela atual;
-- dados básicos do orçamento ativo.
-
-Se a IA online estiver indisponível, o modo local continua respondendo dúvidas principais.
-
----
-
-## 25. Roteiro rápido para construtora
-
-1. Crie ou abra a obra.
-2. Configure UF, encargos e tipo de obra.
-3. Configure BDI.
-4. Importe planilha ou crie orçamento do zero.
-5. Ajuste itens, quantidades e preços.
-6. Crie CPUs próprias se necessário.
-7. Gere Curva ABC.
-8. Exporte Excel profissional.
-
----
-
-## 26. Roteiro rápido para órgão público ou auditor
-
-1. Abra ou importe a planilha do fornecedor.
-2. Configure UF, tolerância e base de referência.
-3. Confira BDI e encargos.
-4. Rode Análise SINAPI.
-5. Gere Curva ABC para priorizar fiscalização.
-6. Verifique Conformidade BDI.
-7. Exporte relatório com itens críticos e alertas.
-
----
-
-## 27. Problemas comuns
-
-### O PDF não extraiu itens
-
-Tente:
-
-- usar OCR;
-- conferir se o PDF é imagem;
-- aumentar qualidade do arquivo;
-- importar a planilha Excel original, se existir.
-
-### O item ficou “Sem match”
-
-Tente:
-
-- conferir o código;
-- revisar descrição;
-- pesquisar manualmente na base;
-- usar referência de outra base, se aplicável.
-
-### O BDI aparece “Não configurado”
-
-Preencha os componentes em **BDI / Encargos** e clique em **Aplicar ao Orçamento**.
-
-### O orçamento não salvou
-
-Confira o chip de status no topo:
-
-- se estiver **Pendente**, aguarde;
-- se estiver **Erro**, tente salvar novamente;
-- se estiver **Local**, entre na conta para salvar na nuvem.
-
-### A quantidade importada parece errada
-
-Confira OCR, unidade e vírgulas. Sempre revise antes de confirmar.
-
----
-
-## 28. Boas práticas finais
-
-- Sempre configure UF, base e BDI antes de fechar o orçamento.
-- Revise itens sem match ou com match parcial.
-- Gere Curva ABC antes de auditar.
-- Crie backup antes de grandes alterações.
-- Use a Central de Documentos para manter rastreabilidade.
-- Não use estimativa de documentos sem validação técnica.
-- Exporte relatório somente após conferir BDI, encargos e itens críticos.
-
----
-
-## 29. Glossário rápido
-
-- **BDI:** percentual de despesas indiretas, tributos, lucro e riscos.
-- **SINAPI:** base oficial Caixa/IBGE para custos da construção civil.
-- **SICRO:** base DNIT para infraestrutura e rodovias.
-- **CPU:** composição de preço unitário.
-- **OCR:** leitura de texto em imagem/PDF escaneado.
-- **Curva ABC:** classificação de itens por peso financeiro.
-- **ETP:** Estudo Técnico Preliminar.
-- **TR:** Termo de Referência.
-- **ART/RRT:** responsabilidade técnica da obra/projeto.
-
----
-
-## 30. Mensagem para apresentação
-
-O TLPlanly une elaboração de orçamento, importação inteligente, OCR, análise por documentos, BDI, Curva ABC, CPU, auditoria SINAPI, planejamento, medições e relatórios em um único fluxo.
-
-Ele atende tanto quem monta a planilha quanto quem precisa conferir se ela está tecnicamente correta.
+Ele atende tanto quem precisa montar a planilha quanto quem precisa conferir se ela está tecnicamente correta.
