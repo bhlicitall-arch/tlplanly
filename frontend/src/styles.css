@@ -26,6 +26,25 @@
 /* ── RESET ───────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background var(--transition),color var(--transition)}
+body.auth-locked{overflow:hidden}
+body.auth-locked #sidebar,
+body.auth-locked #main,
+body.auth-locked #copilot-btn,
+body.auth-locked #copilot-panel{
+  opacity:.18;filter:blur(2px);pointer-events:none;user-select:none;
+}
+body.auth-locked #topbar .mode-toggle,
+body.auth-locked #topbar #themeBtn,
+body.auth-locked #topbar #manualBtn,
+body.auth-locked #topbar #cloudSaveChip{
+  opacity:.45;pointer-events:none;
+}
+body.auth-locked #cloud-backdrop{display:block!important;background:rgba(0,0,0,.72)}
+body.auth-locked #cloud-modal{
+  display:block!important;top:50%;left:50%;right:auto;transform:translate(-50%,-50%);
+  width:min(560px,calc(100vw - 28px));border-color:rgba(245,166,35,.42);
+}
+body.auth-locked .cloud-close{display:none}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--scrollbar);border-radius:3px}
@@ -89,6 +108,13 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .cloud-close:hover{border-color:var(--gold);color:var(--gold)}
 .cloud-grid{gap:12px}
 .cloud-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.auth-required-note{
+  display:flex;flex-direction:column;gap:4px;
+  border:1px solid rgba(245,166,35,.34);background:rgba(245,166,35,.10);
+  border-radius:var(--radius);padding:12px;margin-bottom:14px;
+}
+.auth-required-note strong{font-size:13px;color:var(--gold);font-weight:900}
+.auth-required-note span{font-size:12px;color:var(--text2);line-height:1.45}
 .cloud-user{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);

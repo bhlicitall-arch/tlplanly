@@ -53,6 +53,8 @@ let CLOUD = {
   persistence: 'local'
 };
 
+const AUTH_REQUIRED = true;
+
 // Load from localStorage
 try {
   const s = localStorage.getItem('tlplanly_state');
@@ -345,6 +347,31 @@ async function cloudApi(path, options = {}) {
   return data;
 }
 
+function authIsLocked() {
+  return AUTH_REQUIRED && !CLOUD.user;
+}
+
+function authApplyGate() {
+  const locked = authIsLocked();
+  document.body.classList.toggle('auth-locked', locked);
+  const backdrop = document.getElementById('cloud-backdrop');
+  const modal = document.getElementById('cloud-modal');
+  if (locked) {
+    if (backdrop) backdrop.style.display = 'block';
+    if (modal) modal.style.display = 'block';
+    cloudSetStatus('Login obrigatório para usar o TLPlanly');
+  }
+}
+
+function requireLogin(action = 'usar o TLPlanly') {
+  if (!authIsLocked()) return false;
+  authApplyGate();
+  const email = document.getElementById('cloud-email');
+  if (email) setTimeout(() => email.focus(), 50);
+  toast(`Entre com e-mail e senha para ${action}.`, 'warning');
+  return true;
+}
+
 function cloudSetStatus(message) {
   const el = document.getElementById('cloud-status');
   if (el) el.textContent = message;
@@ -364,13 +391,13 @@ function cloudLastSavedText() {
   if (CLOUD.error) return 'Erro ao salvar';
   if (CLOUD.dirty) return 'Alterações pendentes';
   if (CLOUD.lastSavedAt) return 'Salvo ' + new Date(CLOUD.lastSavedAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-  return CLOUD.user ? 'Aguardando salvamento' : 'Modo local';
+  return CLOUD.user ? 'Aguardando salvamento' : 'Login obrigatório';
 }
 
 function cloudRenderSaveStatus() {
   const chip = document.getElementById('cloudSaveChip');
   if (chip) {
-    let label = 'Local';
+    let label = 'Entrar';
     let cls = 'cloud-save-chip';
     if (CLOUD.user && CLOUD.saving) { label = 'Salvando'; cls += ' saving'; }
     else if (CLOUD.user && CLOUD.error) { label = 'Erro'; cls += ' error'; }
@@ -379,7 +406,7 @@ function cloudRenderSaveStatus() {
     else if (CLOUD.user) { label = 'Conta'; cls += ' pending'; }
     chip.textContent = label;
     chip.className = cls;
-    chip.title = CLOUD.user ? cloudLastSavedText() : 'Modo local. Entre para salvar obras na nuvem.';
+    chip.title = CLOUD.user ? cloudLastSavedText() : 'Entre para usar o TLPlanly.';
   }
   const currentName = document.getElementById('cloud-current-name');
   if (currentName) currentName.textContent = cloudCurrentProject()?.name || 'Nenhuma obra selecionada';
@@ -401,6 +428,11 @@ function cloudOpen() {
 }
 
 function cloudClose() {
+  if (authIsLocked()) {
+    authApplyGate();
+    toast('Login obrigatório para continuar.', 'warning');
+    return;
+  }
   document.getElementById('cloud-backdrop').style.display = 'none';
   document.getElementById('cloud-modal').style.display = 'none';
 }
@@ -418,8 +450,9 @@ function cloudRender() {
     btn.title = logged ? 'Obras salvas na nuvem' : 'Entrar na conta TLPlanly';
   }
   if (!logged) {
-    cloudSetStatus('Modo local ativo');
+    cloudSetStatus('Login obrigatório para usar o TLPlanly');
     cloudRenderSaveStatus();
+    authApplyGate();
     return;
   }
   document.getElementById('cloud-user-name').textContent = CLOUD.user.name || 'Usuario';
@@ -444,6 +477,7 @@ function cloudRender() {
   }
   cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · cliente isolado · ${cloudLastSavedText()}`);
   cloudRenderSaveStatus();
+  authApplyGate();
 }
 
 async function cloudInit() {
@@ -451,12 +485,16 @@ async function cloudInit() {
     const data = await cloudApi('/api/auth/me');
     CLOUD.user = data.user || null;
     CLOUD.persistence = data.persistence || 'local';
-    if (CLOUD.user) await cloudRefreshProjects();
+    if (CLOUD.user) {
+      await cloudRefreshProjects();
+      await loadSinapiBase();
+    }
     cloudRender();
   } catch {
     CLOUD.user = null;
     cloudRender();
   }
+  authApplyGate();
   cloudRenderSaveStatus();
 }
 
@@ -473,8 +511,12 @@ async function cloudLogin() {
     CLOUD.user = data.user;
     CLOUD.persistence = data.persistence || 'local';
     await cloudRefreshProjects();
+    await loadSinapiBase();
     toast('Conta conectada', 'success');
     cloudRender();
+    authApplyGate();
+    if (!CLOUD.projects.length) await cloudCreateProject();
+    cloudClose();
   } catch (err) {
     cloudSetStatus(err.message || 'Erro ao entrar.');
     toast(err.message || 'Erro ao entrar.', 'error');
@@ -496,8 +538,12 @@ async function cloudRegister() {
     CLOUD.user = data.user;
     CLOUD.persistence = data.persistence || 'local';
     await cloudRefreshProjects();
+    await loadSinapiBase();
     toast('Conta criada', 'success');
     cloudRender();
+    authApplyGate();
+    if (!CLOUD.projects.length) await cloudCreateProject();
+    cloudClose();
   } catch (err) {
     cloudSetStatus(err.message || 'Erro ao criar conta.');
     toast(err.message || 'Erro ao criar conta.', 'error');
@@ -517,6 +563,7 @@ async function cloudLogout() {
   CLOUD.lastSavedAt = null;
   localStorage.removeItem('tlplanly_cloud_project');
   cloudRender();
+  authApplyGate();
   toast('Conta desconectada', 'info');
 }
 
@@ -660,6 +707,7 @@ function toggleTheme() {
 // MODE
 // ═══════════════════════════════════════════════════════════
 function setMode(m) {
+  if (requireLogin('alterar o modo de operação')) return;
   STATE.mode = m;
   document.getElementById('btnConstrutor').classList.toggle('active', m==='construtor');
   document.getElementById('btnAuditor').classList.toggle('active', m==='auditor');
@@ -670,6 +718,7 @@ function setMode(m) {
 // NAVIGATION
 // ═══════════════════════════════════════════════════════════
 function showView(id) {
+  if (requireLogin('acessar os módulos')) return;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('view-'+id).classList.add('active');
@@ -2271,7 +2320,6 @@ window.addEventListener('DOMContentLoaded', () => {
   cotacoesRender();
   frentesServicoRender();
   preencherSelectsOperacionais();
-  loadSinapiBase();
   cloudInit();
 });
 

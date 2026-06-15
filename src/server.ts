@@ -414,7 +414,7 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
 
 app.get('/api/auth/me', async (req: Request, res: Response) => {
   const user = await getCurrentUser(req);
-  res.json({ user, persistence: saasStore.mode });
+  res.json({ user, persistence: saasStore.mode, authRequired: true });
 });
 
 app.get('/api/projects', requireAuth, async (req: AuthedRequest, res: Response) => {
@@ -473,7 +473,7 @@ app.get('/api/saas/status', async (_req: Request, res: Response) => {
 });
 
 // ── POST /api/copilot — Streaming SSE ────────────────────────────────────
-app.post('/api/copilot', async (req: Request, res: Response) => {
+app.post('/api/copilot', requireAuth, async (req: AuthedRequest, res: Response) => {
   const { messages, context } = req.body as {
     messages: CopilotMessage[];
     context?: {
@@ -601,7 +601,7 @@ app.post('/api/copilot', async (req: Request, res: Response) => {
 });
 
 // ── GET /api/referencia — Base SINAPI ────────────────────────────────────
-app.get('/api/referencia', (_req: Request, res: Response) => {
+app.get('/api/referencia', requireAuth, (_req: AuthedRequest, res: Response) => {
   const caminhos = [
     path.join(__dirname, '../../data/referencia.json'),
     path.join(__dirname, '../data/referencia.json'),
