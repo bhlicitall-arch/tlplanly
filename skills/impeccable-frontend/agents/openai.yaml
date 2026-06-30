@@ -1,0 +1,4 @@
+interface:
+  display_name: "Impeccable Frontend"
+  short_description: "Frontend UX polish and anti-pattern audit"
+  default_prompt: "Use $impeccable-frontend to polish this product UI with professional spacing, typography, color, and responsive checks."

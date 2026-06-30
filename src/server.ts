@@ -695,6 +695,9 @@ const htmlCaminhos = [
   'tlplanly.html',
 ];
 const standaloneHtmlCaminhos = [
+  path.join(__dirname, '../../frontend/index.html'),
+  path.join(__dirname, '../frontend/index.html'),
+  'frontend/index.html',
   path.join(__dirname, '../../tlplanly.html'),
   path.join(__dirname, '../tlplanly.html'),
   'tlplanly.html',
@@ -703,6 +706,9 @@ const standaloneHtmlCaminhos = [
 function sendFirstExisting(res: Response, pathsToTry: string[], fallbackMessage: string): void {
   for (const p of pathsToTry) {
     if (fs.existsSync(p)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.resolve(p));
       return;
     }
@@ -726,6 +732,12 @@ app.get('/manual', (_req, res) => {
     if (fs.existsSync(p)) { res.sendFile(path.resolve(p)); return; }
   }
   res.status(404).send('manual_usuario_tlplanly.html nao encontrado');
+});
+app.use('/frontend', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
 });
 [
   path.join(__dirname, '..'),

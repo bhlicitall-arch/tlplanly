@@ -1,5 +1,5 @@
 ﻿<!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR" data-theme="light">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -8,7 +8,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/frontend/src/styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/frontend/src/styles.css?v=20260630-custos-ui">
 </head>
 <body>
 
@@ -1519,22 +1522,83 @@
   <div class="page-title">Custos <span class="gold-text">Horários</span></div>
   <div class="page-sub">Calcule equipamentos e mão de obra com memória de cálculo para usar em CPUs e orçamento</div>
 
-  <div class="grid grid-2" style="gap:20px;align-items:start">
+  <div class="grid grid-2 custos-workbench" style="gap:20px;align-items:start">
     <div class="card">
       <div class="sec-header"><div class="sec-title">Equipamento <span>por hora</span></div></div>
-      <div class="grid grid-2" style="gap:10px">
-        <div><label class="form-label">Código</label><input id="eq-cod" class="form-input" placeholder="Ex: EQ-001"/></div>
-        <div><label class="form-label">Equipamento</label><input id="eq-nome" class="form-input" placeholder="Ex: Betoneira 400 L"/></div>
-        <div><label class="form-label">Valor de aquisição</label><input id="eq-aquisicao" class="form-input" type="number" min="0" step="0.01"/></div>
-        <div><label class="form-label">Vida útil (h)</label><input id="eq-vida" class="form-input" type="number" min="1" step="1" value="10000"/></div>
-        <div><label class="form-label">Fator depreciação</label><input id="eq-fator" class="form-input" type="number" min="0" step="0.01" value="0.9"/></div>
-        <div><label class="form-label">Operador (R$/h)</label><input id="eq-operador" class="form-input" type="number" min="0" step="0.01"/></div>
-        <div><label class="form-label">Combustível/energia (R$/h)</label><input id="eq-combustivel" class="form-input" type="number" min="0" step="0.01"/></div>
-        <div><label class="form-label">Manutenção (R$/h)</label><input id="eq-manutencao" class="form-input" type="number" min="0" step="0.01"/></div>
+      <div class="grid grid-3" style="gap:10px;align-items:flex-end;margin-bottom:12px">
+        <div>
+          <label class="form-label">Tipo de cálculo</label>
+          <select id="eq-modo" class="form-select" onchange="custosEquipamentoModoChange()">
+            <option value="parcelas_calculadas">Parcelas calculadas</option>
+            <option value="parcelas_informadas">Parcelas informadas</option>
+            <option value="nao_calcular">Não calcular</option>
+          </select>
+        </div>
+        <div><label class="form-label">Código do equipamento</label><input id="eq-cod" class="form-input" placeholder="Ex: IE0001" onblur="custosEquipamentoLookup()"/></div>
+        <div><label class="form-label">Equipamento</label><input id="eq-nome" class="form-input" placeholder="Digite o código para buscar"/></div>
       </div>
+      <div id="eq-lookup-status" class="form-help"></div>
+
+      <div id="eq-calculado-panel">
+        <div class="grid grid-4" style="gap:10px">
+          <div><label class="form-label">Valor de aquisição</label><input id="eq-aquisicao" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Valor residual</label><input id="eq-residual" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Vida útil (h)</label><input id="eq-vida" class="form-input" type="number" min="1" step="1" value="10000"/></div>
+          <div><label class="form-label">K depreciação</label><input id="eq-fator" class="form-input" type="number" min="0" step="0.01" value="1"/></div>
+          <div><label class="form-label">K manutenção</label><input id="eq-k-manutencao" class="form-input" type="number" min="0" step="0.01" placeholder="Igual ao K depreciação"/></div>
+          <div><label class="form-label">Juros (R$/h)</label><input id="eq-juros" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Impostos/seguros (R$/h)</label><input id="eq-impostos" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Ajuste material (R$/h)</label><input id="eq-combustivel" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Ajuste mão de obra (R$/h)</label><input id="eq-operador" class="form-input" type="number" min="0" step="0.01"/></div>
+        </div>
+      </div>
+
+      <div id="eq-manual-panel" style="display:none">
+        <div class="grid grid-4" style="gap:10px">
+          <div><label class="form-label">Depreciação (R$/h)</label><input id="eq-man-depreciacao" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Juros (R$/h)</label><input id="eq-man-juros" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Impostos/seguros (R$/h)</label><input id="eq-man-impostos" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Manutenção (R$/h)</label><input id="eq-man-manutencao" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Material (R$/h)</label><input id="eq-man-material" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Mão de obra (R$/h)</label><input id="eq-man-mao-obra" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Aluguel (R$/h)</label><input id="eq-man-aluguel" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div><label class="form-label">Outros (R$/h)</label><input id="eq-man-outros" class="form-input" type="number" min="0" step="0.01"/></div>
+        </div>
+      </div>
+
+      <div class="cost-subpanel" id="eq-insumos-panel">
+        <div class="sec-header">
+          <div class="sec-title">Insumos <span>do equipamento</span></div>
+          <button class="btn btn-outline btn-sm" onclick="custosEquipamentoLimparInsumos()">Limpar</button>
+        </div>
+        <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+          <div><label class="form-label">Código do insumo</label><input id="eq-ins-cod" class="form-input" placeholder="Ex: IH1001"/></div>
+          <div><label class="form-label">Consumo/índice</label><input id="eq-ins-consumo" class="form-input" type="number" min="0" step="0.0001" value="1"/></div>
+          <div>
+            <label class="form-label">Parcela</label>
+            <select id="eq-ins-parcela" class="form-select">
+              <option value="auto">Detectar pelo tipo</option>
+              <option value="mao_obra">Mão de obra</option>
+              <option value="material">Material/combustível</option>
+              <option value="aluguel">Aluguel</option>
+              <option value="outros">Outros</option>
+            </select>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="custosEquipamentoAdicionarInsumo()">Adicionar insumo</button>
+        </div>
+        <div id="eq-ins-preview" class="form-help"></div>
+        <div class="tbl-wrap mt-3">
+          <table>
+            <thead><tr><th>Código</th><th>Descrição</th><th>Un</th><th>Parcela</th><th>Consumo</th><th>Preço</th><th>Total</th><th></th></tr></thead>
+            <tbody id="eq-insumos-lista"><tr><td colspan="8" class="empty-state" style="padding:14px">Nenhum insumo vinculado ao equipamento.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <div id="eq-preview" class="calc-preview"></div>
       <div class="flex flex-wrap mt-4">
         <button class="btn btn-outline btn-sm" onclick="custosEquipamentoCalcular()">Calcular</button>
+        <button class="btn btn-outline btn-sm" onclick="custosEquipamentoAtualizarInsumo()">Atualizar preço do insumo</button>
         <button class="btn btn-gold btn-sm" onclick="custosEquipamentoSalvar()">Salvar custo horário</button>
       </div>
     </div>
@@ -1542,12 +1606,44 @@
     <div class="card">
       <div class="sec-header"><div class="sec-title">Mão de obra <span>por hora</span></div></div>
       <div class="grid grid-2" style="gap:10px">
-        <div><label class="form-label">Código</label><input id="mo-cod" class="form-input" placeholder="Ex: MO-001"/></div>
+        <div><label class="form-label">Código</label><input id="mo-cod" class="form-input" placeholder="Ex: IH0001" onblur="custosMaoObraLookup()"/></div>
         <div><label class="form-label">Cargo/função</label><input id="mo-cargo" class="form-input" placeholder="Ex: Pedreiro"/></div>
         <div><label class="form-label">Salário mensal</label><input id="mo-salario" class="form-input" type="number" min="0" step="0.01"/></div>
         <div><label class="form-label">Benefícios mensais</label><input id="mo-beneficios" class="form-input" type="number" min="0" step="0.01"/></div>
         <div><label class="form-label">Encargos (%)</label><input id="mo-encargos" class="form-input" type="number" min="0" step="0.01" value="127.5"/></div>
         <div><label class="form-label">Horas produtivas/mês</label><input id="mo-horas" class="form-input" type="number" min="1" step="1" value="189"/></div>
+      </div>
+      <div id="mo-lookup-status" class="form-help"></div>
+      <div class="cost-subpanel">
+        <div class="sec-header">
+          <div class="sec-title">Benefícios <span>compostos</span></div>
+          <button class="btn btn-outline btn-sm" onclick="custosMaoObraLimparBeneficios()">Limpar</button>
+        </div>
+        <div class="grid grid-4" style="gap:10px;align-items:flex-end">
+          <div><label class="form-label">Benefício/insumo</label><input id="mo-ben-desc" class="form-input" placeholder="Ex: Almoço ou IM002"/></div>
+          <div><label class="form-label">Qtd</label><input id="mo-ben-qtd" class="form-input" type="number" min="0" step="0.01" value="1"/></div>
+          <div><label class="form-label">Preço unit.</label><input id="mo-ben-preco" class="form-input" type="number" min="0" step="0.01"/></div>
+          <div>
+            <label class="form-label">Periodicidade</label>
+            <select id="mo-ben-periodo" class="form-select">
+              <option value="mensal">Mensal</option>
+              <option value="diaria">Diária</option>
+              <option value="semanal">Semanal</option>
+              <option value="viagem">Viagem</option>
+              <option value="direto">Valor direto</option>
+            </select>
+          </div>
+          <div><label class="form-label">Fator/mês</label><input id="mo-ben-fator" class="form-input" type="number" min="0" step="0.01" placeholder="22, 4.33 ou 1"/></div>
+          <button class="btn btn-outline btn-sm" onclick="custosMaoObraAdicionarBeneficio()">Adicionar benefício</button>
+          <button class="btn btn-gold btn-sm" onclick="custosMaoObraAplicarBeneficios()">Calcular benefícios</button>
+        </div>
+        <div id="mo-ben-preview" class="form-help"></div>
+        <div class="tbl-wrap mt-3">
+          <table>
+            <thead><tr><th>Benefício</th><th>Qtd</th><th>Preço</th><th>Período</th><th>Fator</th><th>Total mensal</th><th></th></tr></thead>
+            <tbody id="mo-beneficios-lista"><tr><td colspan="7" class="empty-state" style="padding:14px">Nenhum benefício composto.</td></tr></tbody>
+          </table>
+        </div>
       </div>
       <div id="mo-preview" class="calc-preview"></div>
       <div class="flex flex-wrap mt-4">
@@ -1810,6 +1906,6 @@
 
 <div id="toast"></div>
 
-<script src="/frontend/src/main.js"></script>
+<script src="/frontend/src/main.js?v=20260630-custos-ui"></script>
 </body>
 </html>

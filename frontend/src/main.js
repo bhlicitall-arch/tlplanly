@@ -800,7 +800,7 @@ function toggleTheme() {
 
 // Restore theme
 (function() {
-  const t = localStorage.getItem('tlplanly_theme') || 'dark';
+  const t = localStorage.getItem('tlplanly_theme') || 'light';
   STATE.theme = t;
   document.documentElement.setAttribute('data-theme', t);
   document.getElementById('themeBtn').textContent = t === 'dark' ? '☀' : '🌙';
@@ -2510,21 +2510,269 @@ function recalcularPrecoCpu(cpu) {
   return cpu.precoUnitario;
 }
 
+let EQUIPAMENTO_INSUMOS_DRAFT = [];
+let MAO_OBRA_BENEFICIOS_DRAFT = [];
+let ULTIMO_CALC_EQUIPAMENTO = null;
+let ULTIMO_CALC_MAO_OBRA = null;
+
+function roundCustoHorario(v, casas = 4) {
+  const factor = Math.pow(10, casas);
+  return Math.round((Number(v) || 0) * factor) / factor;
+}
+
+function parcelaLabel(parcela) {
+  return {
+    mao_obra: 'Mão de obra',
+    material: 'Material',
+    aluguel: 'Aluguel',
+    outros: 'Outros'
+  }[parcela] || 'Material';
+}
+
+function buscarReferenciaPorCodigo(cod) {
+  const code = codigoChave(cod);
+  if (!code) return null;
+  const found = lookupPreco(code);
+  if (!found?.item) return null;
+  const item = found.item;
+  return {
+    codigo: item.codigoSinapi || item.codigo || code,
+    descricao: item.descricao || item.desc || '',
+    unidade: item.unidade || item.unid || 'UN',
+    precoUnitario: Number(item.precoMedio ?? item.preco ?? found.preco ?? 0) || 0,
+    tipo: item.tipo || item.natureza || item.categoria || '',
+    fonte: found.fonte || item.fonte || item.origem || 'Base de referência',
+    item
+  };
+}
+
+function detectarParcelaInsumo(ref, escolha = 'auto') {
+  if (escolha && escolha !== 'auto') return escolha;
+  const cod = textoChave(ref?.codigo);
+  const tipo = textoChave(ref?.tipo);
+  const desc = textoChave(ref?.descricao);
+  if (tipo === 'S' || tipo.includes('MAO') || tipo.includes('HOMEM') || cod.startsWith('IH') || cod.startsWith('MO')) return 'mao_obra';
+  if (desc.includes('ALUGUEL') || desc.includes('LOCACAO') || tipo.includes('EQUIP') && desc.includes('ALUG')) return 'aluguel';
+  if (tipo === 'T') return 'outros';
+  return 'material';
+}
+
+function somaInsumosPorParcela(parcela) {
+  return EQUIPAMENTO_INSUMOS_DRAFT
+    .filter(i => i.parcela === parcela)
+    .reduce((s, i) => s + (Number(i.consumo) || 0) * (Number(i.precoUnitario) || 0), 0);
+}
+
+function parcelasVazias() {
+  return { depreciacao:0, juros:0, impostosSeguros:0, manutencao:0, material:0, maoObra:0, aluguel:0, outros:0 };
+}
+
+function custosEquipamentoModoChange() {
+  const modo = document.getElementById('eq-modo')?.value || 'parcelas_calculadas';
+  const calculado = document.getElementById('eq-calculado-panel');
+  const manual = document.getElementById('eq-manual-panel');
+  const insumos = document.getElementById('eq-insumos-panel');
+  if (calculado) calculado.style.display = modo === 'parcelas_calculadas' ? '' : 'none';
+  if (manual) manual.style.display = modo === 'parcelas_informadas' ? '' : 'none';
+  if (insumos) insumos.style.display = modo === 'parcelas_calculadas' ? '' : 'none';
+}
+
+function custosEquipamentoLookup() {
+  const cod = document.getElementById('eq-cod')?.value?.trim();
+  const status = document.getElementById('eq-lookup-status');
+  if (!cod) {
+    if (status) { status.textContent = ''; status.className = 'form-help'; }
+    return null;
+  }
+  const ref = buscarReferenciaPorCodigo(cod);
+  if (!ref) {
+    if (status) {
+      status.textContent = 'Código não encontrado na base de insumos. Cadastre o equipamento em Insumos/Bases antes de aprovar o custo.';
+      status.className = 'form-help error';
+    }
+    return null;
+  }
+  const nome = document.getElementById('eq-nome');
+  if (nome && !nome.value.trim()) nome.value = ref.descricao;
+  if (status) {
+    status.textContent = `${ref.descricao} · ${ref.unidade} · ${fmtMoeda(ref.precoUnitario)} · ${ref.fonte}`;
+    status.className = 'form-help ok';
+  }
+  return ref;
+}
+
+function custosMaoObraLookup() {
+  const cod = document.getElementById('mo-cod')?.value?.trim();
+  const status = document.getElementById('mo-lookup-status');
+  if (!cod) {
+    if (status) { status.textContent = ''; status.className = 'form-help'; }
+    return null;
+  }
+  const ref = buscarReferenciaPorCodigo(cod);
+  if (!ref) {
+    if (status) {
+      status.textContent = 'Código não encontrado na base de insumos.';
+      status.className = 'form-help error';
+    }
+    return null;
+  }
+  const cargo = document.getElementById('mo-cargo');
+  if (cargo && !cargo.value.trim()) cargo.value = ref.descricao;
+  if (status) {
+    status.textContent = `${ref.descricao} · ${ref.unidade} · ${fmtMoeda(ref.precoUnitario)} · ${ref.fonte}`;
+    status.className = 'form-help ok';
+  }
+  return ref;
+}
+
+function custosEquipamentoAdicionarInsumo() {
+  const cod = document.getElementById('eq-ins-cod')?.value?.trim();
+  const consumo = readNumeroCampo('eq-ins-consumo');
+  const escolha = document.getElementById('eq-ins-parcela')?.value || 'auto';
+  const preview = document.getElementById('eq-ins-preview');
+  const ref = buscarReferenciaPorCodigo(cod);
+  if (!ref) {
+    if (preview) {
+      preview.textContent = 'Insumo não encontrado. Cadastre-o primeiro no banco de insumos/importação.';
+      preview.className = 'form-help error';
+    }
+    return;
+  }
+  if (consumo <= 0) {
+    toast('Informe o consumo/índice do insumo.', 'error');
+    return;
+  }
+  const parcela = detectarParcelaInsumo(ref, escolha);
+  EQUIPAMENTO_INSUMOS_DRAFT.push({
+    id: makeId('eqins'),
+    codigo: ref.codigo,
+    descricao: ref.descricao,
+    unidade: ref.unidade,
+    tipo: ref.tipo,
+    consumo,
+    precoUnitario: ref.precoUnitario,
+    parcela,
+    fonte: ref.fonte
+  });
+  ['eq-ins-cod','eq-ins-consumo'].forEach((id, idx) => {
+    const el = document.getElementById(id);
+    if (el) el.value = idx === 1 ? '1' : '';
+  });
+  if (preview) {
+    preview.textContent = `${ref.descricao} adicionado em ${parcelaLabel(parcela)}.`;
+    preview.className = 'form-help ok';
+  }
+  custosEquipamentoRenderInsumos();
+  custosEquipamentoCalcular();
+}
+
+function custosEquipamentoRemoverInsumo(id) {
+  EQUIPAMENTO_INSUMOS_DRAFT = EQUIPAMENTO_INSUMOS_DRAFT.filter(i => i.id !== id);
+  custosEquipamentoRenderInsumos();
+  custosEquipamentoCalcular();
+}
+
+function custosEquipamentoLimparInsumos() {
+  EQUIPAMENTO_INSUMOS_DRAFT = [];
+  custosEquipamentoRenderInsumos();
+  custosEquipamentoCalcular();
+}
+
+function custosEquipamentoRenderInsumos() {
+  const tbody = document.getElementById('eq-insumos-lista');
+  if (!tbody) return;
+  if (!EQUIPAMENTO_INSUMOS_DRAFT.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state" style="padding:14px">Nenhum insumo vinculado ao equipamento.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = EQUIPAMENTO_INSUMOS_DRAFT.map(i => {
+    const total = (Number(i.consumo) || 0) * (Number(i.precoUnitario) || 0);
+    return `
+      <tr>
+        <td class="td-mono">${escapeHtml(i.codigo)}</td>
+        <td>${escapeHtml(i.descricao)}<div class="table-input-sub">${escapeHtml(i.fonte || '')}</div></td>
+        <td>${escapeHtml(i.unidade)}</td>
+        <td><span class="badge badge-ok">${escapeHtml(parcelaLabel(i.parcela))}</span></td>
+        <td>${fmtNum(i.consumo)}</td>
+        <td>${fmtMoeda(i.precoUnitario)}</td>
+        <td><strong>${fmtMoeda(total)}</strong></td>
+        <td><button class="btn btn-outline btn-sm" onclick="custosEquipamentoRemoverInsumo('${escapeHtml(i.id)}')">Remover</button></td>
+      </tr>
+    `;
+  }).join('');
+}
+
 function custosEquipamentoCalcular() {
-  const aquisicao = readNumeroCampo('eq-aquisicao');
-  const vida = Math.max(1, readNumeroCampo('eq-vida') || 1);
-  const fator = readNumeroCampo('eq-fator') || 0;
-  const operador = readNumeroCampo('eq-operador');
-  const combustivel = readNumeroCampo('eq-combustivel');
-  const manutencao = readNumeroCampo('eq-manutencao');
-  const depreciacao = aquisicao * fator / vida;
-  const custoHora = depreciacao + operador + combustivel + manutencao;
-  const memoria = `Depreciação ${fmtMoeda(depreciacao)}/h + operador ${fmtMoeda(operador)}/h + combustível/energia ${fmtMoeda(combustivel)}/h + manutenção ${fmtMoeda(manutencao)}/h`;
+  custosEquipamentoModoChange();
+  const modo = document.getElementById('eq-modo')?.value || 'parcelas_calculadas';
+  const parcelas = parcelasVazias();
+  let memoriaOrigem = 'Parcelas calculadas';
+  const alertas = [];
+
+  if (modo === 'nao_calcular') {
+    ULTIMO_CALC_EQUIPAMENTO = { modo, parcelas, produtivo:0, improdutivo:0, custoHora:0, memoria:'Equipamento marcado como não calcular.', alertas };
+  } else if (modo === 'parcelas_informadas') {
+    memoriaOrigem = 'Parcelas informadas manualmente';
+    parcelas.depreciacao = readNumeroCampo('eq-man-depreciacao');
+    parcelas.juros = readNumeroCampo('eq-man-juros');
+    parcelas.impostosSeguros = readNumeroCampo('eq-man-impostos');
+    parcelas.manutencao = readNumeroCampo('eq-man-manutencao');
+    parcelas.material = readNumeroCampo('eq-man-material');
+    parcelas.maoObra = readNumeroCampo('eq-man-mao-obra');
+    parcelas.aluguel = readNumeroCampo('eq-man-aluguel');
+    parcelas.outros = readNumeroCampo('eq-man-outros');
+  } else {
+    const aquisicao = readNumeroCampo('eq-aquisicao');
+    const residual = Math.min(aquisicao, readNumeroCampo('eq-residual'));
+    const vida = readNumeroCampo('eq-vida');
+    const kDep = readNumeroCampo('eq-fator');
+    let kMan = readNumeroCampo('eq-k-manutencao');
+    if (!kMan && kDep) kMan = kDep;
+
+    if (!aquisicao) alertas.push('Valor de aquisição não informado.');
+    if (!vida) alertas.push('Vida útil não informada.');
+    if (aquisicao > 0 && vida > 0) {
+      parcelas.depreciacao = ((aquisicao - residual) * kDep) / vida;
+      parcelas.manutencao = (aquisicao * kMan) / vida;
+    }
+    parcelas.juros = readNumeroCampo('eq-juros');
+    parcelas.impostosSeguros = readNumeroCampo('eq-impostos');
+    parcelas.material = somaInsumosPorParcela('material') + readNumeroCampo('eq-combustivel');
+    parcelas.maoObra = somaInsumosPorParcela('mao_obra') + readNumeroCampo('eq-operador');
+    parcelas.aluguel = somaInsumosPorParcela('aluguel');
+    parcelas.outros = somaInsumosPorParcela('outros');
+  }
+
+  Object.keys(parcelas).forEach(k => { parcelas[k] = roundCustoHorario(parcelas[k]); });
+  const produtivo = roundCustoHorario(parcelas.depreciacao + parcelas.juros + parcelas.impostosSeguros + parcelas.manutencao + parcelas.material + parcelas.maoObra + parcelas.aluguel + parcelas.outros);
+  const improdutivo = roundCustoHorario(parcelas.depreciacao + parcelas.maoObra);
+  const memoria = `${memoriaOrigem}: depreciação ${fmtMoeda(parcelas.depreciacao)}/h + juros ${fmtMoeda(parcelas.juros)}/h + impostos/seguros ${fmtMoeda(parcelas.impostosSeguros)}/h + manutenção ${fmtMoeda(parcelas.manutencao)}/h + material ${fmtMoeda(parcelas.material)}/h + mão de obra ${fmtMoeda(parcelas.maoObra)}/h + aluguel ${fmtMoeda(parcelas.aluguel)}/h + outros ${fmtMoeda(parcelas.outros)}/h. Produtivo ${fmtMoeda(produtivo)}/h; improdutivo ${fmtMoeda(improdutivo)}/h.`;
+  ULTIMO_CALC_EQUIPAMENTO = { modo, parcelas, produtivo, improdutivo, custoHora:produtivo, memoria, alertas, insumos: JSON.parse(JSON.stringify(EQUIPAMENTO_INSUMOS_DRAFT)) };
+
   const preview = document.getElementById('eq-preview');
   if (preview) {
-    preview.innerHTML = `<strong>Custo horário:</strong> ${fmtMoeda(custoHora)}<br><span>${escapeHtml(memoria)}</span>`;
+    const alertaHtml = alertas.length ? `<div class="form-help error">${escapeHtml(alertas.join(' '))}</div>` : '';
+    preview.innerHTML = `
+      <strong>Custo horário calculado</strong>
+      <div class="cost-summary-grid">
+        <div><span>Produtivo</span><strong>${fmtMoeda(produtivo)}</strong></div>
+        <div><span>Improdutivo</span><strong>${fmtMoeda(improdutivo)}</strong></div>
+      </div>
+      <div class="cost-parcel-list">
+        <div><span>Depreciação</span><strong>${fmtMoeda(parcelas.depreciacao)}</strong></div>
+        <div><span>Manutenção</span><strong>${fmtMoeda(parcelas.manutencao)}</strong></div>
+        <div><span>Material</span><strong>${fmtMoeda(parcelas.material)}</strong></div>
+        <div><span>Mão de obra</span><strong>${fmtMoeda(parcelas.maoObra)}</strong></div>
+        <div><span>Juros</span><strong>${fmtMoeda(parcelas.juros)}</strong></div>
+        <div><span>Imp./seguros</span><strong>${fmtMoeda(parcelas.impostosSeguros)}</strong></div>
+        <div><span>Aluguel</span><strong>${fmtMoeda(parcelas.aluguel)}</strong></div>
+        <div><span>Outros</span><strong>${fmtMoeda(parcelas.outros)}</strong></div>
+      </div>
+      ${alertaHtml}
+      <span>${escapeHtml(memoria)}</span>
+    `;
   }
-  return { depreciacao, operador, combustivel, manutencao, custoHora, memoria };
+  return ULTIMO_CALC_EQUIPAMENTO;
 }
 
 function custosEquipamentoSalvar() {
@@ -2535,19 +2783,35 @@ function custosEquipamentoSalvar() {
     toast('Informe equipamento e valores para calcular o custo horário.', 'error');
     return;
   }
-  const cod = document.getElementById('eq-cod')?.value?.trim() || `EQ-${String(STATE.equipamentosHorarios.length + 1).padStart(3, '0')}`;
+  const cod = document.getElementById('eq-cod')?.value?.trim();
+  if (!cod || !custosEquipamentoLookup()) {
+    toast('Cadastre/localize o código do equipamento na base de insumos antes de salvar.', 'error');
+    return;
+  }
   const registro = {
     id: makeId('eq'),
     tipo: 'equipamento',
     cod,
     nome,
+    modoCalculo: calc.modo,
     aquisicao: readNumeroCampo('eq-aquisicao'),
+    valorResidual: readNumeroCampo('eq-residual'),
     vidaHoras: readNumeroCampo('eq-vida'),
     fatorDepreciacao: readNumeroCampo('eq-fator'),
-    operadorHora: readNumeroCampo('eq-operador'),
-    combustivelHora: readNumeroCampo('eq-combustivel'),
-    manutencaoHora: readNumeroCampo('eq-manutencao'),
-    custoHora: roundUnitPrice(calc.custoHora),
+    fatorManutencao: readNumeroCampo('eq-k-manutencao') || readNumeroCampo('eq-fator'),
+    jurosHora: calc.parcelas.juros,
+    impostosSegurosHora: calc.parcelas.impostosSeguros,
+    depreciacaoHora: calc.parcelas.depreciacao,
+    manutencaoHora: calc.parcelas.manutencao,
+    materialHora: calc.parcelas.material,
+    maoObraHora: calc.parcelas.maoObra,
+    aluguelHora: calc.parcelas.aluguel,
+    outrosHora: calc.parcelas.outros,
+    custoHora: roundUnitPrice(calc.produtivo),
+    custoProdutivo: roundCustoHorario(calc.produtivo),
+    custoImprodutivo: roundCustoHorario(calc.improdutivo),
+    parcelas: calc.parcelas,
+    insumos: calc.insumos || [],
     memoria: calc.memoria,
     criadoEm: new Date().toISOString()
   };
@@ -2555,6 +2819,126 @@ function custosEquipamentoSalvar() {
   saveState();
   custosHorariosRender();
   toast('Custo horário de equipamento salvo.', 'success');
+}
+
+function custosEquipamentoAtualizarInsumo() {
+  const calc = ULTIMO_CALC_EQUIPAMENTO || custosEquipamentoCalcular();
+  const cod = document.getElementById('eq-cod')?.value?.trim();
+  const nome = document.getElementById('eq-nome')?.value?.trim();
+  if (!cod || !nome || calc.custoHora <= 0) {
+    toast('Calcule um equipamento com código e descrição antes de atualizar o insumo.', 'error');
+    return;
+  }
+  registrarInsumosImportados([{
+    codigoSinapi: cod,
+    codigo: cod,
+    descricao: nome,
+    unidade: 'h',
+    tipo: 'E',
+    precoMedio: roundCustoHorario(calc.produtivo),
+    preco: roundCustoHorario(calc.produtivo),
+    dataReferencia: new Date().toISOString().slice(0, 10),
+    origem: 'custos-horarios',
+    fonte: 'TLPlanly/Custos Horários',
+    memoriaCustoHorario: calc.memoria
+  }]);
+  saveState();
+  toast('Preço do insumo de equipamento atualizado com o custo produtivo.', 'success');
+}
+
+function beneficioFatorPadrao(periodo) {
+  if (periodo === 'diaria') return 22;
+  if (periodo === 'semanal') return 4.33;
+  if (periodo === 'viagem') return 1;
+  return 1;
+}
+
+function beneficioTotalMensal(item) {
+  const base = (Number(item.quantidade) || 0) * (Number(item.precoUnitario) || 0);
+  const fator = Number(item.fatorMes) || beneficioFatorPadrao(item.periodicidade);
+  return roundCustoHorario(base * fator);
+}
+
+function custosMaoObraAdicionarBeneficio() {
+  const raw = document.getElementById('mo-ben-desc')?.value?.trim();
+  const qtd = readNumeroCampo('mo-ben-qtd') || 1;
+  let preco = readNumeroCampo('mo-ben-preco');
+  const periodo = document.getElementById('mo-ben-periodo')?.value || 'mensal';
+  const fatorMes = readNumeroCampo('mo-ben-fator') || beneficioFatorPadrao(periodo);
+  const preview = document.getElementById('mo-ben-preview');
+  if (!raw) {
+    toast('Informe o benefício ou código do insumo.', 'error');
+    return;
+  }
+  const ref = buscarReferenciaPorCodigo(raw);
+  const descricao = ref?.descricao || raw;
+  if (ref && !preco) preco = ref.precoUnitario;
+  if (preco <= 0) {
+    toast('Informe o preço unitário do benefício.', 'error');
+    return;
+  }
+  MAO_OBRA_BENEFICIOS_DRAFT.push({
+    id: makeId('ben'),
+    codigo: ref?.codigo || '',
+    descricao,
+    quantidade: qtd,
+    precoUnitario: preco,
+    periodicidade: periodo,
+    fatorMes,
+    fonte: ref?.fonte || 'Informado'
+  });
+  ['mo-ben-desc','mo-ben-preco','mo-ben-fator'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const qtdEl = document.getElementById('mo-ben-qtd');
+  if (qtdEl) qtdEl.value = '1';
+  if (preview) {
+    preview.textContent = `${descricao} adicionado à composição de benefícios.`;
+    preview.className = 'form-help ok';
+  }
+  custosMaoObraRenderBeneficios();
+}
+
+function custosMaoObraRemoverBeneficio(id) {
+  MAO_OBRA_BENEFICIOS_DRAFT = MAO_OBRA_BENEFICIOS_DRAFT.filter(i => i.id !== id);
+  custosMaoObraRenderBeneficios();
+}
+
+function custosMaoObraLimparBeneficios() {
+  MAO_OBRA_BENEFICIOS_DRAFT = [];
+  custosMaoObraRenderBeneficios();
+  custosMaoObraAplicarBeneficios();
+}
+
+function custosMaoObraRenderBeneficios() {
+  const tbody = document.getElementById('mo-beneficios-lista');
+  if (!tbody) return;
+  if (!MAO_OBRA_BENEFICIOS_DRAFT.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:14px">Nenhum benefício composto.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = MAO_OBRA_BENEFICIOS_DRAFT.map(i => `
+    <tr>
+      <td>${escapeHtml(i.descricao)}<div class="table-input-sub">${escapeHtml(i.codigo || i.fonte || '')}</div></td>
+      <td>${fmtNum(i.quantidade)}</td>
+      <td>${fmtMoeda(i.precoUnitario)}</td>
+      <td>${escapeHtml(i.periodicidade)}</td>
+      <td>${fmtNum(i.fatorMes)}</td>
+      <td><strong>${fmtMoeda(beneficioTotalMensal(i))}</strong></td>
+      <td><button class="btn btn-outline btn-sm" onclick="custosMaoObraRemoverBeneficio('${escapeHtml(i.id)}')">Remover</button></td>
+    </tr>
+  `).join('');
+}
+
+function custosMaoObraAplicarBeneficios() {
+  const total = MAO_OBRA_BENEFICIOS_DRAFT.reduce((s, i) => s + beneficioTotalMensal(i), 0);
+  const input = document.getElementById('mo-beneficios');
+  if (input) input.value = total ? String(roundCustoHorario(total, 2)) : '';
+  const preview = document.getElementById('mo-ben-preview');
+  if (preview) {
+    preview.textContent = total ? `Benefícios mensais calculados: ${fmtMoeda(total)}.` : '';
+    preview.className = total ? 'form-help ok' : 'form-help';
+  }
+  custosMaoObraCalcular();
+  return total;
 }
 
 function custosMaoObraCalcular() {
@@ -2565,12 +2949,25 @@ function custosMaoObraCalcular() {
   const base = salario + beneficios;
   const encargosValor = base * encargos / 100;
   const custoHora = (base + encargosValor) / horas;
-  const memoria = `(${fmtMoeda(salario)} salário + ${fmtMoeda(beneficios)} benefícios) + ${encargos.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% encargos / ${horas} h produtivas`;
+  const benMemoria = MAO_OBRA_BENEFICIOS_DRAFT.length
+    ? ` Benefícios compostos: ${MAO_OBRA_BENEFICIOS_DRAFT.map(i => `${i.descricao} ${fmtMoeda(beneficioTotalMensal(i))}/mês`).join('; ')}.`
+    : '';
+  const memoria = `(${fmtMoeda(salario)} salário + ${fmtMoeda(beneficios)} benefícios) + ${encargos.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% encargos sobre salário + benefícios / ${horas} h produtivas.${benMemoria}`;
   const preview = document.getElementById('mo-preview');
   if (preview) {
     preview.innerHTML = `<strong>Custo horário:</strong> ${fmtMoeda(custoHora)}<br><span>${escapeHtml(memoria)}</span>`;
   }
-  return { salario, beneficios, encargos, horas, encargosValor, custoHora, memoria };
+  ULTIMO_CALC_MAO_OBRA = {
+    salario,
+    beneficios,
+    encargos,
+    horas,
+    encargosValor: roundCustoHorario(encargosValor),
+    custoHora: roundCustoHorario(custoHora),
+    memoria,
+    beneficiosCompostos: JSON.parse(JSON.stringify(MAO_OBRA_BENEFICIOS_DRAFT))
+  };
+  return ULTIMO_CALC_MAO_OBRA;
 }
 
 function custosMaoObraSalvar() {
@@ -2589,6 +2986,7 @@ function custosMaoObraSalvar() {
     cargo,
     salarioMensal: calc.salario,
     beneficiosMensais: calc.beneficios,
+    beneficiosCompostos: calc.beneficiosCompostos || [],
     encargosPct: calc.encargos,
     horasProdutivasMes: calc.horas,
     custoHora: roundUnitPrice(calc.custoHora),
@@ -2610,6 +3008,9 @@ function custoHorarioRegistros() {
 }
 
 function custosHorariosRender() {
+  custosEquipamentoModoChange();
+  custosEquipamentoRenderInsumos();
+  custosMaoObraRenderBeneficios();
   const tbody = document.getElementById('custos-lista');
   if (!tbody) return;
   const rows = custoHorarioRegistros();
@@ -2623,7 +3024,7 @@ function custosHorariosRender() {
       <td class="td-mono">${escapeHtml(r.cod)}</td>
       <td>${escapeHtml(r.desc)}</td>
       <td><strong>${fmtMoeda(r.custoHora)}</strong></td>
-      <td style="max-width:420px;color:var(--text2)">${escapeHtml(r.memoria)}</td>
+      <td style="max-width:420px;color:var(--text2)">${escapeHtml(r.memoria || '')}${r.custoImprodutivo ? `<div class="table-input-sub">Produtivo ${fmtMoeda(r.custoProdutivo || r.custoHora)} · Improdutivo ${fmtMoeda(r.custoImprodutivo)}</div>` : ''}</td>
       <td><button class="btn btn-outline btn-sm" onclick="custosHorarioEnviarCPU('${escapeHtml(r.tipo)}','${escapeHtml(r.id)}')">Enviar CPU</button></td>
     </tr>
   `).join('');
@@ -2652,7 +3053,10 @@ function custosHorarioEnviarCPU(tipo, id) {
     insumos: [{ cod, desc, unid:'h', tipo:insTipo, coef:1, preco:Number(source.custoHora) || 0 }],
     precoUnitario: Number(source.custoHora) || 0,
     origem: 'custos-horarios',
-    memoria: source.memoria
+    memoria: source.memoria,
+    custoProdutivo: source.custoProdutivo || source.custoHora,
+    custoImprodutivo: source.custoImprodutivo || 0,
+    parcelas: source.parcelas || null
   };
   const idx = CPU_BIBLIOTECA.findIndex(c => codigoChave(c.cod) === codigoChave(cod));
   if (idx >= 0) CPU_BIBLIOTECA[idx] = { ...CPU_BIBLIOTECA[idx], ...cpu, id: CPU_BIBLIOTECA[idx].id };
@@ -2667,9 +3071,9 @@ function custosHorariosRows() {
     ['CUSTOS HORÁRIOS - TLPlanly'],
     [`Emitido em ${new Date().toLocaleString('pt-BR')}`],
     [],
-    ['Tipo','Código','Descrição','Custo horário','Memória']
+    ['Tipo','Código','Descrição','Custo produtivo','Custo improdutivo','Memória']
   ];
-  custoHorarioRegistros().forEach(r => rows.push([r.grupo, r.cod, r.desc, valorMoeda(r.custoHora), r.memoria]));
+  custoHorarioRegistros().forEach(r => rows.push([r.grupo, r.cod, r.desc, valorMoeda(r.custoProdutivo || r.custoHora), valorMoeda(r.custoImprodutivo || 0), r.memoria]));
   return rows;
 }
 
