@@ -119,6 +119,7 @@ export interface SaasStore {
   init(): Promise<void>;
   health(): Promise<SaasStoreHealth>;
   listPlans(): Promise<PricingPlan[]>;
+  getOrCreateBetaUser(): Promise<PublicUser>;
   validateCoupon(code: string): Promise<{ valid: boolean; coupon?: CouponRecord; plan?: PricingPlan; reason?: string }>;
   createUser(input: {
     name: string;
@@ -231,6 +232,12 @@ const DEFAULT_PLANS: PricingPlan[] = [
     sortOrder: 50,
   },
 ];
+
+const BETA_TENANT_ID = 'ten_beta_public';
+const BETA_USER_ID = 'usr_beta_public';
+const BETA_SUBSCRIPTION_ID = 'sub_beta_public';
+const BETA_EMAIL = 'beta@tlplanly.local';
+const BETA_PLAN_ID = 'public_control';
 
 function normalizeCouponCode(code: string): string {
   return String(code || '').trim().toUpperCase();
@@ -384,6 +391,79 @@ export class FileSaasStore implements SaasStore {
 
   async listPlans(): Promise<PricingPlan[]> {
     return publicPlans(this.data.plans);
+  }
+
+  async getOrCreateBetaUser(): Promise<PublicUser> {
+    const plan = this.data.plans.find(p => p.id === BETA_PLAN_ID) || this.data.plans[0] || DEFAULT_PLANS[0];
+    let tenant = this.data.tenants.find(item => item.id === BETA_TENANT_ID);
+    if (!tenant) {
+      tenant = {
+        id: BETA_TENANT_ID,
+        name: 'TLPlanly Beta',
+        plan: plan.id,
+        createdAt: nowIso(),
+      };
+      this.data.tenants.push(tenant);
+    } else {
+      tenant.name = tenant.name || 'TLPlanly Beta';
+      tenant.plan = plan.id;
+    }
+
+    let user = this.data.users.find(item => item.id === BETA_USER_ID || item.email === BETA_EMAIL);
+    if (!user) {
+      user = {
+        id: BETA_USER_ID,
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        name: 'Usuario Beta',
+        email: BETA_EMAIL,
+        role: 'admin',
+        passwordHash: 'beta-access-disabled',
+        passwordSalt: 'beta-access-disabled',
+        planId: plan.id,
+        planName: 'Beta liberado',
+        planStatus: 'active',
+        planExpiresAt: null,
+        seats: Math.max(plan.includedUsers || 1, 99),
+      };
+      this.data.users.push(user);
+    } else {
+      user.tenantId = tenant.id;
+      user.tenantName = tenant.name;
+      user.name = user.name || 'Usuario Beta';
+      user.email = BETA_EMAIL;
+      user.role = 'admin';
+      user.planId = plan.id;
+      user.planName = 'Beta liberado';
+      user.planStatus = 'active';
+      user.planExpiresAt = null;
+      user.seats = Math.max(plan.includedUsers || 1, 99);
+    }
+
+    let subscription = this.data.subscriptions.find(item => item.id === BETA_SUBSCRIPTION_ID || item.tenantId === tenant.id);
+    if (!subscription) {
+      subscription = {
+        id: BETA_SUBSCRIPTION_ID,
+        tenantId: tenant.id,
+        planId: plan.id,
+        status: 'active',
+        seats: Math.max(plan.includedUsers || 1, 99),
+        startsAt: nowIso(),
+        endsAt: null,
+        couponCode: null,
+        createdAt: nowIso(),
+      };
+      this.data.subscriptions.push(subscription);
+    } else {
+      subscription.planId = plan.id;
+      subscription.status = 'active';
+      subscription.seats = Math.max(plan.includedUsers || 1, 99);
+      subscription.endsAt = null;
+      subscription.couponCode = null;
+    }
+
+    this.persist();
+    return publicUser(user);
   }
 
   async validateCoupon(code: string): Promise<{ valid: boolean; coupon?: CouponRecord; plan?: PricingPlan; reason?: string }> {
@@ -714,6 +794,46 @@ export class PostgresSaasStore implements SaasStore {
        order by sort_order asc`
     );
     return result.rows.map(rowToPlan);
+  }
+
+  async getOrCreateBetaUser(): Promise<PublicUser> {
+    await this.pool.query(
+      `insert into saas_tenants (id, name, plan)
+       values ($1, $2, $3)
+       on conflict (id) do update set name = excluded.name, plan = excluded.plan`,
+      [BETA_TENANT_ID, 'TLPlanly Beta', BETA_PLAN_ID]
+    );
+    await this.pool.query(
+      `insert into saas_users (id, tenant_id, name, email, role, password_hash, password_salt)
+       values ($1, $2, $3, $4, 'admin', 'beta-access-disabled', 'beta-access-disabled')
+       on conflict (email) do update set
+         tenant_id = excluded.tenant_id,
+         name = excluded.name,
+         role = excluded.role`,
+      [BETA_USER_ID, BETA_TENANT_ID, 'Usuario Beta', BETA_EMAIL]
+    );
+    await this.pool.query(
+      `insert into saas_subscriptions (id, tenant_id, plan_id, status, seats, starts_at, ends_at, coupon_code)
+       values ($1, $2, $3, 'active', 99, now(), null, null)
+       on conflict (id) do update set
+         tenant_id = excluded.tenant_id,
+         plan_id = excluded.plan_id,
+         status = 'active',
+         seats = 99,
+         ends_at = null,
+         coupon_code = null`,
+      [BETA_SUBSCRIPTION_ID, BETA_TENANT_ID, BETA_PLAN_ID]
+    );
+    const user = await this.findUserByEmail(BETA_EMAIL);
+    if (!user) throw new Error('Nao foi possivel iniciar o usuario beta.');
+    return {
+      ...publicUser(user),
+      planId: BETA_PLAN_ID,
+      planName: 'Beta liberado',
+      planStatus: 'active',
+      planExpiresAt: null,
+      seats: 99,
+    };
   }
 
   async validateCoupon(code: string): Promise<{ valid: boolean; coupon?: CouponRecord; plan?: PricingPlan; reason?: string }> {

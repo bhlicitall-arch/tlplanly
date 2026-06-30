@@ -53,7 +53,8 @@ let CLOUD = {
   persistence: 'local'
 };
 
-const AUTH_REQUIRED = true;
+let AUTH_REQUIRED = false;
+let BETA_ACCESS = true;
 
 let PRICING_PLANS = [
   { id:'trial_authorized', name:'Teste Autorizado', description:'Acesso controlado para demonstracao assistida por cupom.', annualMonthlyPriceCents:0, monthlyPriceCents:0, includedUsers:1, maxProjects:2, maxAiMessagesMonthly:50, maxOcrPagesMonthly:20, features:['7 dias de avaliacao','Importacao limitada','SINAPI/SICRO/ORSE','Copilot limitado'], sortOrder:10 },
@@ -379,7 +380,7 @@ function planCard(plan, compact=false) {
     <div class="pricing-note">${plan.monthlyPriceCents ? 'valor no anual · mensal cheio ' + priceText(plan.monthlyPriceCents) : 'comercial sob validacao'}</div>
     <div class="pricing-usage">${escapeHtml(planUsageText(plan))}</div>
     <ul class="pricing-features">${features}</ul>
-    ${compact ? '' : '<button class="btn btn-outline btn-sm" onclick="cloudOpen()">Solicitar / usar cupom</button>'}
+    ${compact ? '' : '<button class="btn btn-outline btn-sm" onclick="cloudOpen()">Ver ambiente beta</button>'}
   </div>`;
 }
 
@@ -410,6 +411,14 @@ function showPricingDetails() {
 }
 
 async function cloudValidateCoupon() {
+  if (BETA_ACCESS) {
+    const status = document.getElementById('coupon-status');
+    if (status) {
+      status.textContent = 'Cupom dispensado no beta. Acesso liberado para testes.';
+      status.className = 'form-help ok';
+    }
+    return true;
+  }
   const input = document.getElementById('cloud-coupon');
   const status = document.getElementById('coupon-status');
   const couponCode = input?.value?.trim() || '';
@@ -485,7 +494,7 @@ function cloudLastSavedText() {
   if (CLOUD.error) return 'Erro ao salvar';
   if (CLOUD.dirty) return 'Alterações pendentes';
   if (CLOUD.lastSavedAt) return 'Salvo ' + new Date(CLOUD.lastSavedAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-  return CLOUD.user ? 'Aguardando salvamento' : 'Login obrigatório';
+  return CLOUD.user ? 'Aguardando salvamento' : (BETA_ACCESS ? 'Beta liberado' : 'Login obrigatório');
 }
 
 function cloudRenderSaveStatus() {
@@ -497,10 +506,12 @@ function cloudRenderSaveStatus() {
     else if (CLOUD.user && CLOUD.error) { label = 'Erro'; cls += ' error'; }
     else if (CLOUD.user && CLOUD.dirty) { label = 'Pendente'; cls += ' pending'; }
     else if (CLOUD.user && CLOUD.currentProjectId) { label = 'Salvo'; cls += ' ok'; }
+    else if (CLOUD.user && BETA_ACCESS) { label = 'Beta'; cls += ' ok'; }
     else if (CLOUD.user) { label = 'Conta'; cls += ' pending'; }
+    else if (BETA_ACCESS) { label = 'Beta'; cls += ' ok'; }
     chip.textContent = label;
     chip.className = cls;
-    chip.title = CLOUD.user ? cloudLastSavedText() : 'Entre para usar o TLPlanly.';
+    chip.title = CLOUD.user || BETA_ACCESS ? cloudLastSavedText() : 'Entre para usar o TLPlanly.';
   }
   const currentName = document.getElementById('cloud-current-name');
   if (currentName) currentName.textContent = cloudCurrentProject()?.name || 'Nenhuma obra selecionada';
@@ -537,14 +548,14 @@ function cloudRender() {
   const btn = document.getElementById('cloudBtn');
   if (!auth || !workspace) return;
   const logged = !!CLOUD.user;
-  auth.style.display = logged ? 'none' : 'block';
-  workspace.style.display = logged ? 'block' : 'none';
+  auth.style.display = logged || BETA_ACCESS ? 'none' : 'block';
+  workspace.style.display = logged || BETA_ACCESS ? 'block' : 'none';
   if (btn) {
-    btn.textContent = logged ? '☁' : '🔒';
-    btn.title = logged ? 'Obras salvas na nuvem' : 'Entrar na conta TLPlanly';
+    btn.textContent = logged || BETA_ACCESS ? '☁' : '🔒';
+    btn.title = logged || BETA_ACCESS ? 'Ambiente beta e obras salvas' : 'Entrar na conta TLPlanly';
   }
   if (!logged) {
-    cloudSetStatus('Login obrigatório para usar o TLPlanly');
+    cloudSetStatus(BETA_ACCESS ? 'Modo beta liberado. Login, senha e cupom dispensados.' : 'Login obrigatório para usar o TLPlanly');
     cloudRenderSaveStatus();
     authApplyGate();
     return;
@@ -557,7 +568,7 @@ function cloudRender() {
   const planEl = document.getElementById('cloud-plan-name');
   if (planEl) {
     const expires = CLOUD.user.planExpiresAt ? ` · expira em ${new Date(CLOUD.user.planExpiresAt).toLocaleDateString('pt-BR')}` : '';
-    planEl.textContent = `${CLOUD.user.planName || 'Plano autorizado'}${expires}`;
+    planEl.textContent = `${BETA_ACCESS ? 'Beta liberado' : (CLOUD.user.planName || 'Plano autorizado')}${expires}`;
   }
   const isolation = document.getElementById('cloud-isolation-text');
   if (isolation) isolation.textContent = `Ambiente "${org}" isolado. Outros clientes nao podem listar, abrir, alterar ou apagar estas obras.`;
@@ -574,7 +585,7 @@ function cloudRender() {
       select.appendChild(opt);
     });
   }
-  cloudSetStatus(`${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · cliente isolado · ${cloudLastSavedText()}`);
+  cloudSetStatus(`${BETA_ACCESS ? 'Beta liberado' : 'Acesso autenticado'} · ${CLOUD.persistence === 'postgres' ? 'Banco Postgres' : 'Store local'} ativo · ${cloudLastSavedText()}`);
   cloudRenderSaveStatus();
   authApplyGate();
 }
@@ -582,6 +593,8 @@ function cloudRender() {
 async function cloudInit() {
   try {
     const data = await cloudApi('/api/auth/me');
+    AUTH_REQUIRED = data.authRequired === true;
+    BETA_ACCESS = data.betaAccess === true || !AUTH_REQUIRED;
     CLOUD.user = data.user || null;
     CLOUD.persistence = data.persistence || 'local';
     if (CLOUD.user) {
@@ -599,6 +612,17 @@ async function cloudInit() {
 
 async function cloudLogin() {
   try {
+    if (BETA_ACCESS) {
+      const data = await cloudApi('/api/auth/me');
+      CLOUD.user = data.user || CLOUD.user;
+      CLOUD.persistence = data.persistence || 'local';
+      await cloudRefreshProjects();
+      await loadSinapiBase();
+      toast('Beta liberado', 'success');
+      cloudRender();
+      cloudClose();
+      return;
+    }
     const email = document.getElementById('cloud-email').value.trim();
     const password = document.getElementById('cloud-password').value;
     if (!email || !password) throw new Error('Informe e-mail e senha.');
@@ -624,6 +648,10 @@ async function cloudLogin() {
 
 async function cloudRegister() {
   try {
+    if (BETA_ACCESS) {
+      await cloudLogin();
+      return;
+    }
     const name = document.getElementById('cloud-name').value.trim();
     const email = document.getElementById('cloud-email').value.trim();
     const password = document.getElementById('cloud-password').value;
@@ -654,6 +682,11 @@ async function cloudRegister() {
 }
 
 async function cloudLogout() {
+  if (BETA_ACCESS) {
+    toast('No beta, o acesso permanece liberado.', 'info');
+    cloudRender();
+    return;
+  }
   if (CLOUD.dirty && !confirm('Existem alterações pendentes na nuvem. Sair mesmo assim?')) return;
   cloudClearSaveTimer();
   try { await cloudApi('/api/auth/logout', { method: 'POST', body: '{}' }); } catch {}

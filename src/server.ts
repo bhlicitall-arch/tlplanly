@@ -69,6 +69,7 @@ const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 const SESSION_COOKIE = 'tlplanly_session';
 const SESSION_DAYS = 7;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'tlplanly-dev-session-secret';
+const BETA_ACCESS = process.env.TLPLANLY_BETA_ACCESS !== '0';
 const saasStore = createSaasStore();
 
 type AuthedRequest = Request & { user?: PublicUser };
@@ -114,6 +115,7 @@ function routeParam(value: string | string[] | undefined): string {
 }
 
 async function getCurrentUser(req: Request): Promise<PublicUser | null> {
+  if (BETA_ACCESS) return saasStore.getOrCreateBetaUser();
   const token = parseCookies(req)[SESSION_COOKIE];
   if (!token) return null;
   return saasStore.getUserBySession(hashSessionToken(token + SESSION_SECRET));
@@ -337,7 +339,7 @@ const OPERATION_MANUAL_CONTEXT = `
 
 ## Manual Operacional TLPlanly
 Quando o usuario perguntar como operar o sistema, use este roteiro:
-- **Acesso e planos**: login obrigatorio; cadastro exige codigo autorizado; Planos e Precos mostra Teste Autorizado, Profissional, Equipe, Licitacoes Pro e Orgao Publico/Controle.
+- **Acesso e planos**: beta liberado neste momento; login, senha e cupom estao dispensados. Planos e Precos continua como referencia comercial futura.
 - **Dashboard**: resumo de totais, BDI, itens criticos, graficos e atalhos.
 - **Configuracoes**: UF, tolerancia, regime de encargos, tipo de obra, moeda e modelo de relatorio.
 - **Bases de Referencia**: carregar lote SINAPI/SICRO/ORSE/estaduais/DER-MG com arquivos onerados, desonerados, produtos, insumos, servicos e composicoes.
@@ -371,6 +373,22 @@ app.get('/api/plans', async (_req: Request, res: Response) => {
 });
 
 app.post('/api/auth/validate-coupon', async (req: Request, res: Response) => {
+  if (BETA_ACCESS) {
+    const plans = await saasStore.listPlans();
+    res.json({
+      valid: true,
+      betaAccess: true,
+      coupon: {
+        code: 'BETA-LIBERADO',
+        expiresAt: null,
+        maxUses: 0,
+        usedCount: 0,
+        trialDays: 0,
+      },
+      plan: plans.find(plan => plan.id === 'public_control') || plans[0],
+    });
+    return;
+  }
   const { couponCode } = req.body || {};
   const validation = await saasStore.validateCoupon(couponCode);
   if (!validation.valid) {
@@ -392,6 +410,11 @@ app.post('/api/auth/validate-coupon', async (req: Request, res: Response) => {
 
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   try {
+    if (BETA_ACCESS) {
+      const user = await saasStore.getOrCreateBetaUser();
+      res.status(201).json({ user, persistence: saasStore.mode, authRequired: false, betaAccess: true });
+      return;
+    }
     const { name, email, password, orgName, couponCode } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
     if (!name || !normalizedEmail) {
@@ -422,6 +445,11 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
 
 app.post('/api/auth/login', async (req: Request, res: Response) => {
   try {
+    if (BETA_ACCESS) {
+      const user = await saasStore.getOrCreateBetaUser();
+      res.json({ user, persistence: saasStore.mode, authRequired: false, betaAccess: true });
+      return;
+    }
     const { email, password } = req.body || {};
     const user = await saasStore.findUserByEmail(email);
     if (!user || !verifyPassword(password || '', user.passwordSalt, user.passwordHash)) {
@@ -457,7 +485,7 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
 
 app.get('/api/auth/me', async (req: Request, res: Response) => {
   const user = await getCurrentUser(req);
-  res.json({ user, persistence: saasStore.mode, authRequired: true });
+  res.json({ user, persistence: saasStore.mode, authRequired: !BETA_ACCESS, betaAccess: BETA_ACCESS });
 });
 
 app.get('/api/projects', requireAuth, async (req: AuthedRequest, res: Response) => {
@@ -509,7 +537,8 @@ app.get('/api/saas/status', async (_req: Request, res: Response) => {
     ready: persistence.ready,
     users: persistence.users,
     projects: persistence.projects,
-    auth: true,
+    auth: !BETA_ACCESS,
+    betaAccess: BETA_ACCESS,
     detail: persistence.detail,
     timestamp: persistence.checkedAt,
   });
@@ -679,6 +708,8 @@ app.get('/health', async (_req, res) => {
     databaseReady: persistence.ready,
     users: persistence.users,
     projects: persistence.projects,
+    authRequired: !BETA_ACCESS,
+    betaAccess: BETA_ACCESS,
     historyMessages: MAX_HISTORY_MESSAGES,
     maxMessageChars: MAX_MESSAGE_CHARS,
     timestamp: new Date().toISOString(),
