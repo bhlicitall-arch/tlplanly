@@ -1318,7 +1318,7 @@
 <!-- ═══════════════ COMPOSIÇÕES ANALÍTICAS (CPU) ═══════════════ -->
 <div id="view-cpu" class="view">
   <div class="page-title">Composições <span class="gold-text">Analíticas (CPU)</span></div>
-  <div class="page-sub">Crie composições unitárias com insumos SINAPI — materiais, mão de obra e equipamentos</div>
+  <div class="page-sub">Crie composições unitárias com bases oficiais ou insumos próprios — materiais, mão de obra e equipamentos</div>
 
   <!-- Stepper -->
   <div class="cpu-stepper" style="max-width:600px;margin-bottom:20px">
@@ -1367,7 +1367,10 @@
             <input id="cpu-prod" class="form-input" type="number" value="1.0" step="0.01" min="0.001"/>
           </div>
         </div>
-        <button class="btn btn-gold btn-sm mt-4" onclick="cpuIrPasso(1)">Próximo: Insumos &#8594;</button>
+        <div class="flex flex-wrap mt-4">
+          <button class="btn btn-gold btn-sm" onclick="cpuIrPasso(1)">Próximo: Insumos &#8594;</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuCriarDoZero()">Criar CPU do zero</button>
+        </div>
       </div>
 
       <!-- Passo 1: Insumos -->
@@ -1378,7 +1381,7 @@
         <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;margin-bottom:12px">
           <div class="grid" style="grid-template-columns:1fr 80px 100px auto;gap:8px;align-items:flex-end">
             <div>
-              <label class="form-label">Buscar Insumo SINAPI</label>
+              <label class="form-label">Buscar insumo na base</label>
               <div class="search-wrap">
                 <input id="cpu-search" class="form-input" placeholder="Código ou descrição..." oninput="cpuBuscarInsumo(this.value)" autocomplete="off"/>
                 <div id="cpu-search-results" class="search-results"></div>
@@ -1403,6 +1406,60 @@
             </div>
           </div>
           <div id="cpu-ins-preview" style="margin-top:8px;display:none;font-size:12px;color:var(--text2)"></div>
+        </div>
+
+        <!-- Cadastro manual de insumo -->
+        <div class="cpu-manual-box">
+          <div class="sec-header" style="margin-bottom:10px">
+            <div class="sec-title">Insumo <span>manual</span></div>
+            <span id="cpu-manual-count" class="form-help">Base própria do projeto</span>
+          </div>
+          <div class="grid grid-4 cpu-manual-grid">
+            <div>
+              <label class="form-label">Código</label>
+              <input id="cpu-man-cod" class="form-input" placeholder="Ex: PROP-MAT-001"/>
+            </div>
+            <div style="grid-column:span 2">
+              <label class="form-label">Descrição</label>
+              <input id="cpu-man-desc" class="form-input" placeholder="Ex: Almoço, material local, frete, equipamento próprio"/>
+            </div>
+            <div>
+              <label class="form-label">Unidade</label>
+              <input id="cpu-man-unid" class="form-input" placeholder="UN" value="UN"/>
+            </div>
+            <div>
+              <label class="form-label">Tipo</label>
+              <select id="cpu-man-tipo" class="form-select">
+                <option value="M">Material</option>
+                <option value="E">Equipamento</option>
+                <option value="S">Mão de obra</option>
+                <option value="T">Transporte</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Coeficiente</label>
+              <input id="cpu-man-coef" class="form-input" type="number" value="1.000" step="0.001" min="0.0001"/>
+            </div>
+            <div>
+              <label class="form-label">Preço unit. (R$)</label>
+              <input id="cpu-man-preco" class="form-input" type="number" value="0.00" step="0.01" min="0"/>
+            </div>
+            <div>
+              <label class="form-label">Fonte/fornecedor</label>
+              <input id="cpu-man-fonte" class="form-input" placeholder="Próprio, cotação, fornecedor"/>
+            </div>
+          </div>
+          <label class="cpu-checkline">
+            <input id="cpu-man-salvar" type="checkbox" checked/>
+            <span>Salvar na base manual do projeto para reutilizar em outras CPUs.</span>
+          </label>
+          <div class="flex flex-wrap mt-3">
+            <button class="btn btn-gold btn-sm" onclick="cpuAdicionarInsumoManual()">+ Adicionar manual</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuImportarInsumosExcel()">Importar Excel de insumos</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuBaixarModeloInsumos()">Modelo Excel</button>
+            <button class="btn btn-outline btn-sm" onclick="cpuLimparInsumoManual()">Limpar campos</button>
+          </div>
+          <div id="cpu-man-preview" class="form-help"></div>
         </div>
 
         <!-- Tabela de insumos -->

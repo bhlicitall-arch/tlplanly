@@ -20,6 +20,7 @@ let STATE = {
   backups: [],
   gruposCusto: [],
   insumosImportados: [],
+  insumosManuais: [],
   cpuBiblioteca: [],
   equipamentosHorarios: [],
   maoObraHoraria: [],
@@ -78,6 +79,7 @@ try {
     STATE.backups = p.backups || [];
     STATE.gruposCusto = p.gruposCusto || [];
     STATE.insumosImportados = p.insumosImportados || [];
+    STATE.insumosManuais = p.insumosManuais || [];
     STATE.cpuBiblioteca = p.cpuBiblioteca || [];
     STATE.equipamentosHorarios = p.equipamentosHorarios || [];
     STATE.maoObraHoraria = p.maoObraHoraria || [];
@@ -200,6 +202,7 @@ function normalizeState() {
   STATE.backups = Array.isArray(STATE.backups) ? STATE.backups : [];
   STATE.gruposCusto = normalizarGruposCusto(STATE.gruposCusto);
   STATE.insumosImportados = Array.isArray(STATE.insumosImportados) ? STATE.insumosImportados : [];
+  STATE.insumosManuais = Array.isArray(STATE.insumosManuais) ? STATE.insumosManuais : [];
   STATE.cpuBiblioteca = Array.isArray(STATE.cpuBiblioteca) ? STATE.cpuBiblioteca : [];
   STATE.equipamentosHorarios = Array.isArray(STATE.equipamentosHorarios) ? STATE.equipamentosHorarios : [];
   STATE.maoObraHoraria = Array.isArray(STATE.maoObraHoraria) ? STATE.maoObraHoraria : [];
@@ -262,6 +265,7 @@ function persistedState() {
     backups: STATE.backups,
     gruposCusto: STATE.gruposCusto,
     insumosImportados: STATE.insumosImportados,
+    insumosManuais: STATE.insumosManuais,
     cpuBiblioteca: STATE.cpuBiblioteca,
     equipamentosHorarios: STATE.equipamentosHorarios,
     maoObraHoraria: STATE.maoObraHoraria,
@@ -287,6 +291,7 @@ function applyPersistedState(payload) {
   STATE.backups = Array.isArray(payload.backups) ? payload.backups : [];
   STATE.gruposCusto = Array.isArray(payload.gruposCusto) ? payload.gruposCusto : [];
   STATE.insumosImportados = Array.isArray(payload.insumosImportados) ? payload.insumosImportados : [];
+  STATE.insumosManuais = Array.isArray(payload.insumosManuais) ? payload.insumosManuais : [];
   STATE.cpuBiblioteca = Array.isArray(payload.cpuBiblioteca) ? payload.cpuBiblioteca : [];
   STATE.equipamentosHorarios = Array.isArray(payload.equipamentosHorarios) ? payload.equipamentosHorarios : [];
   STATE.maoObraHoraria = Array.isArray(payload.maoObraHoraria) ? payload.maoObraHoraria : [];
@@ -314,6 +319,7 @@ function refreshAppFromState() {
     try { localStorage.setItem('tlplanly_cpu_lib', JSON.stringify(CPU_BIBLIOTECA)); } catch(e) {}
     if (typeof cpuRenderBiblioteca === 'function') cpuRenderBiblioteca();
   }
+  if (typeof cpuRenderManualCount === 'function') cpuRenderManualCount();
   const c = STATE.bdiComponents || {};
   const setVal = (id, value) => {
     const el = document.getElementById(id);
@@ -864,6 +870,7 @@ function showView(id) {
   if (id==='dashboard') renderDashboard();
   if (id==='curvaABC') gerarCurvaABC();
   if (id==='memoria') renderMemoria();
+  if (id==='cpu') { cpuRenderBiblioteca(); cpuRenderManualCount(); }
   if (id==='custos') custosHorariosRender();
   if (id==='cotacoes') cotacoesRender();
   if (id==='frentes') frentesServicoRender();
@@ -4191,6 +4198,7 @@ function backupPayload() {
     extracoes: STATE.extracoes,
     gruposCusto: STATE.gruposCusto,
     insumosImportados: STATE.insumosImportados,
+    insumosManuais: STATE.insumosManuais,
     cpuBiblioteca: STATE.cpuBiblioteca,
     equipamentosHorarios: STATE.equipamentosHorarios,
     maoObraHoraria: STATE.maoObraHoraria,
@@ -5785,7 +5793,7 @@ function limparCodigo(s) {
 function matchSINAPI(item) {
   const allRefs = typeof getAllItems === 'function'
     ? getAllItems()
-    : [...(STATE.insumosImportados || []), ...STATE.sinapiBase];
+    : [...(STATE.insumosManuais || []), ...(STATE.insumosImportados || []), ...STATE.sinapiBase];
   const ref = allRefs.find(s => (s.codigoSinapi || s.codigo || '').toString().toUpperCase() === String(item.cod || '').toUpperCase());
 
   if (ref) {
@@ -6609,6 +6617,8 @@ const LINKS_ESTADUAIS = {
 // ─── LOOKUP UNIFICADO ──────────────────────────────────────
 function lookupPreco(cod) {
   const code = String(cod || '').toUpperCase();
+  const manual = escolherItemReferencia((STATE.insumosManuais || []).filter(i => String(i.codigoSinapi || i.codigo || '').toUpperCase() === code));
+  if (manual) return { preco: manual.precoMedio || manual.preco || 0, fonte: 'Base manual', item: manual };
   const imported = escolherItemReferencia((STATE.insumosImportados || []).filter(i => String(i.codigoSinapi || i.codigo || '').toUpperCase() === code));
   if (imported) return { preco: imported.precoMedio || imported.preco || 0, fonte: 'Base importada', item: imported };
   // Returns { preco, fonte, item } searching in priority order
@@ -6642,6 +6652,7 @@ function escolherItemReferencia(items) {
 function getAllItems() {
   // Merge all base items for search
   const all = [];
+  (STATE.insumosManuais || []).forEach(i => all.push({ ...i, _base: 'Base manual', _baseTipo: 'manual' }));
   (STATE.insumosImportados || []).forEach(i => all.push({ ...i, _base: 'Base importada', _baseTipo: 'local' }));
   // Original sinapiBase first, but avoid duplicating it again through BASES.sinapi.
   STATE.sinapiBase.forEach(i => all.push({ ...i, _base: 'SINAPI', _baseTipo: 'federal' }));
@@ -7965,6 +7976,216 @@ function cpuLoadLib() {
   } catch(e){}
 }
 
+function cpuRenderManualCount() {
+  const el = document.getElementById('cpu-manual-count');
+  if (el) el.textContent = `${(STATE.insumosManuais || []).length} insumo(s) manuais salvos`;
+}
+
+function cpuTipoManual(value, desc = '') {
+  const raw = textoChave(`${value || ''} ${desc || ''}`);
+  if (['S','MO','MAO OBRA','MAO DE OBRA','SERVICO'].some(k => raw.includes(k))) return 'S';
+  if (['E','EQUIP','EQUIPAMENTO','MAQUINA'].some(k => raw.includes(k))) return 'E';
+  if (['T','TRANSP','TRANSPORTE','FRETE'].some(k => raw.includes(k))) return 'T';
+  return 'M';
+}
+
+function cpuTipoDescricao(tipo) {
+  return { M:'Material', E:'Equipamento', S:'Mão de obra', T:'Transporte' }[tipo] || 'Material';
+}
+
+function cpuCodigoManual(codigo, desc = '') {
+  const raw = String(codigo || '').trim().toUpperCase();
+  if (raw) return raw.replace(/[^A-Z0-9_.\-\/]/g, '-').slice(0, 40);
+  const base = textoChave(desc).replace(/\s+/g, '-').slice(0, 18) || 'INSUMO';
+  const seq = String((STATE.insumosManuais || []).length + 1).padStart(4, '0');
+  return `MAN-${base}-${seq}`;
+}
+
+function cpuNormalizarInsumoManual(raw, options = {}) {
+  const desc = String(raw.descricao || raw.desc || '').trim();
+  const preco = Number(raw.precoMedio ?? raw.preco ?? raw.valor ?? 0) || 0;
+  const cod = cpuCodigoManual(raw.codigoSinapi || raw.codigo || raw.cod, desc);
+  const tipo = cpuTipoManual(raw.tipo || raw.natureza || raw.categoria, desc);
+  return {
+    codigoSinapi: cod,
+    codigo: cod,
+    descricao: desc,
+    unidade: String(raw.unidade || raw.unid || raw.un || 'UN').trim() || 'UN',
+    tipo,
+    natureza: tipo,
+    categoria: raw.categoria || cpuTipoDescricao(tipo),
+    precoMedio: preco,
+    preco,
+    fonte: String(raw.fonte || raw.fornecedor || options.fonte || 'Cadastro manual').trim(),
+    origemArquivo: options.origemArquivo || raw.origemArquivo || '',
+    manual: true,
+    importado: !!options.importado,
+    dataReferencia: new Date().toLocaleDateString('pt-BR')
+  };
+}
+
+function cpuSalvarInsumoManual(item) {
+  normalizeState();
+  if (!item?.codigo || !item?.descricao) return false;
+  const code = codigoChave(item.codigo);
+  const byCode = new Map((STATE.insumosManuais || []).map(i => [codigoChave(i.codigoSinapi || i.codigo), i]));
+  byCode.set(code, { ...(byCode.get(code) || {}), ...item, codigoSinapi: code, codigo: code });
+  STATE.insumosManuais = [...byCode.values()];
+  saveState();
+  cpuRenderManualCount();
+  return true;
+}
+
+function cpuAdicionarInsumoNaComposicao(item, coef) {
+  const tipo = cpuTipoManual(item.tipo || item.natureza || item.categoria, item.descricao);
+  CPU.insumos.push({
+    cod: item.codigoSinapi || item.codigo || '',
+    desc: item.descricao || '',
+    unid: item.unidade || 'UN',
+    tipo,
+    coef: Number(coef) || 1,
+    preco: Number(item.precoMedio ?? item.preco ?? 0) || 0,
+    fonte: item.fonte || (item.manual ? 'Base manual' : item._base || '')
+  });
+}
+
+function cpuAdicionarInsumoManual() {
+  const raw = {
+    codigo: document.getElementById('cpu-man-cod')?.value,
+    descricao: document.getElementById('cpu-man-desc')?.value,
+    unidade: document.getElementById('cpu-man-unid')?.value,
+    tipo: document.getElementById('cpu-man-tipo')?.value,
+    preco: readNumeroCampo('cpu-man-preco'),
+    fonte: document.getElementById('cpu-man-fonte')?.value
+  };
+  const coef = readNumeroCampo('cpu-man-coef') || 1;
+  const item = cpuNormalizarInsumoManual(raw);
+  if (!item.descricao) { toast('Informe a descrição do insumo manual.', 'error'); return; }
+  if (item.precoMedio < 0) { toast('Preço unitário inválido.', 'error'); return; }
+  if (document.getElementById('cpu-man-salvar')?.checked) cpuSalvarInsumoManual(item);
+  cpuAdicionarInsumoNaComposicao(item, coef);
+  cpuRenderInsumos();
+  cpuLimparInsumoManual({ keepTipo:true });
+  toast('Insumo manual adicionado à CPU', 'success');
+}
+
+function cpuLimparInsumoManual(options = {}) {
+  ['cpu-man-cod','cpu-man-desc','cpu-man-fonte'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const unid = document.getElementById('cpu-man-unid');
+  if (unid) unid.value = 'UN';
+  const coef = document.getElementById('cpu-man-coef');
+  if (coef) coef.value = '1.000';
+  const preco = document.getElementById('cpu-man-preco');
+  if (preco) preco.value = '0.00';
+  if (!options.keepTipo) {
+    const tipo = document.getElementById('cpu-man-tipo');
+    if (tipo) tipo.value = 'M';
+  }
+  const prev = document.getElementById('cpu-man-preview');
+  if (prev) prev.textContent = '';
+}
+
+function cpuCriarDoZero() {
+  const cod = document.getElementById('cpu-cod');
+  if (cod && !cod.value.trim()) cod.value = `CPU-PROP-${String(CPU_BIBLIOTECA.length + 1).padStart(3, '0')}`;
+  cpuIrPasso(1);
+  setTimeout(() => document.getElementById('cpu-man-desc')?.focus(), 50);
+  toast('CPU pronta para montagem com insumos manuais ou Excel.', 'info');
+}
+
+function cpuHeaderKey(value) {
+  return textoChave(value).replace(/\s+/g, '_');
+}
+
+function cpuFindColumn(headers, patterns) {
+  return headers.findIndex(h => patterns.some(pattern => pattern.test(cpuHeaderKey(h))));
+}
+
+function cpuFindHeaderRow(raw) {
+  for (let i = 0; i < Math.min(raw.length, 20); i++) {
+    const keys = (raw[i] || []).map(cpuHeaderKey);
+    const joined = keys.join('|');
+    if (/COD|CODIGO/.test(joined) && /DESC|DESCRICAO|DESCRI/.test(joined)) return i;
+    if (/DESCRICAO|DESCRI/.test(joined) && /PRECO|VALOR|CUSTO/.test(joined)) return i;
+  }
+  return -1;
+}
+
+function cpuParseInsumosManualRows(raw, fileName) {
+  const headerRow = cpuFindHeaderRow(raw);
+  const hasHeader = headerRow >= 0;
+  const headers = hasHeader ? (raw[headerRow] || []).map(v => String(v || '').trim()) : [];
+  const colCod = cpuFindColumn(headers, [/^COD/, /CODIGO/, /ITEM/, /INSUMO/]);
+  const colDesc = cpuFindColumn(headers, [/DESC/, /DESCRICAO/, /NOME/]);
+  const colUnid = cpuFindColumn(headers, [/^UN$/, /UNID/, /UNIDADE/]);
+  const colTipo = cpuFindColumn(headers, [/TIPO/, /NATUREZA/, /CATEGORIA/]);
+  const colCoef = cpuFindColumn(headers, [/COEF/, /INDICE/, /CONSUMO/, /QTD/, /QUANT/]);
+  const colPreco = cpuFindColumn(headers, [/PRECO/, /VALOR/, /CUSTO/, /UNIT/]);
+  const colFonte = cpuFindColumn(headers, [/FONTE/, /FORNEC/, /ORIGEM/, /COTACAO/]);
+  const rows = [];
+  for (let r = hasHeader ? headerRow + 1 : 0; r < raw.length; r++) {
+    const row = raw[r] || [];
+    const desc = String(row[colDesc >= 0 ? colDesc : 1] || '').trim();
+    const fallbackPrecoCol = !hasHeader && parseNumeroBR(row[3] || 0) > 0 ? 3 : 4;
+    const fallbackTipoCol = !hasHeader && fallbackPrecoCol === 3 ? -1 : 3;
+    const preco = parseNumeroBR(row[colPreco >= 0 ? colPreco : fallbackPrecoCol] || 0);
+    if (!desc || desc.length < 2 || preco < 0) continue;
+    const item = cpuNormalizarInsumoManual({
+      codigo: row[colCod >= 0 ? colCod : 0],
+      descricao: desc,
+      unidade: row[colUnid >= 0 ? colUnid : 2],
+      tipo: row[colTipo >= 0 ? colTipo : fallbackTipoCol],
+      preco,
+      fonte: row[colFonte >= 0 ? colFonte : -1]
+    }, { fonte: `Excel manual: ${fileName}`, origemArquivo: fileName, importado:true });
+    item.coefDefault = parseNumeroBR(row[colCoef >= 0 ? colCoef : -1] || 1) || 1;
+    rows.push(item);
+  }
+  return rows;
+}
+
+async function cpuImportarInsumosExcel() {
+  if (!window.XLSX) { toast('Biblioteca XLSX não carregada.', 'error'); return; }
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.xlsx,.xls,.csv';
+  inp.multiple = true;
+  inp.onchange = async (event) => {
+    const files = Array.from(event.target.files || []);
+    let total = 0;
+    for (const file of files) {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type:'array' });
+      wb.SheetNames.forEach(sheetName => {
+        const ws = wb.Sheets[sheetName];
+        const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        const items = cpuParseInsumosManualRows(raw, `${file.name}/${sheetName}`);
+        items.forEach(item => { if (cpuSalvarInsumoManual(item)) total++; });
+      });
+    }
+    const preview = document.getElementById('cpu-man-preview');
+    if (preview) {
+      preview.textContent = total ? `${total} insumo(s) importado(s) para a base manual.` : 'Nenhum insumo válido encontrado no Excel.';
+      preview.className = total ? 'form-help ok' : 'form-help error';
+    }
+    toast(total ? `${total} insumo(s) importado(s) do Excel` : 'Nenhum insumo válido encontrado', total ? 'success' : 'warning');
+  };
+  inp.click();
+}
+
+function cpuBaixarModeloInsumos() {
+  const rows = [
+    ['Código','Descrição','Unidade','Tipo','Coeficiente','Preço unitário','Fonte/Fornecedor'],
+    ['MAT-001','Material local exemplo','UN','Material',1,12.5,'Fornecedor A'],
+    ['MO-001','Equipe própria exemplo','H','Mão de obra',0.5,35,'Histórico interno'],
+    ['EQ-001','Equipamento próprio exemplo','H','Equipamento',0.25,180,'Custo horário interno']
+  ];
+  exportRowsToExcel('TLPlanly_Modelo_Insumos_Manuais', [{ name:'Insumos', rows }]);
+}
+
 // ─── STEPPER ───────────────────────────────────────────────
 function cpuIrPasso(n) {
   [0,1,2,3].forEach(i => {
@@ -7992,11 +8213,15 @@ function cpuBuscarInsumo(q) {
   if (!matches.length) { res.classList.remove('open'); return; }
   res.innerHTML = matches.map(i => {
     const cod = i.codigoSinapi || i.codigo || '';
-    return `<div class="search-item" onclick="cpuSelecionarInsumo('${cod}')">
-      <span class="search-item-code">${cod}</span>
-      ${i.descricao||''}
+    const preco = Number(i.precoMedio ?? i.preco ?? 0) || 0;
+    const fonte = i._base || i.fonte || (i.manual ? 'Base manual' : '');
+    const clickCod = String(cod).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `<div class="search-item" onclick="cpuSelecionarInsumo('${clickCod}')">
+      <span class="search-item-code">${escapeHtml(cod)}</span>
+      ${escapeHtml(i.descricao||'')}
       <span class="search-item-unit">${i.unidade||'UN'}</span>
-      <span style="float:right;color:var(--gold);font-weight:700">${fmtMoeda(i.precoMedio||0)}</span>
+      <span style="float:right;color:var(--gold);font-weight:700">${fmtMoeda(preco)}</span>
+      <span style="float:right;font-size:10px;color:var(--text3);margin-right:8px">${escapeHtml(fonte)}</span>
     </div>`;
   }).join('');
   res.classList.add('open');
@@ -8013,7 +8238,10 @@ function cpuSelecionarInsumo(cod) {
   // Auto-detect tipo: mão de obra keywords
   const desc = (item.descricao||'').toUpperCase();
   const tipoSel = document.getElementById('cpu-ins-tipo');
-  if (/SERVENTE|PEDREIRO|MESTRE|OFICIAL|CARPINTEIRO|FERREI|ENCANADOR|ELETRICISTA|PINTOR|AJUDANTE/.test(desc)) {
+  const tipoItem = cpuTipoManual(item.tipo || item.natureza || item.categoria, item.descricao);
+  if (item.manual || item.importado || item.tipo) {
+    tipoSel.value = tipoItem;
+  } else if (/SERVENTE|PEDREIRO|MESTRE|OFICIAL|CARPINTEIRO|FERREI|ENCANADOR|ELETRICISTA|PINTOR|AJUDANTE/.test(desc)) {
     tipoSel.value = 'S';
   } else if (/CAMINHÃO|BETONEIRA|COMPACTADOR|RETROESCAVADEIRA|ESCAVADEIRA|GUINDASTE|ANDAIME/.test(desc)) {
     tipoSel.value = 'E';
@@ -8021,12 +8249,14 @@ function cpuSelecionarInsumo(cod) {
     tipoSel.value = 'M';
   }
   const prev = document.getElementById('cpu-ins-preview');
+  const preco = Number(item.precoMedio ?? item.preco ?? 0) || 0;
+  const fonte = item._base || item.fonte || (item.manual ? 'Base manual' : 'Base');
   prev.style.display = 'block';
-  prev.innerHTML = `<span class="enc-auto-badge">&#9432; ${item.descricao} · ${item.unidade} · ${fmtMoeda(item.precoMedio)}</span>`;
+  prev.innerHTML = `<span class="enc-auto-badge">&#9432; ${escapeHtml(item.descricao)} · ${escapeHtml(item.unidade || 'UN')} · ${fmtMoeda(preco)} · ${escapeHtml(fonte)}</span>`;
 }
 
 function cpuAdicionarInsumo() {
-  if (!_cpuInsumoSelecionado) { toast('Selecione um insumo SINAPI primeiro', 'error'); return; }
+  if (!_cpuInsumoSelecionado) { toast('Selecione um insumo da base ou use o cadastro manual.', 'error'); return; }
   const coef = parseFloat(document.getElementById('cpu-ins-coef').value) || 1;
   const tipo = document.getElementById('cpu-ins-tipo').value;
   const item = _cpuInsumoSelecionado;
@@ -8036,7 +8266,8 @@ function cpuAdicionarInsumo() {
     unid: item.unidade || 'UN',
     tipo,
     coef,
-    preco: item.precoMedio || 0,
+    preco: Number(item.precoMedio ?? item.preco ?? 0) || 0,
+    fonte: item.fonte || item._base || ''
   });
   _cpuInsumoSelecionado = null;
   document.getElementById('cpu-search').value = '';
@@ -8060,20 +8291,22 @@ function cpuRenderInsumos() {
   }
   let cd = 0;
   el.innerHTML = CPU.insumos.map((ins, i) => {
-    const sub = ins.coef * ins.preco;
+    const coef = Number(ins.coef) || 0;
+    const preco = Number(ins.preco) || 0;
+    const sub = coef * preco;
     cd += sub;
     const tagColors = { M:'cpu-tag-M', E:'cpu-tag-E', S:'cpu-tag-S', T:'cpu-tag-T' };
     const tagLabels = { M:'Material', E:'Equip.', S:'MO', T:'Transp.' };
     return `<div class="cpu-insumo-row">
-      <span class="td-mono" style="color:var(--gold);font-size:11px">${ins.cod}</span>
-      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${ins.desc}">
-        <span class="cpu-tag ${tagColors[ins.tipo]}" style="margin-right:4px">${tagLabels[ins.tipo]}</span>${ins.desc}
+      <span class="td-mono" style="color:var(--gold);font-size:11px">${escapeHtml(ins.cod)}</span>
+      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(ins.desc)}">
+        <span class="cpu-tag ${tagColors[ins.tipo] || 'cpu-tag-M'}" style="margin-right:4px">${tagLabels[ins.tipo] || 'Mat.'}</span>${escapeHtml(ins.desc)}
       </span>
-      <span style="color:var(--text2)">${ins.unid}</span>
-      <input type="number" value="${ins.coef}" step="0.001" min="0.0001"
+      <span style="color:var(--text2)">${escapeHtml(ins.unid)}</span>
+      <input type="number" value="${coef}" step="0.001" min="0.0001"
         class="form-input" style="padding:4px 6px;font-size:12px;text-align:right"
         onchange="CPU.insumos[${i}].coef=parseFloat(this.value)||0;cpuRenderInsumos()"/>
-      <input type="number" value="${ins.preco.toFixed(2)}" step="0.01" min="0"
+      <input type="number" value="${preco.toFixed(2)}" step="0.01" min="0"
         class="form-input" style="padding:4px 6px;font-size:12px;text-align:right"
         onchange="CPU.insumos[${i}].preco=parseFloat(this.value)||0;cpuRenderInsumos()"/>
       <span style="font-weight:700;text-align:right">${fmtMoeda(sub)}</span>
@@ -8470,7 +8703,7 @@ const COPILOT_KB = {
 
   cpu_como: {
     q: ['como criar composição','criar cpu','nova composição','montar composição','como usar cpu'],
-    r: `**Como criar uma CPU no TLPlanly:** ⚙️\n\n1. Clique em **Composições (CPU)** no menu\n2. **Passo 1:** Defina código, descrição, unidade e tipo\n3. **Passo 2:** Busque insumos SINAPI e adicione com coeficientes\n   → O sistema detecta automaticamente se é Material ou MO\n   → Edite coeficientes e preços direto na tabela\n4. **Passo 3:** Escolha o regime de encargos (ND ou Desonerado)\n5. **Passo 4:** Veja o custo unitário final detalhado por grupo\n6. **Salve na Biblioteca** ou **Envie direto ao Orçamento**\n\n💡 Coeficientes são geralmente tirados de tabelas técnicas como TCPO ou composições SINAPI.`,
+    r: `**Como criar uma CPU no TLPlanly:** ⚙️\n\n1. Clique em **Composições (CPU)** no menu\n2. Defina código, descrição, unidade e tipo\n3. No passo **Insumos**, use busca na base, cadastre insumo manual ou importe Excel\n4. Informe coeficientes, preço unitário, tipo e fonte/fornecedor\n5. Escolha o regime de encargos e veja o resultado detalhado\n6. Salve na biblioteca ou envie direto ao orçamento\n\n💡 Você pode montar a composição do zero, com base própria, cotações, histórico interno ou SINAPI/TCPO.`,
     chips: ['O que é CPU?','Ir para Composições','O que são coeficientes?']
   },
 
@@ -8576,7 +8809,7 @@ const VIEW_CONTEXT = {
   relatorio:    { nome: 'Exportar / Relatório', dica: 'Preencha os dados da obra, escolha o modelo de relatório e exporte Excel/PDF com orçamento, BDI, ABC, planejamento, medições e anexos.' },
   bases:        { nome: 'Bases de Referência', dica: 'Carregue e gerencie SINAPI, SICRO 3 e bases estaduais. Use o OCR para PDFs escaneados.' },
   importar:     { nome: 'Importar Planilha/PDF', dica: 'Importe Excel, CSV, PDF digital, PDF escaneado ou imagens e faça o match automático com a base SINAPI.' },
-  cpu:          { nome: 'Composições (CPU)', dica: 'Crie composições analíticas próprias com insumos SINAPI, coeficientes e encargos sociais.' },
+  cpu:          { nome: 'Composições (CPU)', dica: 'Crie composições analíticas próprias com insumos de bases oficiais, cadastro manual ou Excel.' },
   config:       { nome: 'Configurações', dica: 'Configure UF, tolerância, encargos, tipo de obra, moeda de exibição, cotação e modelo padrão de relatório.' },
 };
 
