@@ -11,9 +11,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/frontend/src/styles.css?v=20260630-custos-ui">
+<link rel="stylesheet" href="/frontend/src/styles.css?v=20260702-orcamento-core">
 </head>
-<body>
+<body class="core-only">
 
 <!-- TOPBAR -->
 <div id="topbar">
@@ -39,11 +39,13 @@
 
 <!-- SIDEBAR -->
 <nav id="sidebar">
-  <div class="nav-section">Orçamento</div>
-  <div class="nav-item active" onclick="showView('dashboard')"><span class="nav-icon">&#9632;</span>Dashboard</div>
+  <div class="nav-section core-section">Núcleo de Orçamento</div>
+  <div class="nav-item active" data-core="true" onclick="showView('obras')"><span class="nav-icon">&#128188;</span>Obras / Projetos</div>
+  <div class="nav-item" onclick="showView('dashboard')"><span class="nav-icon">&#9632;</span>Dashboard</div>
   <div class="nav-item" onclick="showView('elaborar')"><span class="nav-icon">&#128196;</span>Elaborar Orçamento</div>
-  <div class="nav-item" onclick="showView('cpu')"><span class="nav-icon">&#9881;</span>Composições (CPU)<span class="nav-badge" style="background:var(--blue,#1976d2)">3</span></div>
-  <div class="nav-item" onclick="showView('custos')"><span class="nav-icon">&#9201;</span>Custos Horários</div>
+  <div class="nav-item" data-core="true" onclick="showView('insumos')"><span class="nav-icon">&#128230;</span>Insumos</div>
+  <div class="nav-item" data-core="true" onclick="showView('cpu')"><span class="nav-icon">&#9881;</span>Composições (CPU)<span class="nav-badge" style="background:var(--blue,#1976d2)">3</span></div>
+  <div class="nav-item" data-core="true" onclick="showView('custos')"><span class="nav-icon">&#9201;</span>Custos Horários</div>
   <div class="nav-item" onclick="showView('cotacoes')"><span class="nav-icon">&#128179;</span>Cotações</div>
   <div class="nav-item" onclick="showView('importar')"><span class="nav-icon">&#128196;</span>Importar Planilha/PDF<span class="nav-badge" style="background:var(--green);display:inline">2A</span></div>
   <div class="nav-item" onclick="showView('analisador')"><span class="nav-icon">&#128220;</span>Analisar Documentos<span class="nav-badge" style="background:var(--gold);display:inline">IA</span></div>
@@ -71,7 +73,7 @@
 <div id="main">
 
 <!-- ═══════════════ DASHBOARD ═══════════════ -->
-<div id="view-dashboard" class="view active">
+<div id="view-dashboard" class="view">
   <div class="page-title">Dashboard <span class="gold-text">TLPlanly</span></div>
   <div class="page-sub">Visão geral do orçamento ativo</div>
   <div class="flex flex-wrap" style="margin-bottom:16px">
@@ -114,6 +116,36 @@
     </div>
   </div>
 
+  <div class="card mt-4 equipe-mecanica-card">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Produção de <span>Equipe Mecânica</span></div>
+        <div class="text-sm" style="color:var(--text2);margin-top:4px">Calcule produção/hora e custo unitário de patrulhas/equipes de equipamentos.</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="equipeMecanicaLimpar()">Nova equipe</button>
+    </div>
+    <div class="grid grid-6 equipe-grid" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Código</label><input id="em-cod" class="form-input" placeholder="Ex: EM-001"/></div>
+      <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="em-desc" class="form-input" placeholder="Ex: Escavação + caminhões basculantes"/></div>
+      <div><label class="form-label">Produção/hora</label><input id="em-producao" class="form-input" type="number" min="0" step="0.0001" placeholder="Ex: 159,84"/></div>
+      <div><label class="form-label">Eficiência (%)</label><input id="em-eficiencia" class="form-input" type="number" min="1" max="100" step="0.01" value="100"/></div>
+      <div><label class="form-label">Unidade</label><input id="em-unid" class="form-input" value="m³"/></div>
+      <div><label class="form-label">Equipamentos/h</label><input id="em-equip" class="form-input" type="number" min="0" step="0.01"/></div>
+      <div><label class="form-label">Mão de obra/h</label><input id="em-mo" class="form-input" type="number" min="0" step="0.01"/></div>
+      <div><label class="form-label">Materiais/h</label><input id="em-mat" class="form-input" type="number" min="0" step="0.01"/></div>
+      <div><label class="form-label">Auxiliares/h</label><input id="em-aux" class="form-input" type="number" min="0" step="0.01"/></div>
+      <button class="btn btn-outline" onclick="equipeMecanicaCalcular()">Calcular</button>
+      <button class="btn btn-gold" onclick="equipeMecanicaSalvar()">Salvar equipe</button>
+    </div>
+    <div id="em-preview" class="calc-preview"></div>
+    <div class="tbl-wrap mt-3">
+      <table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Produção/h</th><th>Custo/h</th><th>Custo unit.</th><th>Ações</th></tr></thead>
+        <tbody id="em-lista"><tr><td colspan="6" class="empty-state" style="padding:18px">Nenhuma equipe mecânica salva.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="card mt-4">
     <div class="sec-header">
       <div class="sec-title">Itens Críticos <span>(Classe A)</span></div>
@@ -124,6 +156,181 @@
         <thead><tr><th>Código</th><th>Descrição</th><th>Un</th><th>Qtd</th><th>Preço Unit</th><th>Total</th><th>% Acum</th><th>Classe</th></tr></thead>
         <tbody id="dash-tabela"><tr><td colspan="8" class="empty-state" style="padding:24px;text-align:center;color:var(--text3)">Nenhum item no orçamento</td></tr></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ OBRAS / PROJETOS ═══════════════ -->
+<div id="view-obras" class="view core-view active">
+  <div class="page-title">Obras e <span class="gold-text">Projetos</span></div>
+  <div class="page-sub">Crie, abra, copie e organize orçamentos por obra, lote ou frente de serviço</div>
+
+  <div class="obra-active-banner" id="obra-active-banner">
+    <div>
+      <div class="obra-active-label">Obra ativa</div>
+      <div class="obra-active-title" id="obra-active-title">Nenhuma obra cadastrada</div>
+      <div class="obra-active-meta" id="obra-active-meta">Crie uma obra para iniciar o núcleo de orçamento.</div>
+    </div>
+    <div class="obra-active-actions">
+      <button class="btn btn-outline btn-sm" onclick="obrasSalvarSessaoAtual()">Salvar sessão atual como obra</button>
+      <button class="btn btn-gold btn-sm" onclick="showView('cpu')">Ir para composições</button>
+    </div>
+  </div>
+
+  <div class="grid grid-4 obra-kpis">
+    <div class="card"><div class="card-title">Obras salvas</div><div class="card-value" id="obra-kpi-total">0</div><div class="card-sub">projetos locais</div></div>
+    <div class="card"><div class="card-title">Planilhas / Lotes</div><div class="card-value gold" id="obra-kpi-lotes">0</div><div class="card-sub">na obra ativa</div></div>
+    <div class="card"><div class="card-title">Itens</div><div class="card-value green" id="obra-kpi-itens">0</div><div class="card-sub">no orçamento ativo</div></div>
+    <div class="card"><div class="card-title">Recentes</div><div class="card-value" id="obra-kpi-recentes">0</div><div class="card-sub">últimas consultas</div></div>
+  </div>
+
+  <div class="card obra-workspace-card">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Entrada e <span>Banco de Trabalho</span></div>
+        <div class="text-sm" style="color:var(--text2);margin-top:4px">Beta liberado: estes dados organizam usuário, plano e diretório sem bloquear o acesso.</div>
+      </div>
+      <span class="badge badge-ok" id="workspace-status">Beta liberado</span>
+    </div>
+    <div class="grid grid-6 workspace-grid" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Usuário</label><input id="workspace-usuario" class="form-input" placeholder="00"/></div>
+      <div><label class="form-label">Senha</label><input id="workspace-senha" class="form-input" type="password" placeholder="Opcional no beta"/></div>
+      <div><label class="form-label">Plano</label><select id="workspace-plano" class="form-select"><option>Beta liberado</option><option>1 usuário</option><option>5 usuários</option><option>10 usuários</option><option>Corporativo</option></select></div>
+      <div><label class="form-label">Validade</label><input id="workspace-validade" class="form-input" type="date"/></div>
+      <div style="grid-column:span 2"><label class="form-label">Diretório de trabalho / banco</label><input id="workspace-diretorio" class="form-input" placeholder="Ex: c:\\dsg\\sinapi ou pasta do cliente"/></div>
+      <div><label class="form-label">Banco padrão</label><select id="workspace-banco" class="form-select"><option>Base local</option><option>SINAPI</option><option>SICRO</option><option>Banco do cliente</option><option>Múltiplos bancos</option></select></div>
+      <button class="btn btn-gold" onclick="workspaceSalvar()">Salvar entrada</button>
+      <button class="btn btn-outline" onclick="workspaceAplicarBancoNaObra()">Usar na obra ativa</button>
+    </div>
+  </div>
+
+  <div class="grid grid-2 obra-layout">
+    <div class="card">
+      <div class="sec-header">
+        <div class="sec-title">Novo <span>Projeto / Obra</span></div>
+        <button class="btn btn-outline btn-sm" onclick="obrasGerarNumeroCampo()">Gerar número</button>
+      </div>
+      <div class="grid grid-2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Número</label>
+          <input id="obra-numero" class="form-input" placeholder="Ex: 26001"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input id="obra-data" class="form-input" type="date"/>
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">Nome do projeto</label>
+          <input id="obra-nome" class="form-input" placeholder="Ex: BR-163 / SC - Plano abr 26 a dez 26"/>
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">Cliente</label>
+          <input id="obra-cliente" class="form-input" placeholder="Ex: Prefeitura, órgão, construtora ou cliente privado"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Banco de trabalho</label>
+          <select id="obra-banco" class="form-select">
+            <option value="Base local">Base local</option>
+            <option value="SINAPI">SINAPI</option>
+            <option value="SICRO">SICRO</option>
+            <option value="Banco do cliente">Banco do cliente</option>
+            <option value="Outro banco">Outro banco</option>
+          </select>
+        </div>
+        <label class="obra-checkline">
+          <input id="obra-multi" type="checkbox"/>
+          <span>Mais de uma planilha / lote</span>
+        </label>
+      </div>
+      <div class="flex flex-wrap mt-4">
+        <button class="btn btn-gold" onclick="obrasCriarNova()">Criar obra</button>
+        <button class="btn btn-outline" onclick="obrasLimparFormulario()">Limpar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-header">
+        <div class="sec-title">Últimas <span>Obras</span></div>
+        <button class="btn btn-outline btn-sm" onclick="obrasRender()">Atualizar</button>
+      </div>
+      <div id="obra-recentes" class="obra-recentes-list">
+        <div class="empty-state" style="padding:18px">Nenhuma obra recente.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4 insumos-advanced-card">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Consulta Avançada <span>de Insumos</span></div>
+        <div class="text-sm" style="color:var(--text2);margin-top:4px">Janela dedicada para código, descrição, palavra, grupo e descrição completa.</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="insumosConsultaAvancadaRender()">Consultar</button>
+    </div>
+    <div class="grid grid-6 insumos-advanced-grid" style="gap:10px;align-items:flex-end">
+      <div><label class="form-label">Código</label><input id="ins-adv-codigo" class="form-input" placeholder="Ex: IE0001"/></div>
+      <div style="grid-column:span 2"><label class="form-label">Descrição</label><input id="ins-adv-desc" class="form-input" placeholder="Ex: trator de esteiras"/></div>
+      <div><label class="form-label">Palavra</label><input id="ins-adv-palavra" class="form-input" placeholder="Ex: TRATOR"/></div>
+      <div><label class="form-label">Grupo</label><select id="ins-adv-grupo" class="form-select"><option value="">Todos</option><option value="S">Mão de obra</option><option value="E">Equipamento</option><option value="M">Material</option><option value="SV">Serviço</option><option value="T">Transporte</option></select></div>
+      <label class="obra-checkline" style="margin:0"><input id="ins-adv-completa" type="checkbox"/><span>Pesquisar descrição completa</span></label>
+    </div>
+    <div id="ins-adv-result" class="cpu-op-result">Use a consulta avançada para validar insumos por código, palavra ou grupo.</div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Abrir, Copiar ou <span>Excluir</span></div>
+        <div class="text-sm" style="color:var(--text2);margin-top:4px">A cópia cria uma nova obra com outro número, preservando orçamento, composições, insumos e parâmetros da origem.</div>
+      </div>
+      <div class="obra-search">
+        <input id="obra-busca" class="form-input" placeholder="Buscar número, projeto ou cliente..." oninput="obrasRender()"/>
+      </div>
+    </div>
+    <div class="obra-open-tools">
+      <div><label class="form-label">Número direto</label><input id="obra-abrir-numero" class="form-input" placeholder="Ex: 23425"/></div>
+      <div><label class="form-label">Copiar origem</label><input id="obra-copiar-origem" class="form-input" placeholder="Número da obra origem"/></div>
+      <div><label class="form-label">Novo destino</label><input id="obra-copiar-destino" class="form-input" placeholder="Opcional: gerar automático"/></div>
+      <div class="flex flex-wrap obra-open-buttons">
+        <button class="btn btn-outline btn-sm" onclick="obrasAbrirPorNumero()">Abrir</button>
+        <button class="btn btn-outline btn-sm" onclick="obrasCopiarPorNumero()">Copiar</button>
+        <button class="btn btn-outline btn-sm" onclick="obrasExcluirPorNumero()">Excluir</button>
+        <button class="btn btn-outline btn-sm" onclick="obrasConsultaAvancada()">Consulta avançada</button>
+      </div>
+    </div>
+    <div id="obra-consulta-avancada" class="obra-advanced-result"></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Número</th><th>Projeto</th><th>Cliente</th><th>Data</th><th>Banco</th><th>Lotes</th><th>Itens</th><th>Total</th><th>Ações</th></tr></thead>
+        <tbody id="obra-lista"><tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Nenhuma obra cadastrada</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Planilhas / Lotes <span>da Obra Ativa</span></div>
+        <div class="text-sm" style="color:var(--text2);margin-top:4px">Use para separar frentes, lotes ou planilhas dentro do mesmo orçamento.</div>
+      </div>
+    </div>
+    <div class="obra-lote-form">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Código</label>
+        <input id="obra-lote-codigo" class="form-input" placeholder="Ex: L01"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Nome do lote / frente</label>
+        <input id="obra-lote-nome" class="form-input" placeholder="Ex: Frente norte, Lote 01"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Descrição</label>
+        <input id="obra-lote-desc" class="form-input" placeholder="Opcional"/>
+      </div>
+      <button class="btn btn-gold" onclick="obrasAdicionarLote()">Adicionar lote</button>
+    </div>
+    <div id="obra-lotes" class="obra-lotes-list">
+      <div class="empty-state" style="padding:18px">Nenhuma obra ativa.</div>
     </div>
   </div>
 </div>
@@ -258,6 +465,139 @@
       <span class="text-sm">Subtotal (sem BDI): <strong id="elab-sub">R$ 0,00</strong></span>
       <span class="text-sm">BDI: <strong id="elab-bdi-pct" class="gold-text">0%</strong></span>
       <span class="text-sm">Total c/ BDI: <strong id="elab-total" class="gold-text">R$ 0,00</strong></span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ INSUMOS ═══════════════ -->
+<div id="view-insumos" class="view core-view">
+  <div class="page-title">Cadastro de <span class="gold-text">Insumos</span></div>
+  <div class="page-sub">Cadastre insumos próprios, consulte bases e organize por mão de obra, equipamento, material, serviço ou transporte</div>
+
+  <div class="grid grid-4 insumos-kpis">
+    <div class="card"><div class="card-title">Base manual</div><div class="card-value" id="ins-kpi-manual">0</div><div class="card-sub">insumos próprios</div></div>
+    <div class="card"><div class="card-title">Base importada</div><div class="card-value gold" id="ins-kpi-importada">0</div><div class="card-sub">Excel / planilhas</div></div>
+    <div class="card"><div class="card-title">SINAPI local</div><div class="card-value green" id="ins-kpi-sinapi">0</div><div class="card-sub">itens carregados</div></div>
+    <div class="card"><div class="card-title">Equipamentos</div><div class="card-value" id="ins-kpi-equip">0</div><div class="card-sub">com custo improdutivo</div></div>
+  </div>
+
+  <div class="grid grid-2 insumos-layout">
+    <div class="card">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title">Insumo <span>Manual</span></div>
+          <div class="text-sm" style="color:var(--text2);margin-top:4px">Prefixos: IH mão de obra, IE equipamento, IM material, IS serviço, IT transporte.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="insumosLimparFormulario()">Novo</button>
+      </div>
+      <div class="grid grid-2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Código</label>
+          <input id="ins-codigo" class="form-input" placeholder="Ex: IH0001, IE0001, IM0001" oninput="insumosCodigoAlterado()"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Grupo de insumo</label>
+          <select id="ins-grupo" class="form-select" onchange="insumosGrupoAlterado()">
+            <option value="S">Mão de obra</option>
+            <option value="E">Equipamento</option>
+            <option value="M">Material</option>
+            <option value="SV">Serviço</option>
+            <option value="T">Transporte</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">Descrição</label>
+          <input id="ins-desc" class="form-input" placeholder="Ex: Operador de trator de esteira"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Unidade</label>
+          <input id="ins-unid" class="form-input" placeholder="Ex: h, un, m³, kg" value="UN"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data do preço</label>
+          <input id="ins-data" class="form-input" type="date"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Custo unitário</label>
+          <input id="ins-preco" class="form-input" placeholder="0,0000"/>
+        </div>
+        <div class="form-group" id="ins-improd-wrap">
+          <label class="form-label">Custo improdutivo</label>
+          <input id="ins-improd" class="form-input" placeholder="0,0000"/>
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">Fonte / observação</label>
+          <input id="ins-fonte" class="form-input" placeholder="Ex: Cadastro manual, cotação, custo horário, banco próprio"/>
+        </div>
+      </div>
+      <div class="flex flex-wrap mt-4">
+        <button class="btn btn-gold" onclick="insumosSalvarManual()">Salvar insumo</button>
+        <button class="btn btn-outline" onclick="document.getElementById('ins-import-input').click()">Importar Excel</button>
+        <button class="btn btn-outline" onclick="cpuBaixarModeloInsumos()">Modelo Excel</button>
+        <input id="ins-import-input" type="file" accept=".xlsx,.xls,.ods,.csv" multiple style="display:none" onchange="insumosImportarExcel(event)"/>
+      </div>
+      <div id="ins-form-help" class="form-help">O custo improdutivo fica disponível apenas para equipamentos.</div>
+    </div>
+
+    <div class="card">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title">Consulta <span>Rápida</span></div>
+          <div class="text-sm" style="color:var(--text2);margin-top:4px">Pesquise por código, descrição, palavra ou grupo de insumo.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="insumosExportarExcel()">Excel</button>
+      </div>
+      <div class="grid grid-2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Tipo de consulta</label>
+          <select id="ins-consulta-tipo" class="form-select" onchange="insumosRender()">
+            <option value="palavra">Por palavra</option>
+            <option value="codigo">Código</option>
+            <option value="descricao">Descrição</option>
+            <option value="grupo">Grupo</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Grupo</label>
+          <select id="ins-filtro-grupo" class="form-select" onchange="insumosRender()">
+            <option value="">Todos</option>
+            <option value="S">Mão de obra</option>
+            <option value="E">Equipamento</option>
+            <option value="M">Material</option>
+            <option value="SV">Serviço</option>
+            <option value="T">Transporte</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">Buscar</label>
+          <input id="ins-busca" class="form-input" placeholder="Ex: TRATOR, diesel, IH0001..." oninput="insumosRender()"/>
+        </div>
+      </div>
+      <div class="insumos-query-actions">
+        <button class="btn btn-outline btn-sm" onclick="insumosConsultaRapida('codigo')">Código</button>
+        <button class="btn btn-outline btn-sm" onclick="insumosConsultaRapida('descricao')">Descrição</button>
+        <button class="btn btn-outline btn-sm" onclick="insumosConsultaRapida('palavra')">Por palavra</button>
+        <button class="btn btn-outline btn-sm" onclick="insumosConsultaRapida('grupo')">Grupo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Resultado da <span>Consulta</span></div>
+        <div class="text-sm" id="ins-result-info" style="color:var(--text2);margin-top:4px">Nenhum filtro aplicado.</div>
+      </div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-outline btn-sm" onclick="insumosRender({somenteManual:true})">Só manuais</button>
+        <button class="btn btn-outline btn-sm" onclick="insumosRender()">Todas as bases</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Código</th><th>Descrição</th><th>Grupo</th><th>Un</th><th>Custo unit.</th><th>Custo improd.</th><th>Fonte</th><th>Data</th><th>Ações</th></tr></thead>
+        <tbody id="ins-tabela"><tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Nenhum insumo cadastrado.</td></tr></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -1316,7 +1656,7 @@
 
 
 <!-- ═══════════════ COMPOSIÇÕES ANALÍTICAS (CPU) ═══════════════ -->
-<div id="view-cpu" class="view">
+<div id="view-cpu" class="view core-view">
   <div class="page-title">Composições <span class="gold-text">Analíticas (CPU)</span></div>
   <div class="page-sub">Crie composições unitárias com bases oficiais ou insumos próprios — materiais, mão de obra e equipamentos</div>
 
@@ -1326,6 +1666,36 @@
     <div class="cpu-step" id="cpu-step-1" onclick="cpuIrPasso(1)">2. Insumos</div>
     <div class="cpu-step" id="cpu-step-2" onclick="cpuIrPasso(2)">3. Encargos</div>
     <div class="cpu-step" id="cpu-step-3" onclick="cpuIrPasso(3)">4. Resultado</div>
+  </div>
+
+  <div class="card cpu-open-card" id="cpu-editor-card">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Composição Aberta <span>Principal / Auxiliar</span></div>
+        <div class="text-sm" id="cpu-editor-breadcrumb" style="color:var(--text2);margin-top:4px">Abra uma CPU da biblioteca para navegar entre composição principal e auxiliares.</div>
+      </div>
+      <div class="flex flex-wrap">
+        <button class="btn btn-outline btn-sm" onclick="cpuEditorVoltarPrincipal()">Voltar</button>
+        <button class="btn btn-outline btn-sm" onclick="cpuEditorEntrarAuxiliar()">Entrar auxiliar</button>
+        <button class="btn btn-gold btn-sm" onclick="cpuEditorRecalcular()">Calcular</button>
+      </div>
+    </div>
+    <div id="cpu-editor-empty" class="empty-state" style="padding:16px">Selecione uma composição salva na biblioteca e clique em “Abrir”.</div>
+    <div id="cpu-editor-content" style="display:none">
+      <div class="cpu-open-summary">
+        <div><span>Código</span><strong id="cpu-editor-cod">—</strong></div>
+        <div><span>Unidade</span><strong id="cpu-editor-unid">—</strong></div>
+        <div><span>Produção da equipe</span><input id="cpu-editor-prod" class="form-input" type="number" min="0.0001" step="0.0001" onchange="cpuEditorAtualizarProducao()"/></div>
+        <div><span>Custo unitário</span><strong id="cpu-editor-total" class="gold-text">R$ 0,00</strong></div>
+      </div>
+      <div class="cpu-open-groups" id="cpu-editor-grupos"></div>
+      <div class="tbl-wrap mt-3">
+        <table>
+          <thead><tr><th></th><th>Código</th><th>Descrição</th><th>Un</th><th>Tipo</th><th>Índice</th><th>Preço</th><th>Total</th><th>Total/prod.</th></tr></thead>
+          <tbody id="cpu-editor-insumos"><tr><td colspan="9" class="empty-state" style="padding:18px">Nenhuma composição aberta.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <div class="grid grid-2" style="gap:20px;align-items:start">
@@ -1562,6 +1932,80 @@
         </div>
       </div>
 
+      <!-- Operações profissionais inspiradas no COMPOR -->
+      <div class="card cpu-ops-card" style="margin-top:16px">
+        <div class="sec-header">
+          <div>
+            <div class="sec-title">Operações <span>da Biblioteca</span></div>
+            <div class="text-sm" style="color:var(--text2);margin-top:4px">Pesquise, copie, troque ou exclua insumos nas composições salvas.</div>
+          </div>
+        </div>
+        <div class="grid grid-2 cpu-ops-grid" style="gap:10px">
+          <div>
+            <label class="form-label">Insumo / composição alvo</label>
+            <input id="cpu-op-insumo" class="form-input" placeholder="Ex: IM0001, IE0001 ou CD0026"/>
+          </div>
+          <div>
+            <label class="form-label">Escopo</label>
+            <input id="cpu-op-escopo" class="form-input" placeholder="Vazio = todas; ou filtre por código/descrição"/>
+          </div>
+          <div>
+            <label class="form-label">Trocar por</label>
+            <input id="cpu-op-novo" class="form-input" placeholder="Código do novo insumo"/>
+          </div>
+          <div>
+            <label class="form-label">Novo código da cópia</label>
+            <input id="cpu-op-copia-cod" class="form-input" placeholder="Ex: CD0026-A"/>
+          </div>
+          <div style="grid-column:span 2">
+            <label class="form-label">Descrição da cópia</label>
+            <input id="cpu-op-copia-desc" class="form-input" placeholder="Opcional: mantenha vazia para copiar a descrição original"/>
+          </div>
+        </div>
+        <div class="flex flex-wrap mt-3">
+          <button class="btn btn-outline btn-sm" onclick="cpuOperacaoPesquisar()">Pesquisar uso</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuOperacoesListarEscopo()">Selecionar faixa</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuOperacoesSelecionarAlternadas()">Alternadas</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuOperacaoTrocar()">Trocar insumo</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuOperacaoExcluir()">Excluir insumo</button>
+          <button class="btn btn-gold btn-sm" onclick="cpuOperacaoCopiar()">Copiar composição</button>
+        </div>
+        <div id="cpu-op-scope-list" class="cpu-op-scope-list"></div>
+        <div id="cpu-op-result" class="cpu-op-result">Informe um código para pesquisar ou executar uma operação.</div>
+      </div>
+
+      <div class="card cpu-external-card" style="margin-top:16px">
+        <div class="sec-header">
+          <div>
+            <div class="sec-title">Copiar de <span>Outro Banco</span></div>
+            <div class="text-sm" style="color:var(--text2);margin-top:4px">Importe uma planilha/JSON externo, recodifique e traga composições para o projeto.</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('cpu-banco-file').click()">Importar banco</button>
+          <input id="cpu-banco-file" type="file" accept=".xlsx,.xls,.csv,.json" multiple style="display:none" onchange="cpuImportarBancoExterno(event)"/>
+        </div>
+        <div class="grid grid-2" style="gap:10px">
+          <div><label class="form-label">Banco importado</label><select id="cpu-banco-select" class="form-select" onchange="cpuBancoExternoRender()"></select></div>
+          <div><label class="form-label">Buscar composição</label><input id="cpu-banco-busca" class="form-input" placeholder="Código ou descrição" oninput="cpuBancoExternoRender()"/></div>
+          <div><label class="form-label">Prefixo / recodificação</label><input id="cpu-banco-prefixo" class="form-input" placeholder="Ex: CLI- ou 26-"/></div>
+          <div><label class="form-label">Novo código específico</label><input id="cpu-banco-destino" class="form-input" placeholder="Opcional"/></div>
+        </div>
+        <div id="cpu-banco-lista" class="cpu-banco-lista">Nenhum banco externo importado.</div>
+      </div>
+
+      <div class="card cpu-utility-card" style="margin-top:16px">
+        <div class="sec-header">
+          <div>
+            <div class="sec-title">Relatórios e <span>Utilitários</span></div>
+            <div class="text-sm" style="color:var(--text2);margin-top:4px">Exporta o núcleo atual para conferência do orçamentista.</div>
+          </div>
+        </div>
+        <div class="flex flex-wrap">
+          <button class="btn btn-outline btn-sm" onclick="nucleoExportarExcel()">Excel do núcleo</button>
+          <button class="btn btn-outline btn-sm" onclick="nucleoExportarPDF()">PDF do núcleo</button>
+          <button class="btn btn-outline btn-sm" onclick="cpuRecalcularBiblioteca()">Recalcular CPUs</button>
+        </div>
+      </div>
+
       <!-- Ficha técnica da CPU selecionada -->
       <div class="card" style="margin-top:16px;display:none" id="cpu-ficha-card">
         <div class="sec-header">
@@ -1575,7 +2019,7 @@
 </div>
 
 <!-- ═══════════════ CUSTOS HORÁRIOS ═══════════════ -->
-<div id="view-custos" class="view">
+<div id="view-custos" class="view core-view">
   <div class="page-title">Custos <span class="gold-text">Horários</span></div>
   <div class="page-sub">Calcule equipamentos e mão de obra com memória de cálculo para usar em CPUs e orçamento</div>
 
@@ -1705,6 +2149,7 @@
       <div id="mo-preview" class="calc-preview"></div>
       <div class="flex flex-wrap mt-4">
         <button class="btn btn-outline btn-sm" onclick="custosMaoObraCalcular()">Calcular</button>
+        <button class="btn btn-outline btn-sm" onclick="custosMaoObraAtualizarInsumo()">Atualizar preço do insumo</button>
         <button class="btn btn-gold btn-sm" onclick="custosMaoObraSalvar()">Salvar mão de obra</button>
       </div>
     </div>
@@ -1963,6 +2408,6 @@
 
 <div id="toast"></div>
 
-<script src="/frontend/src/main.js?v=20260630-custos-ui"></script>
+<script src="/frontend/src/main.js?v=20260702-orcamento-core"></script>
 </body>
 </html>

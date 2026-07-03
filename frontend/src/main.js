@@ -26,6 +26,19 @@ let STATE = {
   maoObraHoraria: [],
   cotacoesCustos: [],
   frentesServico: [],
+  obras: [],
+  obraAtivaId: '',
+  obrasRecentes: [],
+  workspaceConfig: {
+    usuario: '00',
+    plano: 'Beta liberado',
+    validade: '',
+    diretorioTrabalho: '',
+    bancoPadrao: 'Base local',
+    bloqueioAtivo: false
+  },
+  equipesMecanicas: [],
+  cpuBancosExternos: [],
   sinapiBase: [],     // { codigoSinapi, descricao, unidade, precoMedio, ... }
   sinapiMes: '',
   auditResultados: [],
@@ -85,6 +98,12 @@ try {
     STATE.maoObraHoraria = p.maoObraHoraria || [];
     STATE.cotacoesCustos = p.cotacoesCustos || [];
     STATE.frentesServico = p.frentesServico || [];
+    STATE.obras = p.obras || [];
+    STATE.obraAtivaId = p.obraAtivaId || '';
+    STATE.obrasRecentes = p.obrasRecentes || [];
+    STATE.workspaceConfig = { ...STATE.workspaceConfig, ...(p.workspaceConfig || {}) };
+    STATE.equipesMecanicas = p.equipesMecanicas || [];
+    STATE.cpuBancosExternos = p.cpuBancosExternos || [];
     STATE.descontoProposta = p.descontoProposta || null;
     const legacyDefaultBDI = isLegacyDefaultBDI(p);
     STATE.bdiConfigured = !legacyDefaultBDI
@@ -98,6 +117,14 @@ try {
 
 function makeId(prefix='id') {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+}
+
+function clonePlain(value, fallback) {
+  try {
+    return JSON.parse(JSON.stringify(value ?? fallback));
+  } catch {
+    return fallback;
+  }
 }
 
 function isLegacyDefaultBDI(payload) {
@@ -139,6 +166,54 @@ function normalizarGruposCusto(grupos) {
     });
   });
   return [...byCode.values()];
+}
+
+function lotePrincipalPadrao() {
+  return {
+    id: makeId('lote'),
+    codigo: 'L01',
+    nome: 'Planilha principal',
+    descricao: 'Planilha base do orçamento',
+    criadoEm: new Date().toISOString()
+  };
+}
+
+function normalizarLotesObra(lotes, multiPlanilha = false) {
+  const lista = (Array.isArray(lotes) ? lotes : []).map((lote, idx) => ({
+    id: lote.id || makeId('lote'),
+    codigo: String(lote.codigo || lote.cod || `L${String(idx + 1).padStart(2, '0')}`).trim(),
+    nome: String(lote.nome || lote.descricao || `Lote ${idx + 1}`).trim(),
+    descricao: String(lote.descricao || '').trim(),
+    criadoEm: lote.criadoEm || new Date().toISOString()
+  }));
+  if (!lista.length) lista.push(lotePrincipalPadrao());
+  if (!multiPlanilha && lista.length > 1) return lista.slice(0, 1);
+  return lista;
+}
+
+function normalizarObras(obras) {
+  const vistos = new Set();
+  return (Array.isArray(obras) ? obras : [])
+    .filter(Boolean)
+    .map((obra, idx) => {
+      let id = String(obra.id || '').trim() || makeId('obra');
+      while (vistos.has(id)) id = makeId('obra');
+      vistos.add(id);
+      const multiPlanilha = obra.multiPlanilha === true || obra.maisDeUmaPlanilha === true || (Array.isArray(obra.lotes) && obra.lotes.length > 1);
+      return {
+        id,
+        numero: String(obra.numero || obra.codigo || gerarNumeroObra(idx)).trim(),
+        nome: String(obra.nome || obra.descricao || obra.name || 'Obra sem nome').trim(),
+        cliente: String(obra.cliente || '').trim(),
+        data: String(obra.data || todayIso()).slice(0, 10),
+        bancoBase: String(obra.bancoBase || obra.banco || 'Base local').trim(),
+        multiPlanilha,
+        lotes: normalizarLotesObra(obra.lotes, multiPlanilha),
+        snapshot: obra.snapshot && typeof obra.snapshot === 'object' ? obra.snapshot : null,
+        criadoEm: obra.criadoEm || new Date().toISOString(),
+        atualizadoEm: obra.atualizadoEm || obra.updatedAt || obra.criadoEm || new Date().toISOString()
+      };
+    });
 }
 
 function hasBDI() {
@@ -208,6 +283,20 @@ function normalizeState() {
   STATE.maoObraHoraria = Array.isArray(STATE.maoObraHoraria) ? STATE.maoObraHoraria : [];
   STATE.cotacoesCustos = Array.isArray(STATE.cotacoesCustos) ? STATE.cotacoesCustos : [];
   STATE.frentesServico = Array.isArray(STATE.frentesServico) ? STATE.frentesServico : [];
+  STATE.obras = normalizarObras(STATE.obras);
+  STATE.obrasRecentes = Array.isArray(STATE.obrasRecentes) ? STATE.obrasRecentes.filter(id => STATE.obras.some(o => o.id === id)).slice(0, 4) : [];
+  STATE.workspaceConfig = {
+    usuario: '00',
+    plano: 'Beta liberado',
+    validade: '',
+    diretorioTrabalho: '',
+    bancoPadrao: 'Base local',
+    bloqueioAtivo: false,
+    ...(STATE.workspaceConfig || {})
+  };
+  STATE.equipesMecanicas = Array.isArray(STATE.equipesMecanicas) ? STATE.equipesMecanicas : [];
+  STATE.cpuBancosExternos = Array.isArray(STATE.cpuBancosExternos) ? STATE.cpuBancosExternos : [];
+  if (STATE.obraAtivaId && !STATE.obras.some(o => o.id === STATE.obraAtivaId)) STATE.obraAtivaId = STATE.obras[0]?.id || '';
   STATE.descontoProposta = STATE.descontoProposta && typeof STATE.descontoProposta === 'object' ? STATE.descontoProposta : null;
   STATE.config = {
     uf:'MG',
@@ -244,6 +333,7 @@ normalizeState();
 
 function saveState() {
   try {
+    obrasSalvarAtivaSnapshot({ silent:true });
     normalizeState();
     localStorage.setItem('tlplanly_state', JSON.stringify(persistedState()));
     cloudMarkDirty();
@@ -271,6 +361,12 @@ function persistedState() {
     maoObraHoraria: STATE.maoObraHoraria,
     cotacoesCustos: STATE.cotacoesCustos,
     frentesServico: STATE.frentesServico,
+    obras: STATE.obras,
+    obraAtivaId: STATE.obraAtivaId,
+    obrasRecentes: STATE.obrasRecentes,
+    workspaceConfig: STATE.workspaceConfig,
+    equipesMecanicas: STATE.equipesMecanicas,
+    cpuBancosExternos: STATE.cpuBancosExternos,
     descontoProposta: STATE.descontoProposta,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
@@ -297,6 +393,12 @@ function applyPersistedState(payload) {
   STATE.maoObraHoraria = Array.isArray(payload.maoObraHoraria) ? payload.maoObraHoraria : [];
   STATE.cotacoesCustos = Array.isArray(payload.cotacoesCustos) ? payload.cotacoesCustos : [];
   STATE.frentesServico = Array.isArray(payload.frentesServico) ? payload.frentesServico : [];
+  STATE.obras = Array.isArray(payload.obras) ? payload.obras : [];
+  STATE.obraAtivaId = payload.obraAtivaId || '';
+  STATE.obrasRecentes = Array.isArray(payload.obrasRecentes) ? payload.obrasRecentes : [];
+  STATE.workspaceConfig = { ...STATE.workspaceConfig, ...(payload.workspaceConfig || {}) };
+  STATE.equipesMecanicas = Array.isArray(payload.equipesMecanicas) ? payload.equipesMecanicas : [];
+  STATE.cpuBancosExternos = Array.isArray(payload.cpuBancosExternos) ? payload.cpuBancosExternos : [];
   STATE.descontoProposta = payload.descontoProposta && typeof payload.descontoProposta === 'object' ? payload.descontoProposta : null;
   const legacyDefaultBDI = isLegacyDefaultBDI(payload);
   STATE.bdiConfigured = !legacyDefaultBDI
@@ -341,6 +443,12 @@ function refreshAppFromState() {
   if (typeof custosHorariosRender === 'function') custosHorariosRender();
   if (typeof cotacoesRender === 'function') cotacoesRender();
   if (typeof frentesServicoRender === 'function') frentesServicoRender();
+  if (typeof obrasRender === 'function') obrasRender();
+  if (typeof insumosRender === 'function') insumosRender();
+  if (typeof workspaceRender === 'function') workspaceRender();
+  if (typeof cpuEditorRender === 'function') cpuEditorRender();
+  if (typeof cpuBancoExternoRender === 'function') cpuBancoExternoRender();
+  if (typeof equipeMecanicaRender === 'function') equipeMecanicaRender();
   if (typeof backupRender === 'function') backupRender();
   if (typeof docsRender === 'function') docsRender();
 }
@@ -859,19 +967,27 @@ function setMode(m) {
 // ═══════════════════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════════════════
+const FRONTEND_CORE_ONLY = true;
+const FRONTEND_CORE_VIEWS = new Set(['obras', 'insumos', 'cpu', 'custos']);
+
 function showView(id) {
+  if (FRONTEND_CORE_ONLY && !FRONTEND_CORE_VIEWS.has(id)) id = 'obras';
   if (requireLogin('acessar os módulos')) return;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById('view-'+id).classList.add('active');
+  const targetView = document.getElementById('view-'+id);
+  if (!targetView) return;
+  targetView.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>{
     if (n.getAttribute('onclick') && n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
   if (id==='dashboard') renderDashboard();
+  if (id==='obras') obrasRender();
+  if (id==='insumos') insumosRender();
   if (id==='curvaABC') gerarCurvaABC();
   if (id==='memoria') renderMemoria();
-  if (id==='cpu') { cpuRenderBiblioteca(); cpuRenderManualCount(); }
-  if (id==='custos') custosHorariosRender();
+  if (id==='cpu') { cpuRenderBiblioteca(); cpuRenderManualCount(); cpuEditorRender(); cpuBancoExternoRender(); }
+  if (id==='custos') { custosHorariosRender(); equipeMecanicaRender(); }
   if (id==='cotacoes') cotacoesRender();
   if (id==='frentes') frentesServicoRender();
   if (id==='planejamento') planejamentoRender();
@@ -887,6 +1003,928 @@ function showView(id) {
   if (id==='bdi') { syncBDIInputsFromState(); renderBDIState(); showEncargos('nd'); renderBDIComp(); }
   if (id==='auditoria') executarAuditoria();
   if (id==='conformidade') verificarConformidade();
+}
+
+// ═══════════════════════════════════════════════════════════
+// ENTRADA / BANCO DE TRABALHO
+// ═══════════════════════════════════════════════════════════
+function workspaceRender() {
+  normalizeState();
+  const cfg = STATE.workspaceConfig || {};
+  const set = (id, value = '') => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = value || '';
+  };
+  set('workspace-usuario', cfg.usuario || '00');
+  set('workspace-plano', cfg.plano || 'Beta liberado');
+  set('workspace-validade', String(cfg.validade || '').slice(0, 10));
+  set('workspace-diretorio', cfg.diretorioTrabalho || '');
+  set('workspace-banco', cfg.bancoPadrao || 'Base local');
+  const status = document.getElementById('workspace-status');
+  if (status) {
+    status.textContent = cfg.bloqueioAtivo ? 'Acesso bloqueado' : (cfg.plano || 'Beta liberado');
+    status.className = cfg.bloqueioAtivo ? 'badge badge-err' : 'badge badge-ok';
+  }
+}
+
+function workspaceSalvar() {
+  normalizeState();
+  STATE.workspaceConfig = {
+    ...(STATE.workspaceConfig || {}),
+    usuario: document.getElementById('workspace-usuario')?.value?.trim() || '00',
+    plano: document.getElementById('workspace-plano')?.value || 'Beta liberado',
+    validade: document.getElementById('workspace-validade')?.value || '',
+    diretorioTrabalho: document.getElementById('workspace-diretorio')?.value?.trim() || '',
+    bancoPadrao: document.getElementById('workspace-banco')?.value || 'Base local',
+    bloqueioAtivo: false,
+    salvoEm: new Date().toISOString()
+  };
+  saveState();
+  workspaceRender();
+  toast('Entrada e banco de trabalho salvos para o beta.', 'success');
+}
+
+function workspaceAplicarBancoNaObra() {
+  const obra = obraAtiva();
+  if (!obra) { toast('Abra ou crie uma obra antes de aplicar o banco de trabalho.', 'error'); return; }
+  workspaceSalvar();
+  obra.bancoBase = STATE.workspaceConfig?.bancoPadrao || obra.bancoBase || 'Base local';
+  obra.diretorioTrabalho = STATE.workspaceConfig?.diretorioTrabalho || '';
+  obra.atualizadoEm = new Date().toISOString();
+  saveState();
+  obrasRender();
+  toast('Banco de trabalho aplicado à obra ativa.', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════
+// OBRAS / PROJETOS — NÚCLEO DO ORÇAMENTO
+// ═══════════════════════════════════════════════════════════
+function obraAtiva() {
+  normalizeState();
+  return STATE.obras.find(obra => obra.id === STATE.obraAtivaId) || null;
+}
+
+function gerarNumeroObra(offset = 0) {
+  const ano = String(new Date().getFullYear()).slice(2);
+  const base = Number(`${ano}000`);
+  const numeros = (STATE.obras || [])
+    .map(obra => Number(String(obra.numero || '').replace(/\D/g, '')))
+    .filter(Number.isFinite);
+  return String(Math.max(base, ...numeros, base) + 1 + Number(offset || 0));
+}
+
+function obrasGerarNumeroCampo() {
+  const el = document.getElementById('obra-numero');
+  if (el) el.value = gerarNumeroObra();
+}
+
+function obrasLimparFormulario() {
+  const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value; };
+  set('obra-numero', gerarNumeroObra());
+  set('obra-data', todayIso());
+  set('obra-nome');
+  set('obra-cliente');
+  set('obra-banco', 'Base local');
+  const multi = document.getElementById('obra-multi');
+  if (multi) multi.checked = false;
+}
+
+function obraSnapshotAtual() {
+  const nomeCampo = document.getElementById('orcNome')?.value?.trim();
+  const config = { ...(STATE.config || {}) };
+  if (nomeCampo) config.nome = nomeCampo;
+  return {
+    orcamento: clonePlain(STATE.orcamento, []),
+    planejamento: clonePlain(STATE.planejamento, []),
+    medicoes: clonePlain(STATE.medicoes, []),
+    quantitativos: clonePlain(STATE.quantitativos, {}),
+    documentos: clonePlain(STATE.documentos, []),
+    extracoes: clonePlain(STATE.extracoes, []),
+    backups: clonePlain(STATE.backups, []),
+    gruposCusto: clonePlain(STATE.gruposCusto, []),
+    insumosImportados: clonePlain(STATE.insumosImportados, []),
+    insumosManuais: clonePlain(STATE.insumosManuais, []),
+    cpuBiblioteca: clonePlain(STATE.cpuBiblioteca, []),
+    equipamentosHorarios: clonePlain(STATE.equipamentosHorarios, []),
+    maoObraHoraria: clonePlain(STATE.maoObraHoraria, []),
+    equipesMecanicas: clonePlain(STATE.equipesMecanicas, []),
+    cpuBancosExternos: clonePlain(STATE.cpuBancosExternos, []),
+    workspaceConfig: clonePlain(STATE.workspaceConfig, {}),
+    cotacoesCustos: clonePlain(STATE.cotacoesCustos, []),
+    frentesServico: clonePlain(STATE.frentesServico, []),
+    descontoProposta: clonePlain(STATE.descontoProposta, null),
+    bdi: STATE.bdi,
+    bdiConfigured: STATE.bdiConfigured,
+    bdiComponents: clonePlain(STATE.bdiComponents, { ac:0, s:0, r:0, df:0, l:0, i:0 }),
+    config
+  };
+}
+
+function obraSnapshotVazio(nome = 'Orçamento TLPlanly') {
+  return {
+    orcamento: [],
+    planejamento: [],
+    medicoes: [],
+    quantitativos: {},
+    documentos: [],
+    extracoes: [],
+    backups: [],
+    gruposCusto: clonePlain(STATE.gruposCusto, gruposCustoDefault()),
+    insumosImportados: clonePlain(STATE.insumosImportados, []),
+    insumosManuais: clonePlain(STATE.insumosManuais, []),
+    cpuBiblioteca: [],
+    equipamentosHorarios: [],
+    maoObraHoraria: [],
+    equipesMecanicas: [],
+    cpuBancosExternos: clonePlain(STATE.cpuBancosExternos, []),
+    workspaceConfig: clonePlain(STATE.workspaceConfig, {}),
+    cotacoesCustos: [],
+    frentesServico: [],
+    descontoProposta: null,
+    bdi: 0,
+    bdiConfigured: false,
+    bdiComponents: { ac:0, s:0, r:0, df:0, l:0, i:0 },
+    config: { ...(STATE.config || {}), nome }
+  };
+}
+
+function obrasAplicarSnapshot(snapshot, obra) {
+  const src = snapshot && typeof snapshot === 'object' ? snapshot : obraSnapshotVazio(obra?.nome || 'Orçamento TLPlanly');
+  STATE.orcamento = clonePlain(src.orcamento, []);
+  STATE.planejamento = clonePlain(src.planejamento, []);
+  STATE.medicoes = clonePlain(src.medicoes, []);
+  STATE.quantitativos = clonePlain(src.quantitativos, {});
+  STATE.documentos = clonePlain(src.documentos, []);
+  STATE.extracoes = clonePlain(src.extracoes, []);
+  STATE.backups = clonePlain(src.backups, []);
+  STATE.gruposCusto = clonePlain(src.gruposCusto, []);
+  STATE.insumosImportados = clonePlain(src.insumosImportados, []);
+  STATE.insumosManuais = clonePlain(src.insumosManuais, []);
+  STATE.cpuBiblioteca = clonePlain(src.cpuBiblioteca, []);
+  STATE.equipamentosHorarios = clonePlain(src.equipamentosHorarios, []);
+  STATE.maoObraHoraria = clonePlain(src.maoObraHoraria, []);
+  STATE.equipesMecanicas = clonePlain(src.equipesMecanicas, []);
+  STATE.cpuBancosExternos = clonePlain(src.cpuBancosExternos, []);
+  STATE.workspaceConfig = { ...(STATE.workspaceConfig || {}), ...(src.workspaceConfig || {}) };
+  STATE.cotacoesCustos = clonePlain(src.cotacoesCustos, []);
+  STATE.frentesServico = clonePlain(src.frentesServico, []);
+  STATE.descontoProposta = clonePlain(src.descontoProposta, null);
+  STATE.bdi = Number(src.bdi) || 0;
+  STATE.bdiConfigured = src.bdiConfigured === true && STATE.bdi > 0;
+  STATE.bdiComponents = clonePlain(src.bdiComponents, { ac:0, s:0, r:0, df:0, l:0, i:0 });
+  STATE.config = { ...(STATE.config || {}), ...(src.config || {}), nome: obra?.nome || src.config?.nome || 'Orçamento TLPlanly' };
+  normalizeState();
+  refreshAppFromState();
+}
+
+function obrasSalvarAtivaSnapshot(options = {}) {
+  if (!Array.isArray(STATE.obras) || !STATE.obraAtivaId) return false;
+  const obra = STATE.obras.find(o => o.id === STATE.obraAtivaId);
+  if (!obra) return false;
+  obra.snapshot = obraSnapshotAtual();
+  obra.atualizadoEm = new Date().toISOString();
+  const nomeCampo = document.getElementById('orcNome')?.value?.trim();
+  if (nomeCampo && (!obra.nome || obra.nome === 'Obra sem nome' || obra.nome === 'Orçamento TLPlanly')) obra.nome = nomeCampo;
+  if (!options.silent) toast('Obra ativa salva localmente', 'success');
+  return true;
+}
+
+function obrasSalvarSessaoAtual() {
+  normalizeState();
+  if (STATE.obraAtivaId && obrasSalvarAtivaSnapshot({ silent:true })) {
+    saveState();
+    obrasRender();
+    toast('Sessão atual salva na obra ativa', 'success');
+    return;
+  }
+  const nome = document.getElementById('orcNome')?.value?.trim() || STATE.config?.nome || 'Orçamento TLPlanly';
+  const obra = {
+    id: makeId('obra'),
+    numero: gerarNumeroObra(),
+    nome,
+    cliente: '',
+    data: todayIso(),
+    bancoBase: 'Base local',
+    multiPlanilha: false,
+    lotes: [lotePrincipalPadrao()],
+    snapshot: obraSnapshotAtual(),
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString()
+  };
+  STATE.obras.push(obra);
+  STATE.obraAtivaId = obra.id;
+  obrasMarcarRecente(obra.id);
+  saveState();
+  obrasRender();
+  toast('Sessão atual transformada em obra', 'success');
+}
+
+function obrasMarcarRecente(id) {
+  if (!id) return;
+  STATE.obrasRecentes = [id, ...(STATE.obrasRecentes || []).filter(item => item !== id)].slice(0, 4);
+}
+
+function obrasCriarNova() {
+  normalizeState();
+  const numero = document.getElementById('obra-numero')?.value?.trim() || gerarNumeroObra();
+  const nome = document.getElementById('obra-nome')?.value?.trim();
+  const cliente = document.getElementById('obra-cliente')?.value?.trim() || '';
+  const data = document.getElementById('obra-data')?.value || todayIso();
+  const bancoBase = document.getElementById('obra-banco')?.value || 'Base local';
+  const multiPlanilha = document.getElementById('obra-multi')?.checked === true;
+  if (!nome) { toast('Informe o nome do projeto/obra.', 'error'); return; }
+  obrasSalvarAtivaSnapshot({ silent:true });
+  const lotes = multiPlanilha
+    ? [
+        lotePrincipalPadrao(),
+        { id: makeId('lote'), codigo:'L02', nome:'Lote 02', descricao:'Segunda planilha da obra', criadoEm:new Date().toISOString() }
+      ]
+    : [lotePrincipalPadrao()];
+  const obra = {
+    id: makeId('obra'),
+    numero,
+    nome,
+    cliente,
+    data,
+    bancoBase,
+    multiPlanilha,
+    lotes,
+    snapshot: obraSnapshotVazio(nome),
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString()
+  };
+  STATE.obras.push(obra);
+  STATE.obraAtivaId = obra.id;
+  obrasMarcarRecente(obra.id);
+  obrasAplicarSnapshot(obra.snapshot, obra);
+  saveState();
+  obrasLimparFormulario();
+  obrasRender();
+  toast('Nova obra criada', 'success');
+}
+
+function obrasAbrir(id) {
+  normalizeState();
+  const obra = STATE.obras.find(o => o.id === id);
+  if (!obra) return;
+  if (STATE.obraAtivaId && STATE.obraAtivaId !== id) obrasSalvarAtivaSnapshot({ silent:true });
+  STATE.obraAtivaId = id;
+  obrasMarcarRecente(id);
+  obrasAplicarSnapshot(obra.snapshot, obra);
+  saveState();
+  obrasRender();
+  toast('Obra aberta: ' + obra.numero, 'success');
+}
+
+function obrasCopiar(id) {
+  normalizeState();
+  const origem = STATE.obras.find(o => o.id === id);
+  if (!origem) return;
+  obrasSalvarAtivaSnapshot({ silent:true });
+  const numero = gerarNumeroObra();
+  const nome = `Cópia de ${origem.nome || origem.numero}`;
+  const nova = {
+    ...clonePlain(origem, {}),
+    id: makeId('obra'),
+    numero,
+    nome,
+    data: todayIso(),
+    lotes: normalizarLotesObra(clonePlain(origem.lotes, []), origem.multiPlanilha).map(lote => ({ ...lote, id: makeId('lote') })),
+    snapshot: clonePlain(origem.snapshot, obraSnapshotVazio(nome)),
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString()
+  };
+  if (nova.snapshot?.config) nova.snapshot.config.nome = nome;
+  STATE.obras.push(nova);
+  STATE.obraAtivaId = nova.id;
+  obrasMarcarRecente(nova.id);
+  obrasAplicarSnapshot(nova.snapshot, nova);
+  saveState();
+  obrasRender();
+  toast('Obra copiada para o número ' + numero, 'success');
+}
+
+function obrasExcluir(id) {
+  normalizeState();
+  const obra = STATE.obras.find(o => o.id === id);
+  if (!obra) return;
+  if (!confirm(`Excluir a obra ${obra.numero} - ${obra.nome}? Esta ação remove a cópia local desta obra.`)) return;
+  STATE.obras = STATE.obras.filter(o => o.id !== id);
+  STATE.obrasRecentes = (STATE.obrasRecentes || []).filter(item => item !== id);
+  if (STATE.obraAtivaId === id) {
+    const proxima = STATE.obras[0] || null;
+    STATE.obraAtivaId = proxima?.id || '';
+    if (proxima) obrasAplicarSnapshot(proxima.snapshot, proxima);
+    else obrasAplicarSnapshot(obraSnapshotVazio('Orçamento TLPlanly'), null);
+  }
+  saveState();
+  obrasRender();
+  toast('Obra excluída', 'info');
+}
+
+function obrasEncontrarPorNumero(numero) {
+  const alvo = String(numero || '').trim();
+  if (!alvo) return null;
+  return (STATE.obras || []).find(obra => String(obra.numero || '').trim() === alvo) || null;
+}
+
+function obrasAbrirPorNumero() {
+  normalizeState();
+  const numero = document.getElementById('obra-abrir-numero')?.value?.trim();
+  const obra = obrasEncontrarPorNumero(numero);
+  if (!obra) { toast('Obra não encontrada para o número informado.', 'error'); return; }
+  obrasAbrir(obra.id);
+}
+
+function obrasCopiarPorNumero() {
+  normalizeState();
+  const origemNumero = document.getElementById('obra-copiar-origem')?.value?.trim() || document.getElementById('obra-abrir-numero')?.value?.trim();
+  const destinoNumero = document.getElementById('obra-copiar-destino')?.value?.trim();
+  const origem = obrasEncontrarPorNumero(origemNumero);
+  if (!origem) { toast('Obra de origem não encontrada.', 'error'); return; }
+  obrasSalvarAtivaSnapshot({ silent:true });
+  const numero = destinoNumero || gerarNumeroObra();
+  if (obrasEncontrarPorNumero(numero) && !confirm(`Já existe uma obra com o número ${numero}. Substituir não é permitido; escolha outro destino.`)) return;
+  if (obrasEncontrarPorNumero(numero)) return;
+  const nome = `Cópia de ${origem.nome || origem.numero}`;
+  const nova = {
+    ...clonePlain(origem, {}),
+    id: makeId('obra'),
+    numero,
+    nome,
+    data: todayIso(),
+    lotes: normalizarLotesObra(clonePlain(origem.lotes, []), origem.multiPlanilha).map(lote => ({ ...lote, id: makeId('lote') })),
+    snapshot: clonePlain(origem.snapshot, obraSnapshotVazio(nome)),
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString()
+  };
+  if (nova.snapshot?.config) nova.snapshot.config.nome = nome;
+  STATE.obras.push(nova);
+  STATE.obraAtivaId = nova.id;
+  obrasMarcarRecente(nova.id);
+  obrasAplicarSnapshot(nova.snapshot, nova);
+  saveState();
+  obrasRender();
+  toast(`Obra copiada de ${origem.numero} para ${numero}.`, 'success');
+}
+
+function obrasExcluirPorNumero() {
+  normalizeState();
+  const numero = document.getElementById('obra-abrir-numero')?.value?.trim();
+  const obra = obrasEncontrarPorNumero(numero);
+  if (!obra) { toast('Obra não encontrada para exclusão.', 'error'); return; }
+  obrasExcluir(obra.id);
+}
+
+function obrasConsultaAvancada() {
+  normalizeState();
+  const el = document.getElementById('obra-consulta-avancada');
+  if (!el) return;
+  const filtro = textoChave(document.getElementById('obra-busca')?.value || document.getElementById('obra-abrir-numero')?.value || '');
+  const rows = (STATE.obras || []).filter(obra => !filtro || textoChave(`${obra.numero} ${obra.nome} ${obra.cliente} ${obra.bancoBase}`).includes(filtro));
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:12px">Nenhuma obra encontrada na consulta avançada.</div>';
+    return;
+  }
+  el.innerHTML = `<div class="cpu-op-summary">${rows.length} obra(s) encontrada(s)</div>` + rows.slice(0, 12).map(obra => {
+    const r = obraResumo(obra);
+    return `<button class="obra-advanced-row" onclick="obrasAbrir('${obra.id}')">
+      <strong>${escapeHtml(obra.numero)} · ${escapeHtml(obra.nome)}</strong>
+      <span>${escapeHtml(obra.cliente || 'Sem cliente')} · ${escapeHtml(obra.bancoBase || 'Base local')} · ${r.lotes} lote(s) · ${fmtMoeda(r.total)}</span>
+    </button>`;
+  }).join('');
+}
+
+function obrasAdicionarLote() {
+  normalizeState();
+  const obra = obraAtiva();
+  if (!obra) { toast('Crie ou abra uma obra antes de adicionar lotes.', 'error'); return; }
+  const codigo = document.getElementById('obra-lote-codigo')?.value?.trim() || `L${String((obra.lotes || []).length + 1).padStart(2, '0')}`;
+  const nome = document.getElementById('obra-lote-nome')?.value?.trim();
+  const descricao = document.getElementById('obra-lote-desc')?.value?.trim() || '';
+  if (!nome) { toast('Informe o nome do lote ou frente.', 'error'); return; }
+  obra.multiPlanilha = true;
+  obra.lotes = normalizarLotesObra(obra.lotes, true);
+  obra.lotes.push({ id: makeId('lote'), codigo, nome, descricao, criadoEm: new Date().toISOString() });
+  obra.atualizadoEm = new Date().toISOString();
+  ['obra-lote-codigo','obra-lote-nome','obra-lote-desc'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  saveState();
+  obrasRender();
+  toast('Lote adicionado à obra', 'success');
+}
+
+function obrasExcluirLote(id) {
+  const obra = obraAtiva();
+  if (!obra) return;
+  if ((obra.lotes || []).length <= 1) { toast('A obra precisa manter ao menos uma planilha principal.', 'warning'); return; }
+  obra.lotes = obra.lotes.filter(lote => lote.id !== id);
+  obra.multiPlanilha = obra.lotes.length > 1;
+  obra.atualizadoEm = new Date().toISOString();
+  saveState();
+  obrasRender();
+}
+
+function obraResumo(obra) {
+  const snap = obra?.snapshot || {};
+  const itens = Array.isArray(snap.orcamento) ? snap.orcamento : [];
+  const subtotal = itens.reduce((s, item) => s + ((Number(item.qtd) || 0) * (Number(item.preco) || 0)), 0);
+  const bdi = snap.bdiConfigured ? Number(snap.bdi) || 0 : 0;
+  return {
+    itens: itens.length,
+    subtotal,
+    total: subtotal * (1 + bdi / 100),
+    lotes: Array.isArray(obra?.lotes) ? obra.lotes.length : 0
+  };
+}
+
+function obrasRender() {
+  normalizeState();
+  workspaceRender();
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  const active = obraAtiva();
+  const activeResumo = active ? obraResumo({ ...active, snapshot: obraSnapshotAtual() }) : { itens: STATE.orcamento.length, lotes:0 };
+  setText('obra-kpi-total', STATE.obras.length);
+  setText('obra-kpi-lotes', active ? activeResumo.lotes : 0);
+  setText('obra-kpi-itens', activeResumo.itens || STATE.orcamento.length);
+  setText('obra-kpi-recentes', (STATE.obrasRecentes || []).length);
+  setText('obra-active-title', active ? `${active.numero} · ${active.nome}` : 'Nenhuma obra cadastrada');
+  setText('obra-active-meta', active
+    ? `${active.cliente || 'Cliente não informado'} · ${active.data || 'sem data'} · ${active.bancoBase || 'Base local'} · ${activeResumo.lotes} planilha(s)`
+    : 'Crie uma obra para iniciar o núcleo de orçamento.');
+
+  const dataInput = document.getElementById('obra-data');
+  if (dataInput && !dataInput.value) dataInput.value = todayIso();
+  const numeroInput = document.getElementById('obra-numero');
+  if (numeroInput && !numeroInput.value) numeroInput.value = gerarNumeroObra();
+
+  const busca = textoChave(document.getElementById('obra-busca')?.value || '');
+  const obras = STATE.obras.filter(obra => {
+    if (!busca) return true;
+    return textoChave(`${obra.numero} ${obra.nome} ${obra.cliente} ${obra.bancoBase}`).includes(busca);
+  });
+  const tbody = document.getElementById('obra-lista');
+  if (tbody) {
+    if (!obras.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Nenhuma obra encontrada</td></tr>';
+    } else {
+      tbody.innerHTML = obras.map(obra => {
+        const r = obraResumo(obra);
+        const activeBadge = obra.id === STATE.obraAtivaId ? '<span class="badge badge-ok">Ativa</span>' : '';
+        return `<tr>
+          <td class="td-mono">${escapeHtml(obra.numero)} ${activeBadge}</td>
+          <td><strong>${escapeHtml(obra.nome)}</strong></td>
+          <td>${escapeHtml(obra.cliente || '—')}</td>
+          <td>${escapeHtml(obra.data || '—')}</td>
+          <td>${escapeHtml(obra.bancoBase || 'Base local')}</td>
+          <td>${r.lotes}</td>
+          <td>${r.itens}</td>
+          <td><strong>${fmtMoeda(r.total)}</strong></td>
+          <td>
+            <div class="obra-row-actions">
+              <button class="btn btn-outline btn-sm" onclick="obrasAbrir('${obra.id}')">Abrir</button>
+              <button class="btn btn-outline btn-sm" onclick="obrasCopiar('${obra.id}')">Copiar</button>
+              <button class="btn btn-outline btn-sm" onclick="obrasExcluir('${obra.id}')">Excluir</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  const recentes = document.getElementById('obra-recentes');
+  if (recentes) {
+    const lista = (STATE.obrasRecentes || []).map(id => STATE.obras.find(obra => obra.id === id)).filter(Boolean);
+    recentes.innerHTML = lista.length ? lista.map(obra => {
+      const r = obraResumo(obra);
+      return `<button class="obra-recent-card" onclick="obrasAbrir('${obra.id}')">
+        <span>${escapeHtml(obra.numero)} · ${escapeHtml(obra.nome)}</span>
+        <small>${escapeHtml(obra.cliente || 'Sem cliente')} · ${r.itens} item(ns) · ${fmtMoeda(r.total)}</small>
+      </button>`;
+    }).join('') : '<div class="empty-state" style="padding:18px">Nenhuma obra recente.</div>';
+  }
+
+  const lotes = document.getElementById('obra-lotes');
+  if (lotes) {
+    if (!active) {
+      lotes.innerHTML = '<div class="empty-state" style="padding:18px">Nenhuma obra ativa.</div>';
+    } else {
+      lotes.innerHTML = (active.lotes || []).map(lote => `<div class="obra-lote-row">
+        <div>
+          <strong>${escapeHtml(lote.codigo)} · ${escapeHtml(lote.nome)}</strong>
+          <span>${escapeHtml(lote.descricao || 'Sem descrição adicional')}</span>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="obrasExcluirLote('${lote.id}')">Excluir</button>
+      </div>`).join('');
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INSUMOS — CADASTRO MANUAL, GRUPOS E CONSULTAS
+// ═══════════════════════════════════════════════════════════
+function insumosGrupoPorPrefixo(codigo) {
+  const code = codigoChave(codigo);
+  if (code.startsWith('IH')) return 'S';
+  if (code.startsWith('IE')) return 'E';
+  if (code.startsWith('IM')) return 'M';
+  if (code.startsWith('IS')) return 'SV';
+  if (code.startsWith('IT')) return 'T';
+  return '';
+}
+
+function insumosPrefixoPorGrupo(grupo) {
+  return { S:'IH', E:'IE', M:'IM', SV:'IS', T:'IT' }[grupo] || 'IM';
+}
+
+function insumosGrupoLabel(grupo) {
+  return {
+    S: 'Mão de obra',
+    E: 'Equipamento',
+    M: 'Material',
+    SV: 'Serviço',
+    T: 'Transporte'
+  }[grupo] || 'Material';
+}
+
+function insumosGrupoNormalizado(value, codigo = '', descricao = '') {
+  const prefixo = insumosGrupoPorPrefixo(codigo);
+  if (prefixo) return prefixo;
+  const tipoDireto = textoChave(value || '');
+  if (['S','MO','MAO OBRA','MAO DE OBRA','HOMEM'].includes(tipoDireto)) return 'S';
+  if (['E','EQ','EQUIP','EQUIPAMENTO'].includes(tipoDireto)) return 'E';
+  if (['M','MAT','MATERIAL'].includes(tipoDireto)) return 'M';
+  if (['T','TR','TRANSP','TRANSPORTE','FRETE'].includes(tipoDireto)) return 'T';
+  if (['SV','SERV','SERVICO'].includes(tipoDireto)) return 'SV';
+  const raw = textoChave(`${value || ''} ${descricao || ''}`);
+  if (raw.includes('MAO') || raw.includes('HOMEM')) return 'S';
+  if (raw.includes('EQUIP') || raw.includes('MAQUINA') || raw === 'E') return 'E';
+  if (raw.includes('TRANSP') || raw.includes('FRETE') || raw === 'T') return 'T';
+  if (raw.includes('SERVICO') || raw === 'SV' || raw === 'IS') return 'SV';
+  return 'M';
+}
+
+function insumosCodigoSequencial(grupo = 'M') {
+  const prefixo = insumosPrefixoPorGrupo(grupo);
+  const usados = new Set((STATE.insumosManuais || []).map(i => codigoChave(i.codigoSinapi || i.codigo)));
+  for (let i = 1; i < 99999; i++) {
+    const cod = `${prefixo}${String(i).padStart(4, '0')}`;
+    if (!usados.has(cod)) return cod;
+  }
+  return `${prefixo}${Date.now().toString().slice(-5)}`;
+}
+
+function insumosPrecoItem(item) {
+  return Number(item?.precoMedio ?? item?.preco ?? item?.valor ?? 0) || 0;
+}
+
+function insumosCustoImprodutivo(item) {
+  return Number(item?.custoImprodutivo ?? item?.precoImprodutivo ?? item?.improdutivo ?? 0) || 0;
+}
+
+function insumosDataInputValue(value) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return todayIso();
+}
+
+function insumosNormalizarManual(raw, options = {}) {
+  const descricao = String(raw.descricao || raw.desc || '').trim();
+  const grupo = insumosGrupoNormalizado(raw.grupo || raw.tipo || raw.natureza || raw.categoria, raw.codigoSinapi || raw.codigo || raw.cod, descricao);
+  const codigoInformado = String(raw.codigoSinapi || raw.codigo || raw.cod || '').trim().toUpperCase();
+  const codigo = codigoInformado || insumosCodigoSequencial(grupo);
+  const preco = Number(raw.precoMedio ?? raw.preco ?? raw.valor ?? 0) || 0;
+  const custoImprodutivo = grupo === 'E'
+    ? (Number(raw.custoImprodutivo ?? raw.precoImprodutivo ?? raw.improdutivo ?? 0) || 0)
+    : 0;
+  return {
+    codigoSinapi: codigo,
+    codigo,
+    descricao,
+    unidade: String(raw.unidade || raw.unid || raw.un || (grupo === 'S' || grupo === 'E' ? 'h' : 'UN')).trim() || 'UN',
+    tipo: grupo,
+    grupo,
+    natureza: grupo,
+    categoria: insumosGrupoLabel(grupo),
+    precoMedio: preco,
+    preco,
+    custoImprodutivo,
+    precoImprodutivo: custoImprodutivo,
+    fonte: String(raw.fonte || raw.fornecedor || options.fonte || 'Cadastro manual').trim(),
+    origem: raw.origem || options.origem || 'manual',
+    origemArquivo: options.origemArquivo || raw.origemArquivo || '',
+    dataReferencia: raw.dataReferencia || raw.data || new Date().toLocaleDateString('pt-BR'),
+    memoriaCustoHorario: raw.memoriaCustoHorario || '',
+    parcelasCustoHorario: raw.parcelasCustoHorario || null,
+    custoProdutivo: raw.custoProdutivo ?? preco,
+    manual: true,
+    importado: !!options.importado || raw.importado === true,
+    atualizadoEm: new Date().toISOString()
+  };
+}
+
+function insumosSalvarManualItem(raw, options = {}) {
+  normalizeState();
+  const item = insumosNormalizarManual(raw, options);
+  const code = codigoChave(item.codigoSinapi || item.codigo);
+  if (!code || !item.descricao) return null;
+  const byCode = new Map((STATE.insumosManuais || []).map(i => [codigoChave(i.codigoSinapi || i.codigo), i]));
+  byCode.set(code, { ...(byCode.get(code) || {}), ...item, codigoSinapi: code, codigo: code });
+  STATE.insumosManuais = [...byCode.values()].sort((a, b) =>
+    codigoChave(a.codigoSinapi || a.codigo).localeCompare(codigoChave(b.codigoSinapi || b.codigo), 'pt-BR')
+  );
+  if (options.save !== false) {
+    saveState();
+    cpuRenderManualCount();
+  }
+  return byCode.get(code);
+}
+
+function insumosCodigoAlterado() {
+  const codigo = document.getElementById('ins-codigo')?.value || '';
+  const grupo = insumosGrupoPorPrefixo(codigo);
+  if (grupo) {
+    const sel = document.getElementById('ins-grupo');
+    if (sel) sel.value = grupo;
+  }
+  insumosGrupoAlterado();
+}
+
+function insumosGrupoAlterado() {
+  const grupo = document.getElementById('ins-grupo')?.value || 'M';
+  const wrap = document.getElementById('ins-improd-wrap');
+  const improd = document.getElementById('ins-improd');
+  if (wrap) wrap.style.opacity = grupo === 'E' ? '1' : '.45';
+  if (improd) {
+    improd.disabled = grupo !== 'E';
+    if (grupo !== 'E') improd.value = '';
+  }
+  const codigo = document.getElementById('ins-codigo');
+  if (codigo && !codigo.value.trim()) codigo.placeholder = `Ex: ${insumosPrefixoPorGrupo(grupo)}0001`;
+}
+
+function insumosLimparFormulario() {
+  const grupo = document.getElementById('ins-grupo')?.value || 'M';
+  const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value; };
+  set('ins-codigo', insumosCodigoSequencial(grupo));
+  set('ins-desc');
+  set('ins-unid', grupo === 'S' || grupo === 'E' ? 'h' : 'UN');
+  set('ins-data', todayIso());
+  set('ins-preco');
+  set('ins-improd');
+  set('ins-fonte', 'Cadastro manual');
+  insumosGrupoAlterado();
+}
+
+function insumosSalvarManual() {
+  normalizeState();
+  const raw = {
+    codigo: document.getElementById('ins-codigo')?.value,
+    descricao: document.getElementById('ins-desc')?.value,
+    unidade: document.getElementById('ins-unid')?.value,
+    grupo: document.getElementById('ins-grupo')?.value,
+    preco: readNumeroCampo('ins-preco'),
+    custoImprodutivo: readNumeroCampo('ins-improd'),
+    fonte: document.getElementById('ins-fonte')?.value,
+    data: document.getElementById('ins-data')?.value
+  };
+  const item = insumosNormalizarManual(raw);
+  if (!item.codigo) { toast('Informe o código do insumo.', 'error'); return; }
+  if (!item.descricao) { toast('Informe a descrição do insumo.', 'error'); return; }
+  insumosSalvarManualItem(item);
+  insumosRender();
+  cpuRenderManualCount();
+  toast('Insumo salvo na base manual', 'success');
+}
+
+function insumosEditarManual(codigo) {
+  const code = codigoChave(codigo);
+  const item = (STATE.insumosManuais || []).find(i => codigoChave(i.codigoSinapi || i.codigo) === code);
+  if (!item) { toast('Este item não é da base manual.', 'warning'); return; }
+  const grupo = insumosGrupoNormalizado(item.grupo || item.tipo || item.natureza, item.codigoSinapi || item.codigo, item.descricao);
+  const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value; };
+  set('ins-codigo', item.codigoSinapi || item.codigo || '');
+  set('ins-desc', item.descricao || '');
+  set('ins-unid', item.unidade || item.unid || 'UN');
+  set('ins-grupo', grupo);
+  set('ins-data', insumosDataInputValue(item.dataReferencia || item.data));
+  set('ins-preco', String(insumosPrecoItem(item)).replace('.', ','));
+  set('ins-improd', grupo === 'E' ? String(insumosCustoImprodutivo(item)).replace('.', ',') : '');
+  set('ins-fonte', item.fonte || '');
+  insumosGrupoAlterado();
+  showView('insumos');
+}
+
+function insumosCopiarParaManual(codigo) {
+  const code = codigoChave(codigo);
+  const item = insumosTodasBases({ somenteManual:false }).find(i => codigoChave(i.codigoSinapi || i.codigo) === code);
+  if (!item) { toast('Insumo não encontrado na consulta.', 'error'); return; }
+  const grupo = insumosGrupoNormalizado(item.grupo || item.tipo || item.natureza || item.categoria, code, item.descricao);
+  const fonte = item._base || item.fonte || 'Base de referência';
+  const manual = insumosSalvarManualItem({
+    codigo: code,
+    descricao: item.descricao || item.desc || '',
+    unidade: item.unidade || item.unid || (grupo === 'S' || grupo === 'E' ? 'h' : 'UN'),
+    grupo,
+    preco: insumosPrecoItem(item),
+    custoImprodutivo: grupo === 'E' ? insumosCustoImprodutivo(item) : 0,
+    fonte: `Cópia de ${fonte}`,
+    data: item.dataReferencia || item.data || new Date().toLocaleDateString('pt-BR')
+  });
+  if (!manual) { toast('Não foi possível copiar o insumo.', 'error'); return; }
+  insumosEditarManual(code);
+  insumosRender({ somenteManual:true });
+  toast('Insumo copiado para a base manual. Revise e salve se desejar ajustar.', 'success');
+}
+
+function insumosExcluirManual(codigo) {
+  const code = codigoChave(codigo);
+  const item = (STATE.insumosManuais || []).find(i => codigoChave(i.codigoSinapi || i.codigo) === code);
+  if (!item) { toast('Este item não pode ser excluído aqui porque não é manual.', 'warning'); return; }
+  if (!confirm(`Excluir o insumo ${code} - ${item.descricao}?`)) return;
+  STATE.insumosManuais = (STATE.insumosManuais || []).filter(i => codigoChave(i.codigoSinapi || i.codigo) !== code);
+  saveState();
+  insumosRender();
+  cpuRenderManualCount();
+  toast('Insumo excluído da base manual', 'info');
+}
+
+function insumosConsultaRapida(tipo) {
+  const sel = document.getElementById('ins-consulta-tipo');
+  if (sel) sel.value = tipo;
+  insumosRender();
+}
+
+function insumosTodasBases(options = {}) {
+  const all = [];
+  (STATE.insumosManuais || []).forEach(i => all.push({ ...i, _base:'Base manual', _manual:true }));
+  if (!options.somenteManual) {
+    (STATE.insumosImportados || []).forEach(i => all.push({ ...i, _base:'Base importada' }));
+    (STATE.sinapiBase || []).forEach(i => all.push({ ...i, _base:'SINAPI' }));
+  }
+  const byCode = new Map();
+  all.forEach(item => {
+    const code = codigoChave(item.codigoSinapi || item.codigo);
+    if (!code || byCode.has(code)) return;
+    const grupo = insumosGrupoNormalizado(item.grupo || item.tipo || item.natureza || item.categoria, code, item.descricao);
+    byCode.set(code, { ...item, codigoSinapi: code, codigo: code, grupo, tipo: grupo });
+  });
+  return [...byCode.values()];
+}
+
+function insumosFiltrar(options = {}) {
+  const tipo = document.getElementById('ins-consulta-tipo')?.value || 'palavra';
+  const busca = textoChave(document.getElementById('ins-busca')?.value || '');
+  const grupoFiltro = document.getElementById('ins-filtro-grupo')?.value || '';
+  let lista = insumosTodasBases(options);
+  if (grupoFiltro) lista = lista.filter(i => insumosGrupoNormalizado(i.grupo || i.tipo, i.codigo, i.descricao) === grupoFiltro);
+  if (tipo === 'grupo' && busca) {
+    lista = lista.filter(i => textoChave(insumosGrupoLabel(insumosGrupoNormalizado(i.grupo || i.tipo, i.codigo, i.descricao))).includes(busca));
+  } else if (busca) {
+    lista = lista.filter(i => {
+      const codigo = textoChave(i.codigoSinapi || i.codigo);
+      const desc = textoChave(i.descricao || i.desc);
+      if (tipo === 'codigo') return codigo.includes(busca);
+      if (tipo === 'descricao') return desc.includes(busca);
+      return `${codigo} ${desc} ${textoChave(i.fonte || i._base)}`.includes(busca);
+    });
+  }
+  return lista.slice(0, 300);
+}
+
+function insumosRender(options = {}) {
+  normalizeState();
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('ins-kpi-manual', (STATE.insumosManuais || []).length);
+  setText('ins-kpi-importada', (STATE.insumosImportados || []).length);
+  setText('ins-kpi-sinapi', (STATE.sinapiBase || []).length);
+  setText('ins-kpi-equip', (STATE.insumosManuais || []).filter(i => insumosGrupoNormalizado(i.grupo || i.tipo, i.codigo, i.descricao) === 'E').length);
+  const data = document.getElementById('ins-data');
+  if (data && !data.value) data.value = todayIso();
+  insumosGrupoAlterado();
+
+  const lista = insumosFiltrar(options);
+  setText('ins-result-info', `${lista.length} resultado(s) exibido(s)${options.somenteManual ? ' · somente base manual' : ' · manual, importada e SINAPI'}`);
+  const tb = document.getElementById('ins-tabela');
+  if (!tb) return;
+  if (!lista.length) {
+    tb.innerHTML = '<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Nenhum insumo encontrado.</td></tr>';
+    return;
+  }
+  tb.innerHTML = lista.map(item => {
+    const code = item.codigoSinapi || item.codigo || '';
+    const grupo = insumosGrupoNormalizado(item.grupo || item.tipo || item.natureza || item.categoria, code, item.descricao);
+    const manual = (STATE.insumosManuais || []).some(i => codigoChave(i.codigoSinapi || i.codigo) === codigoChave(code));
+    const codeArg = inlineJsArg(code);
+    return `<tr>
+      <td class="td-mono" style="color:var(--gold)">${escapeHtml(code)}</td>
+      <td>${escapeHtml(item.descricao || item.desc || '')}</td>
+      <td><span class="badge">${escapeHtml(insumosGrupoLabel(grupo))}</span></td>
+      <td>${escapeHtml(item.unidade || item.unid || 'UN')}</td>
+      <td><strong>${fmtMoeda(insumosPrecoItem(item))}</strong></td>
+      <td>${grupo === 'E' ? fmtMoeda(insumosCustoImprodutivo(item)) : '—'}</td>
+      <td>${escapeHtml(item._base || item.fonte || (manual ? 'Base manual' : 'Base'))}</td>
+      <td>${escapeHtml(item.dataReferencia || item.data || '—')}</td>
+      <td>
+        <div class="obra-row-actions">
+          <button class="btn btn-outline btn-sm" onclick="${manual ? `insumosEditarManual(${codeArg})` : `insumosCopiarParaManual(${codeArg})`}">${manual ? 'Editar' : 'Copiar'}</button>
+          ${manual ? `<button class="btn btn-outline btn-sm" onclick="insumosExcluirManual(${codeArg})">Excluir</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function insumosConsultaAvancadaRender() {
+  normalizeState();
+  const codigo = codigoChave(document.getElementById('ins-adv-codigo')?.value);
+  const desc = textoChave(document.getElementById('ins-adv-desc')?.value || '');
+  const palavra = textoChave(document.getElementById('ins-adv-palavra')?.value || '');
+  const grupo = document.getElementById('ins-adv-grupo')?.value || '';
+  const completa = document.getElementById('ins-adv-completa')?.checked === true;
+  let lista = insumosTodasBases({ somenteManual:false });
+  if (codigo) lista = lista.filter(i => codigoChave(i.codigoSinapi || i.codigo).includes(codigo));
+  if (grupo) lista = lista.filter(i => insumosGrupoNormalizado(i.grupo || i.tipo || i.natureza, i.codigoSinapi || i.codigo, i.descricao) === grupo);
+  if (desc) lista = lista.filter(i => textoChave(i.descricao || i.desc || '').includes(desc));
+  if (palavra) {
+    lista = lista.filter(i => {
+      const base = completa
+        ? `${i.codigoSinapi || i.codigo || ''} ${i.descricao || ''} ${i.fonte || ''} ${i._base || ''} ${i.memoriaCustoHorario || ''}`
+        : `${i.codigoSinapi || i.codigo || ''} ${i.descricao || ''}`;
+      return textoChave(base).includes(palavra);
+    });
+  }
+  lista = lista.slice(0, 200);
+  const out = document.getElementById('ins-adv-result');
+  if (!out) return;
+  if (!lista.length) {
+    out.innerHTML = 'Nenhum insumo encontrado na consulta avançada.';
+    return;
+  }
+  out.innerHTML = `
+    <div class="cpu-op-summary">${lista.length} resultado(s) · ${completa ? 'descrição completa/fonte' : 'descrição curta'}</div>
+    <div class="cpu-op-table ins-adv-table">
+      <div class="cpu-op-head"><span>Código</span><span>Descrição</span><span>Grupo</span><span>Preço</span><span>Fonte</span></div>
+      ${lista.map(item => {
+        const code = item.codigoSinapi || item.codigo || '';
+        const grp = insumosGrupoNormalizado(item.grupo || item.tipo || item.natureza || item.categoria, code, item.descricao);
+        return `<div class="cpu-op-row">
+          <span class="td-mono">${escapeHtml(code)}</span>
+          <span>${escapeHtml(item.descricao || item.desc || '')}</span>
+          <span>${escapeHtml(insumosGrupoLabel(grp))}</span>
+          <span>${fmtMoeda(insumosPrecoItem(item))}</span>
+          <span>${escapeHtml(item._base || item.fonte || 'Base')}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+async function insumosImportarExcel(event) {
+  const files = Array.from(event?.target?.files || []);
+  if (!files.length) return;
+  let total = 0;
+  try {
+    for (const file of files) {
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type:'array' });
+      wb.SheetNames.forEach(sheetName => {
+        const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header:1, defval:'' });
+        const items = cpuParseInsumosManualRows(raw, `${file.name}/${sheetName}`)
+          .map(item => insumosNormalizarManual(item, { fonte:`Excel manual: ${file.name}`, origemArquivo:`${file.name}/${sheetName}`, importado:true }));
+        items.forEach(item => {
+          if (insumosSalvarManualItem(item, { save:false })) total++;
+        });
+      });
+    }
+    saveState();
+    insumosRender({ somenteManual:true });
+    cpuRenderManualCount();
+    toast(`${total} insumo(s) importado(s) para a base manual`, total ? 'success' : 'info');
+  } catch (err) {
+    toast(err.message || 'Erro ao importar Excel de insumos.', 'error');
+  } finally {
+    if (event?.target) event.target.value = '';
+  }
+}
+
+function insumosExportarExcel() {
+  const lista = insumosFiltrar({ somenteManual:false });
+  const rows = [['Código','Descrição','Grupo','Unidade','Custo Unitário','Custo Improdutivo','Fonte','Data']];
+  lista.forEach(item => {
+    const grupo = insumosGrupoNormalizado(item.grupo || item.tipo, item.codigoSinapi || item.codigo, item.descricao);
+    rows.push([
+      item.codigoSinapi || item.codigo || '',
+      item.descricao || '',
+      insumosGrupoLabel(grupo),
+      item.unidade || item.unid || 'UN',
+      valorMoeda(insumosPrecoItem(item)),
+      grupo === 'E' ? valorMoeda(insumosCustoImprodutivo(item)) : '',
+      item._base || item.fonte || '',
+      item.dataReferencia || item.data || ''
+    ]);
+  });
+  exportRowsToExcel('TLPlanly_Insumos_Consulta', [{ name:'Insumos', rows }]);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2460,12 +3498,15 @@ window.addEventListener('DOMContentLoaded', () => {
   renderBDIComp();
   renderElaborar();
   renderDashboard();
+  obrasRender();
+  insumosRender();
   custosHorariosRender();
   cotacoesRender();
   frentesServicoRender();
   preencherSelectsOperacionais();
   pricingInit();
   cloudInit();
+  if (FRONTEND_CORE_ONLY) showView('obras');
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -2856,34 +3897,40 @@ function custosEquipamentoSalvar() {
     criadoEm: new Date().toISOString()
   };
   STATE.equipamentosHorarios.push(registro);
+  custosEquipamentoAtualizarInsumo({ calc, cod, nome, silent:true, save:false });
   saveState();
   custosHorariosRender();
+  if (typeof insumosRender === 'function') insumosRender();
+  cpuRenderManualCount();
   toast('Custo horário de equipamento salvo.', 'success');
 }
 
-function custosEquipamentoAtualizarInsumo() {
-  const calc = ULTIMO_CALC_EQUIPAMENTO || custosEquipamentoCalcular();
-  const cod = document.getElementById('eq-cod')?.value?.trim();
-  const nome = document.getElementById('eq-nome')?.value?.trim();
+function custosEquipamentoAtualizarInsumo(options = {}) {
+  const calc = options.calc || ULTIMO_CALC_EQUIPAMENTO || custosEquipamentoCalcular();
+  const cod = options.cod || document.getElementById('eq-cod')?.value?.trim();
+  const nome = options.nome || document.getElementById('eq-nome')?.value?.trim();
   if (!cod || !nome || calc.custoHora <= 0) {
     toast('Calcule um equipamento com código e descrição antes de atualizar o insumo.', 'error');
-    return;
+    return null;
   }
-  registrarInsumosImportados([{
-    codigoSinapi: cod,
+  const saved = insumosSalvarManualItem({
     codigo: cod,
     descricao: nome,
     unidade: 'h',
-    tipo: 'E',
-    precoMedio: roundCustoHorario(calc.produtivo),
+    grupo: 'E',
     preco: roundCustoHorario(calc.produtivo),
-    dataReferencia: new Date().toISOString().slice(0, 10),
-    origem: 'custos-horarios',
+    custoImprodutivo: roundCustoHorario(calc.improdutivo),
+    custoProdutivo: roundCustoHorario(calc.produtivo),
+    data: new Date().toLocaleDateString('pt-BR'),
+    origem: 'custos-horarios-equipamento',
     fonte: 'TLPlanly/Custos Horários',
-    memoriaCustoHorario: calc.memoria
-  }]);
-  saveState();
-  toast('Preço do insumo de equipamento atualizado com o custo produtivo.', 'success');
+    memoriaCustoHorario: calc.memoria,
+    parcelasCustoHorario: calc.parcelas
+  }, { save: options.save !== false });
+  if (!saved) return null;
+  if (typeof insumosRender === 'function') insumosRender();
+  if (!options.silent) toast('Insumo de equipamento atualizado na base manual.', 'success');
+  return saved;
 }
 
 function beneficioFatorPadrao(periodo) {
@@ -3018,7 +4065,9 @@ function custosMaoObraSalvar() {
     toast('Informe cargo e valores para calcular a mão de obra.', 'error');
     return;
   }
-  const cod = document.getElementById('mo-cod')?.value?.trim() || `MO-${String(STATE.maoObraHoraria.length + 1).padStart(3, '0')}`;
+  const codInput = document.getElementById('mo-cod');
+  const cod = codInput?.value?.trim() || insumosCodigoSequencial('S');
+  if (codInput && !codInput.value.trim()) codInput.value = cod;
   const registro = {
     id: makeId('mo'),
     tipo: 'mao-obra',
@@ -3034,9 +4083,44 @@ function custosMaoObraSalvar() {
     criadoEm: new Date().toISOString()
   };
   STATE.maoObraHoraria.push(registro);
+  custosMaoObraAtualizarInsumo({ calc, cod, cargo, silent:true, save:false });
   saveState();
   custosHorariosRender();
+  if (typeof insumosRender === 'function') insumosRender();
+  cpuRenderManualCount();
   toast('Custo horário de mão de obra salvo.', 'success');
+}
+
+function custosMaoObraAtualizarInsumo(options = {}) {
+  const calc = options.calc || ULTIMO_CALC_MAO_OBRA || custosMaoObraCalcular();
+  const codInput = document.getElementById('mo-cod');
+  const cod = options.cod || codInput?.value?.trim() || insumosCodigoSequencial('S');
+  const cargo = options.cargo || document.getElementById('mo-cargo')?.value?.trim();
+  if (!cargo || calc.custoHora <= 0) {
+    toast('Calcule uma mão de obra com cargo e custo horário antes de atualizar o insumo.', 'error');
+    return null;
+  }
+  if (codInput && !codInput.value.trim()) codInput.value = cod;
+  const saved = insumosSalvarManualItem({
+    codigo: cod,
+    descricao: cargo,
+    unidade: 'h',
+    grupo: 'S',
+    preco: roundCustoHorario(calc.custoHora),
+    custoProdutivo: roundCustoHorario(calc.custoHora),
+    data: new Date().toLocaleDateString('pt-BR'),
+    origem: 'custos-horarios-mao-obra',
+    fonte: 'TLPlanly/Custos Horários',
+    memoriaCustoHorario: calc.memoria,
+    salarioMensal: calc.salario,
+    beneficiosMensais: calc.beneficios,
+    encargosPct: calc.encargos,
+    horasProdutivasMes: calc.horas
+  }, { save: options.save !== false });
+  if (!saved) return null;
+  if (typeof insumosRender === 'function') insumosRender();
+  if (!options.silent) toast('Insumo de mão de obra atualizado na base manual.', 'success');
+  return saved;
 }
 
 function custoHorarioRegistros() {
@@ -3051,6 +4135,7 @@ function custosHorariosRender() {
   custosEquipamentoModoChange();
   custosEquipamentoRenderInsumos();
   custosMaoObraRenderBeneficios();
+  equipeMecanicaRender();
   const tbody = document.getElementById('custos-lista');
   if (!tbody) return;
   const rows = custoHorarioRegistros();
@@ -3123,6 +4208,189 @@ function custosHorariosExportarExcel() {
 
 function custosHorariosExportarPDF() {
   exportHtmlToPDF('Custos Horários - TLPlanly', rowsToHtmlTable(custosHorariosRows()), 'custos_horarios_TLPlanly');
+}
+
+function equipeMecanicaCalcular() {
+  const producao = Math.max(0.0001, readNumeroCampo('em-producao'));
+  const eficiencia = Math.max(1, Math.min(100, readNumeroCampo('em-eficiencia') || 100));
+  const producaoEfetiva = producao * eficiencia / 100;
+  const equipamentos = readNumeroCampo('em-equip');
+  const maoObra = readNumeroCampo('em-mo');
+  const materiais = readNumeroCampo('em-mat');
+  const auxiliares = readNumeroCampo('em-aux');
+  const custoHora = roundCustoHorario(equipamentos + maoObra + materiais + auxiliares);
+  const custoUnitario = roundUnitPrice(custoHora / Math.max(0.0001, producaoEfetiva));
+  const memoria = `Equipamentos ${fmtMoeda(equipamentos)}/h + mão de obra ${fmtMoeda(maoObra)}/h + materiais ${fmtMoeda(materiais)}/h + auxiliares ${fmtMoeda(auxiliares)}/h = ${fmtMoeda(custoHora)}/h. Produção efetiva ${fmtNum(producaoEfetiva)} un/h (${fmtNum(eficiencia)}%). Custo unitário ${fmtMoeda(custoUnitario)}.`;
+  const preview = document.getElementById('em-preview');
+  if (preview) {
+    preview.innerHTML = `<strong>Custo unitário:</strong> ${fmtMoeda(custoUnitario)}<br><span>${escapeHtml(memoria)}</span>`;
+  }
+  return { producao, eficiencia, producaoEfetiva, equipamentos, maoObra, materiais, auxiliares, custoHora, custoUnitario, memoria };
+}
+
+function equipeMecanicaSalvar() {
+  normalizeState();
+  const calc = equipeMecanicaCalcular();
+  const cod = document.getElementById('em-cod')?.value?.trim() || `EM-${String((STATE.equipesMecanicas || []).length + 1).padStart(3, '0')}`;
+  const desc = document.getElementById('em-desc')?.value?.trim();
+  const unid = document.getElementById('em-unid')?.value?.trim() || 'un';
+  if (!desc || calc.custoUnitario <= 0) {
+    toast('Informe descrição, produção e custos da equipe mecânica.', 'error');
+    return;
+  }
+  const registro = {
+    id: makeId('em'),
+    cod,
+    desc,
+    unid,
+    ...calc,
+    criadoEm: new Date().toISOString()
+  };
+  STATE.equipesMecanicas = [...(STATE.equipesMecanicas || []).filter(e => codigoChave(e.cod) !== codigoChave(cod)), registro];
+  saveState();
+  equipeMecanicaRender();
+  toast('Equipe mecânica salva.', 'success');
+}
+
+function equipeMecanicaLimpar() {
+  ['em-desc','em-equip','em-mo','em-mat','em-aux','em-producao'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const cod = document.getElementById('em-cod');
+  if (cod) cod.value = `EM-${String((STATE.equipesMecanicas || []).length + 1).padStart(3, '0')}`;
+  const unid = document.getElementById('em-unid');
+  if (unid) unid.value = 'm³';
+  const efi = document.getElementById('em-eficiencia');
+  if (efi) efi.value = '100';
+  const preview = document.getElementById('em-preview');
+  if (preview) preview.innerHTML = '';
+}
+
+function equipeMecanicaExcluir(id) {
+  STATE.equipesMecanicas = (STATE.equipesMecanicas || []).filter(e => e.id !== id);
+  saveState();
+  equipeMecanicaRender();
+  toast('Equipe mecânica excluída.', 'info');
+}
+
+function equipeMecanicaEnviarCPU(id) {
+  const equipe = (STATE.equipesMecanicas || []).find(e => e.id === id);
+  if (!equipe) return;
+  const cpu = {
+    id: makeId('cpu'),
+    cod: equipe.cod,
+    desc: equipe.desc,
+    unid: equipe.unid || 'un',
+    tipo: 'Equipe Mecânica',
+    prod: equipe.producaoEfetiva || 1,
+    encargos: STATE.config.enc || 'nd',
+    encPct: 0,
+    insumos: [
+      { cod:`${equipe.cod}-EQ`, desc:'Equipamentos da equipe', unid:'h', tipo:'E', coef:1, preco:equipe.equipamentos || 0 },
+      { cod:`${equipe.cod}-MO`, desc:'Mão de obra da equipe', unid:'h', tipo:'S', coef:1, preco:equipe.maoObra || 0 },
+      { cod:`${equipe.cod}-MAT`, desc:'Materiais da equipe', unid:'h', tipo:'M', coef:1, preco:equipe.materiais || 0 },
+      { cod:`${equipe.cod}-AUX`, desc:'Auxiliares da equipe', unid:'h', tipo:'T', coef:1, preco:equipe.auxiliares || 0 }
+    ].filter(i => Number(i.preco) > 0),
+    precoUnitario: equipe.custoUnitario,
+    memoria: equipe.memoria,
+    criadaEm: new Date().toLocaleDateString('pt-BR'),
+    origem: 'equipe-mecanica'
+  };
+  cpuRecalcularComposicaoSalva(cpu);
+  const idx = CPU_BIBLIOTECA.findIndex(c => codigoChave(c.cod) === codigoChave(cpu.cod));
+  if (idx >= 0) CPU_BIBLIOTECA[idx] = { ...CPU_BIBLIOTECA[idx], ...cpu, id: CPU_BIBLIOTECA[idx].id };
+  else CPU_BIBLIOTECA.push(cpu);
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  toast('Equipe mecânica enviada para a biblioteca de CPUs.', 'success');
+}
+
+function equipeMecanicaRender() {
+  const tbody = document.getElementById('em-lista');
+  if (!tbody) return;
+  const rows = STATE.equipesMecanicas || [];
+  const cod = document.getElementById('em-cod');
+  if (cod && !cod.value) cod.value = `EM-${String(rows.length + 1).padStart(3, '0')}`;
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="padding:18px">Nenhuma equipe mecânica salva.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(e => `<tr>
+    <td class="td-mono">${escapeHtml(e.cod)}</td>
+    <td>${escapeHtml(e.desc)}<div class="table-input-sub">${escapeHtml(e.memoria || '')}</div></td>
+    <td>${fmtNum(e.producaoEfetiva || e.producao)} ${escapeHtml(e.unid || 'un')}/h</td>
+    <td>${fmtMoeda(e.custoHora)}</td>
+    <td><strong>${fmtMoeda(e.custoUnitario)}</strong></td>
+    <td><div class="obra-row-actions"><button class="btn btn-outline btn-sm" onclick="equipeMecanicaEnviarCPU('${escapeHtml(e.id)}')">Enviar CPU</button><button class="btn btn-outline btn-sm" onclick="equipeMecanicaExcluir('${escapeHtml(e.id)}')">Excluir</button></div></td>
+  </tr>`).join('');
+}
+
+function nucleoRowsObras() {
+  return [['Número','Projeto','Cliente','Data','Banco','Lotes','Itens','Total'],
+    ...(STATE.obras || []).map(obra => {
+      const r = obraResumo(obra);
+      return [obra.numero, obra.nome, obra.cliente || '', obra.data || '', obra.bancoBase || '', r.lotes, r.itens, valorMoeda(r.total)];
+    })];
+}
+
+function nucleoRowsInsumos() {
+  return [['Código','Descrição','Grupo','Unidade','Preço','Improdutivo','Fonte'],
+    ...insumosTodasBases({ somenteManual:false }).map(item => {
+      const code = item.codigoSinapi || item.codigo || '';
+      const grupo = insumosGrupoNormalizado(item.grupo || item.tipo, code, item.descricao);
+      return [code, item.descricao || '', insumosGrupoLabel(grupo), item.unidade || item.unid || 'UN', valorMoeda(insumosPrecoItem(item)), valorMoeda(insumosCustoImprodutivo(item)), item._base || item.fonte || ''];
+    })];
+}
+
+function nucleoRowsCpus() {
+  const rows = [['Código','Descrição','Unidade','Tipo','Produção','Encargos %','Custo unitário','Qtd insumos']];
+  (CPU_BIBLIOTECA || []).forEach(cpu => rows.push([cpu.cod, cpu.desc, cpu.unid, cpu.tipo, cpu.prod || 1, cpu.encPct || 0, valorMoeda(cpu.precoUnitario), (cpu.insumos || []).length]));
+  return rows;
+}
+
+function nucleoRowsCpuInsumos() {
+  const rows = [['CPU','Código insumo','Descrição','Unidade','Tipo','Coeficiente','Preço','Subtotal']];
+  (CPU_BIBLIOTECA || []).forEach(cpu => (cpu.insumos || []).forEach(ins => rows.push([
+    cpu.cod, ins.cod, ins.desc || ins.descricao || '', ins.unid || ins.unidade || '', ins.tipo || '', Number(ins.coef) || 0, valorMoeda(ins.preco), valorMoeda((Number(ins.coef) || 0) * (Number(ins.preco) || 0))
+  ])));
+  return rows;
+}
+
+function nucleoRowsCustos() {
+  return [['Tipo','Código','Descrição','Produtivo','Improdutivo','Memória'],
+    ...custoHorarioRegistros().map(r => [r.grupo, r.cod, r.desc, valorMoeda(r.custoProdutivo || r.custoHora), valorMoeda(r.custoImprodutivo || 0), r.memoria || ''])];
+}
+
+function nucleoRowsEquipes() {
+  return [['Código','Descrição','Unidade','Produção/h','Custo/h','Custo unitário','Memória'],
+    ...(STATE.equipesMecanicas || []).map(e => [e.cod, e.desc, e.unid, e.producaoEfetiva || e.producao, valorMoeda(e.custoHora), valorMoeda(e.custoUnitario), e.memoria || ''])];
+}
+
+function nucleoRowsBancos() {
+  return [['Banco externo','Composição','Descrição','Unidade','Custo unitário','Qtd insumos'],
+    ...(STATE.cpuBancosExternos || []).flatMap(b => (b.composicoes || []).map(cpu => [b.nome, cpu.cod, cpu.desc, cpu.unid, valorMoeda(cpu.precoUnitario), (cpu.insumos || []).length]))];
+}
+
+function nucleoExportarExcel() {
+  exportRowsToExcel('TLPlanly_Nucleo_Orcamento', [
+    { name:'Obras', rows:nucleoRowsObras() },
+    { name:'Insumos', rows:nucleoRowsInsumos() },
+    { name:'CPUs', rows:nucleoRowsCpus() },
+    { name:'CPU_Insumos', rows:nucleoRowsCpuInsumos() },
+    { name:'Custos_Horarios', rows:nucleoRowsCustos() },
+    { name:'Equipes_Mecanicas', rows:nucleoRowsEquipes() },
+    { name:'Bancos_Externos', rows:nucleoRowsBancos() }
+  ]);
+}
+
+function nucleoExportarPDF() {
+  const html = [
+    '<h2>Obras</h2>', rowsToHtmlTable(nucleoRowsObras()),
+    '<h2>Insumos</h2>', rowsToHtmlTable(nucleoRowsInsumos().slice(0, 120)),
+    '<h2>Composições</h2>', rowsToHtmlTable(nucleoRowsCpus()),
+    '<h2>Custos Horários</h2>', rowsToHtmlTable(nucleoRowsCustos()),
+    '<h2>Equipes Mecânicas</h2>', rowsToHtmlTable(nucleoRowsEquipes()),
+    '<h2>Bancos Externos</h2>', rowsToHtmlTable(nucleoRowsBancos().slice(0, 120))
+  ].join('');
+  exportHtmlToPDF('Núcleo de Orçamento - TLPlanly', html, 'TLPlanly_Nucleo_Orcamento');
 }
 
 function cotacaoAdicionar() {
@@ -4204,6 +5472,9 @@ function backupPayload() {
     maoObraHoraria: STATE.maoObraHoraria,
     cotacoesCustos: STATE.cotacoesCustos,
     frentesServico: STATE.frentesServico,
+    obras: STATE.obras,
+    obraAtivaId: STATE.obraAtivaId,
+    obrasRecentes: STATE.obrasRecentes,
     bdi: STATE.bdi,
     bdiConfigured: STATE.bdiConfigured,
     bdiComponents: STATE.bdiComponents,
@@ -4232,6 +5503,7 @@ function backupRestaurar(id) {
   custosHorariosRender();
   cotacoesRender();
   frentesServicoRender();
+  obrasRender();
   preencherSelectsOperacionais();
   backupRender();
   toast('Backup restaurado.', 'success');
@@ -4870,6 +6142,10 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function inlineJsArg(value) {
+  return escapeHtml(JSON.stringify(String(value ?? '')));
 }
 
 function renderImportFileChips() {
@@ -7957,11 +9233,15 @@ let CPU = {
 };
 
 let CPU_BIBLIOTECA = Array.isArray(STATE.cpuBiblioteca) ? STATE.cpuBiblioteca : [];   // composições salvas
+let CPU_EDITOR = { activeId: null, stack: [], selectedIndex: 0 };
+let CPU_OP_SELECTED = new Set();
 
 // Persiste biblioteca
 function cpuSaveLib() {
   STATE.cpuBiblioteca = Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
   try { localStorage.setItem('tlplanly_cpu_lib', JSON.stringify(STATE.cpuBiblioteca)); } catch(e){}
+  cpuEditorRender();
+  cpuBancoExternoRender();
   saveState();
 }
 function cpuLoadLib() {
@@ -8025,15 +9305,8 @@ function cpuNormalizarInsumoManual(raw, options = {}) {
 }
 
 function cpuSalvarInsumoManual(item) {
-  normalizeState();
   if (!item?.codigo || !item?.descricao) return false;
-  const code = codigoChave(item.codigo);
-  const byCode = new Map((STATE.insumosManuais || []).map(i => [codigoChave(i.codigoSinapi || i.codigo), i]));
-  byCode.set(code, { ...(byCode.get(code) || {}), ...item, codigoSinapi: code, codigo: code });
-  STATE.insumosManuais = [...byCode.values()];
-  saveState();
-  cpuRenderManualCount();
-  return true;
+  return !!insumosSalvarManualItem(item);
 }
 
 function cpuAdicionarInsumoNaComposicao(item, coef) {
@@ -8196,6 +9469,7 @@ function cpuIrPasso(n) {
       step.className = 'cpu-step' + (i === n ? ' active' : i < n ? ' done' : '');
     }
   });
+  CPU.prod = Math.max(0.0001, readNumeroCampo('cpu-prod') || Number(CPU.prod) || 1);
   if (n === 2) cpuCalcEncargos();
   if (n === 3) cpuRenderResultado();
 }
@@ -8338,11 +9612,15 @@ function cpuCalcEncargos() {
 
 // ─── RESULTADO ─────────────────────────────────────────────
 function cpuCalcPrecoUnitario() {
-  const grupos = { M: 0, E: 0, S: 0, T: 0 };
-  CPU.insumos.forEach(i => { grupos[i.tipo] += i.coef * i.preco; });
+  const grupos = { M: 0, E: 0, S: 0, T: 0, AX: 0 };
+  CPU.insumos.forEach(i => {
+    const tipo = ['M','E','S','T','AX'].includes(i.tipo) ? i.tipo : 'M';
+    grupos[tipo] += i.coef * i.preco;
+  });
   const moComEnc = grupos.S * (1 + CPU.encPct / 100);
-  const custoTotal = grupos.M + moComEnc + grupos.E + grupos.T;
-  return { grupos, moComEnc, custoTotal };
+  const prod = Math.max(0.0001, Number(CPU.prod) || readNumeroCampo('cpu-prod') || 1);
+  const custoTotal = grupos.M + grupos.T + grupos.AX + ((grupos.E + moComEnc) / prod);
+  return { grupos, moComEnc, prod, custoTotal };
 }
 
 function cpuRenderResultado() {
@@ -8350,7 +9628,8 @@ function cpuRenderResultado() {
   const desc = document.getElementById('cpu-desc').value || 'Composição sem descrição';
   const unid = document.getElementById('cpu-unid').value || 'm²';
   const tipo = document.getElementById('cpu-tipo').value || 'Serviços Gerais';
-  CPU.cod = cod; CPU.desc = desc; CPU.unid = unid; CPU.tipo = tipo;
+  const prod = Math.max(0.0001, readNumeroCampo('cpu-prod') || Number(CPU.prod) || 1);
+  CPU.cod = cod; CPU.desc = desc; CPU.unid = unid; CPU.tipo = tipo; CPU.prod = prod;
 
   const { grupos, moComEnc, custoTotal } = cpuCalcPrecoUnitario();
 
@@ -8360,6 +9639,7 @@ function cpuRenderResultado() {
     ['Encargos Sociais (' + CPU.encPct + '%)', grupos.S * CPU.encPct / 100],
     ['Mão de Obra c/ Encargos', moComEnc],
     ['Equipamentos (E)', grupos.E],
+    ['Composições Auxiliares', grupos.AX],
     ['Transportes (T)', grupos.T],
   ].filter(([,v]) => v > 0);
 
@@ -8383,6 +9663,7 @@ function cpuRenderResultado() {
         <div style="grid-column:span 2"><span style="color:var(--text3)">Descrição:</span> <strong>${desc}</strong></div>
         <div><span style="color:var(--text3)">Tipo:</span> <strong>${tipo}</strong></div>
         <div><span style="color:var(--text3)">Encargos:</span> <strong>${CPU.encPct}% (${CPU.encargos==='nd'?'Não desonerado':'Desonerado'})</strong></div>
+        <div><span style="color:var(--text3)">Produção da equipe:</span> <strong>${fmtNum(prod)} ${unid}/h</strong></div>
       </div>
     </div>
     <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px">
@@ -8405,6 +9686,7 @@ function cpuSalvarNaBiblioteca() {
     id: Date.now(),
     cod: CPU.cod, desc: CPU.desc, unid: CPU.unid,
     tipo: CPU.tipo, encargos: CPU.encargos, encPct: CPU.encPct,
+    prod: Math.max(0.0001, Number(CPU.prod) || readNumeroCampo('cpu-prod') || 1),
     insumos: JSON.parse(JSON.stringify(CPU.insumos)),
     precoUnitario: custoTotal,
     criadaEm: new Date().toLocaleDateString('pt-BR'),
@@ -8449,7 +9731,7 @@ function cpuFiltrarLib(f) { _cpuLibFiltro = f; cpuRenderBiblioteca(); }
 function cpuRenderBiblioteca(q) {
   const search = (q || document.getElementById('cpu-lib-search')?.value || '').toUpperCase();
   const lista = CPU_BIBLIOTECA.filter(c => {
-    const matchSearch = !search || c.cod.toUpperCase().includes(search) || c.desc.toUpperCase().includes(search);
+    const matchSearch = !search || String(c.cod || '').toUpperCase().includes(search) || String(c.desc || '').toUpperCase().includes(search);
     const matchFiltro = !_cpuLibFiltro || c.tipo === _cpuLibFiltro;
     return matchSearch && matchFiltro;
   });
@@ -8462,33 +9744,630 @@ function cpuRenderBiblioteca(q) {
     return;
   }
   el.innerHTML = lista.map(c => `
-    <div class="cpu-lib-item" onclick="cpuVerFicha(${c.id})">
-      <span class="cpu-lib-code">${c.cod}</span>
+    <div class="cpu-lib-item" onclick="cpuVerFicha(${inlineJsArg(c.id)})">
+      <span class="cpu-lib-code">${escapeHtml(c.cod)}</span>
       <div style="flex:1;min-width:0">
-        <div class="cpu-lib-desc" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.desc}</div>
-        <div style="font-size:10px;color:var(--text3)">${c.tipo} · ${c.insumos.length} insumos · ${c.criadaEm}</div>
+        <div class="cpu-lib-desc" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(c.desc)}</div>
+        <div style="font-size:10px;color:var(--text3)">${escapeHtml(c.tipo)} · ${(c.insumos || []).length} insumos · prod. ${fmtNum(c.prod || 1)} · ${escapeHtml(c.criadaEm || '')}</div>
       </div>
-      <span class="cpu-lib-un">${c.unid}</span>
+      <span class="cpu-lib-un">${escapeHtml(c.unid)}</span>
       <span class="cpu-lib-preco">${fmtMoeda(c.precoUnitario)}</span>
+      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();cpuEditorAbrir(${inlineJsArg(c.id)})">Abrir</button>
     </div>`).join('');
+}
+
+function cpuEditorFindById(id) {
+  return (CPU_BIBLIOTECA || []).find(cpu => String(cpu.id) === String(id)) || null;
+}
+
+function cpuEditorFindByCode(cod) {
+  const code = codigoChave(cod);
+  return (CPU_BIBLIOTECA || []).find(cpu => codigoChave(cpu.cod) === code) || null;
+}
+
+function cpuEditorAbrir(id, options = {}) {
+  const cpu = cpuEditorFindById(id);
+  if (!cpu) { toast('Composição não encontrada na biblioteca.', 'error'); return; }
+  if (!options.fromStack && CPU_EDITOR.activeId && String(CPU_EDITOR.activeId) !== String(id)) {
+    CPU_EDITOR.stack = [{ id: CPU_EDITOR.activeId, selectedIndex: CPU_EDITOR.selectedIndex || 0 }, ...(CPU_EDITOR.stack || [])].slice(0, 12);
+  }
+  CPU_EDITOR.activeId = cpu.id;
+  CPU_EDITOR.selectedIndex = 0;
+  cpuEditorRender();
+  toast('Composição aberta: ' + (cpu.cod || ''), 'info');
+}
+
+function cpuEditorCalcularDetalhes(cpu) {
+  const grupos = { E:0, S:0, M:0, T:0, AX:0 };
+  const encPct = Number(cpu?.encPct) || 0;
+  const prod = Math.max(0.0001, Number(cpu?.prod) || 1);
+  (cpu?.insumos || []).forEach(ins => {
+    const total = (Number(ins.coef) || 0) * (Number(ins.preco) || 0);
+    const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
+    grupos[tipo] = (grupos[tipo] || 0) + total;
+  });
+  const maoComEnc = grupos.S * (1 + encPct / 100);
+  const equipamentoProd = grupos.E / prod;
+  const maoProd = maoComEnc / prod;
+  const custoUnitario = roundUnitPrice(grupos.M + grupos.T + grupos.AX + equipamentoProd + maoProd);
+  return { grupos, encPct, prod, maoComEnc, equipamentoProd, maoProd, custoUnitario };
+}
+
+function cpuEditorRender() {
+  const empty = document.getElementById('cpu-editor-empty');
+  const content = document.getElementById('cpu-editor-content');
+  const cpu = cpuEditorFindById(CPU_EDITOR.activeId);
+  if (!empty || !content) return;
+  if (!cpu) {
+    empty.style.display = '';
+    content.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  content.style.display = '';
+  const detalhes = cpuEditorCalcularDetalhes(cpu);
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('cpu-editor-cod', cpu.cod || '—');
+  setText('cpu-editor-unid', cpu.unid || '—');
+  setText('cpu-editor-total', fmtMoeda(detalhes.custoUnitario));
+  const prodInput = document.getElementById('cpu-editor-prod');
+  if (prodInput && document.activeElement !== prodInput) prodInput.value = detalhes.prod;
+  const crumb = document.getElementById('cpu-editor-breadcrumb');
+  if (crumb) {
+    const stack = (CPU_EDITOR.stack || []).map(s => cpuEditorFindById(s.id)?.cod).filter(Boolean);
+    crumb.textContent = [...stack.reverse(), cpu.cod].join(' > ') || 'Composição aberta';
+  }
+  const gruposEl = document.getElementById('cpu-editor-grupos');
+  if (gruposEl) {
+    gruposEl.innerHTML = [
+      ['Equipamentos/h', detalhes.grupos.E, detalhes.equipamentoProd],
+      ['Mão de obra/h', detalhes.grupos.S, detalhes.maoProd],
+      ['Materiais', detalhes.grupos.M, detalhes.grupos.M],
+      ['Auxiliares', detalhes.grupos.AX, detalhes.grupos.AX],
+      ['Transporte', detalhes.grupos.T, detalhes.grupos.T]
+    ].map(([label, hora, unit]) => `<div><span>${escapeHtml(label)}</span><strong>${fmtMoeda(hora)}</strong><small>${fmtMoeda(unit)} no unitário</small></div>`).join('');
+  }
+  const tbody = document.getElementById('cpu-editor-insumos');
+  if (!tbody) return;
+  const rows = cpu.insumos || [];
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state" style="padding:18px">Esta composição não possui insumos.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((ins, idx) => {
+    const aux = cpuEditorFindByCode(ins.cod);
+    const tipo = aux ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
+    const coef = Number(ins.coef) || 0;
+    const preco = Number(ins.preco) || 0;
+    const total = coef * preco;
+    const totalProd = (tipo === 'E' || tipo === 'S') ? total / detalhes.prod : total;
+    return `<tr class="${CPU_EDITOR.selectedIndex === idx ? 'cpu-editor-selected' : ''}">
+      <td><input type="radio" name="cpu-editor-row" ${CPU_EDITOR.selectedIndex === idx ? 'checked' : ''} onchange="cpuEditorSelecionarLinha(${idx})"/></td>
+      <td class="td-mono">${escapeHtml(ins.cod || '')}</td>
+      <td>${escapeHtml(ins.desc || ins.descricao || '')}${aux ? '<div class="table-input-sub">Composição auxiliar disponível</div>' : ''}</td>
+      <td>${escapeHtml(ins.unid || ins.unidade || '')}</td>
+      <td><span class="badge">${tipo === 'AX' ? 'Auxiliar' : escapeHtml(cpuTipoDescricao(tipo))}</span></td>
+      <td>${fmtNum(coef)}</td>
+      <td>${fmtMoeda(preco)}</td>
+      <td><strong>${fmtMoeda(total)}</strong></td>
+      <td>${fmtMoeda(totalProd)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function cpuEditorSelecionarLinha(idx) {
+  CPU_EDITOR.selectedIndex = Number(idx) || 0;
+  cpuEditorRender();
+}
+
+function cpuEditorEntrarAuxiliar() {
+  const cpu = cpuEditorFindById(CPU_EDITOR.activeId);
+  if (!cpu) { toast('Abra uma composição antes de entrar em auxiliar.', 'error'); return; }
+  const ins = (cpu.insumos || [])[CPU_EDITOR.selectedIndex || 0];
+  const aux = cpuEditorFindByCode(ins?.cod);
+  if (!aux) { toast('A linha selecionada não é uma composição auxiliar salva na biblioteca.', 'warning'); return; }
+  cpuEditorAbrir(aux.id);
+}
+
+function cpuEditorVoltarPrincipal() {
+  const prev = (CPU_EDITOR.stack || []).shift();
+  if (!prev) { toast('Você já está na composição principal aberta.', 'info'); return; }
+  CPU_EDITOR.activeId = prev.id;
+  CPU_EDITOR.selectedIndex = prev.selectedIndex || 0;
+  cpuEditorRender();
+}
+
+function cpuEditorAtualizarProducao() {
+  const cpu = cpuEditorFindById(CPU_EDITOR.activeId);
+  if (!cpu) return;
+  cpu.prod = Math.max(0.0001, readNumeroCampo('cpu-editor-prod') || 1);
+  cpuEditorRecalcular({ silent:true });
+}
+
+function cpuEditorRecalcular(options = {}) {
+  const cpu = cpuEditorFindById(CPU_EDITOR.activeId);
+  if (!cpu) { toast('Abra uma composição antes de calcular.', 'error'); return; }
+  const detalhes = cpuEditorCalcularDetalhes(cpu);
+  cpu.precoUnitario = detalhes.custoUnitario;
+  cpu.gruposCusto = detalhes.grupos;
+  cpu.atualizadaEm = new Date().toISOString();
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  if (!options.silent) toast('Composição recalculada com produção da equipe.', 'success');
+}
+
+function cpuRecalcularComposicaoSalva(cpu) {
+  const grupos = { M:0, E:0, S:0, T:0, AX:0 };
+  (cpu.insumos || []).forEach(ins => {
+    const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
+    const subtotal = (Number(ins.coef) || 0) * (Number(ins.preco) || 0);
+    grupos[tipo] = (grupos[tipo] || 0) + subtotal;
+    ins.tipo = tipo;
+  });
+  const encPct = Number(cpu.encPct ?? STATE.bdiComponents?.encargos ?? 127.5) || 0;
+  const moComEnc = grupos.S * (1 + encPct / 100);
+  const prod = Math.max(0.0001, Number(cpu.prod) || 1);
+  cpu.precoUnitario = roundUnitPrice(grupos.M + grupos.T + grupos.AX + ((grupos.E + moComEnc) / prod));
+  cpu.gruposCusto = grupos;
+  cpu.atualizadaEm = new Date().toISOString();
+  return cpu.precoUnitario;
+}
+
+function cpuOperacoesEscopo() {
+  const filtro = textoChave(document.getElementById('cpu-op-escopo')?.value || '');
+  if (CPU_OP_SELECTED.size) {
+    return (CPU_BIBLIOTECA || []).filter(cpu => CPU_OP_SELECTED.has(codigoChave(cpu.cod)));
+  }
+  return (CPU_BIBLIOTECA || []).filter(cpu => {
+    if (!filtro) return true;
+    return textoChave(`${cpu.cod || ''} ${cpu.desc || ''} ${cpu.tipo || ''}`).includes(filtro);
+  });
+}
+
+function cpuOperacoesListaCandidatos() {
+  const filtro = textoChave(document.getElementById('cpu-op-escopo')?.value || '');
+  return (CPU_BIBLIOTECA || []).filter(cpu => !filtro || textoChave(`${cpu.cod || ''} ${cpu.desc || ''} ${cpu.tipo || ''}`).includes(filtro));
+}
+
+function cpuOperacoesListarEscopo() {
+  const el = document.getElementById('cpu-op-scope-list');
+  if (!el) return;
+  const lista = cpuOperacoesListaCandidatos().slice(0, 120);
+  if (!lista.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:12px">Nenhuma composição no filtro de escopo.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <div class="cpu-op-scope-actions">
+      <strong>${lista.length} composição(ões) no escopo</strong>
+      <button class="btn btn-outline btn-sm" onclick="cpuOperacoesSelecionarTodos()">Todos</button>
+      <button class="btn btn-outline btn-sm" onclick="cpuOperacoesLimparSelecao()">Limpar</button>
+    </div>
+    <div class="cpu-op-scope-grid">
+      ${lista.map(cpu => {
+        const code = codigoChave(cpu.cod);
+        return `<label class="cpu-op-scope-item">
+          <input type="checkbox" ${CPU_OP_SELECTED.has(code) ? 'checked' : ''} onchange="cpuOperacoesToggleSelecao(${inlineJsArg(code)}, this.checked)"/>
+          <span><strong>${escapeHtml(cpu.cod)}</strong><small>${escapeHtml(cpu.desc || '')}</small></span>
+        </label>`;
+      }).join('')}
+    </div>`;
+}
+
+function cpuOperacoesToggleSelecao(cod, checked) {
+  const code = codigoChave(cod);
+  if (!code) return;
+  if (checked) CPU_OP_SELECTED.add(code);
+  else CPU_OP_SELECTED.delete(code);
+  cpuOperacoesResumoSelecao();
+}
+
+function cpuOperacoesSelecionarTodos() {
+  cpuOperacoesListaCandidatos().forEach(cpu => CPU_OP_SELECTED.add(codigoChave(cpu.cod)));
+  cpuOperacoesListarEscopo();
+  cpuOperacoesResumoSelecao();
+}
+
+function cpuOperacoesSelecionarAlternadas() {
+  CPU_OP_SELECTED.clear();
+  cpuOperacoesListaCandidatos().forEach((cpu, idx) => {
+    if (idx % 2 === 0) CPU_OP_SELECTED.add(codigoChave(cpu.cod));
+  });
+  cpuOperacoesListarEscopo();
+  cpuOperacoesResumoSelecao();
+}
+
+function cpuOperacoesLimparSelecao() {
+  CPU_OP_SELECTED.clear();
+  cpuOperacoesListarEscopo();
+  cpuOperacoesResumoSelecao();
+}
+
+function cpuOperacoesResumoSelecao() {
+  const el = document.getElementById('cpu-op-result');
+  if (el && CPU_OP_SELECTED.size) {
+    el.innerHTML = `${CPU_OP_SELECTED.size} composição(ões) selecionada(s) para as próximas operações.`;
+  }
+}
+
+function cpuOperacoesRenderResultado(rows, resumo = '') {
+  const el = document.getElementById('cpu-op-result');
+  if (!el) return;
+  if (!rows?.length) {
+    el.innerHTML = resumo || 'Nenhuma ocorrência encontrada no escopo informado.';
+    return;
+  }
+  el.innerHTML = `
+    ${resumo ? `<div class="cpu-op-summary">${escapeHtml(resumo)}</div>` : ''}
+    <div class="cpu-op-table">
+      <div class="cpu-op-head"><span>CPU</span><span>Descrição</span><span>Insumo</span><span>Coef.</span><span>Total</span></div>
+      ${rows.slice(0, 80).map(r => `
+        <div class="cpu-op-row">
+          <span class="td-mono">${escapeHtml(r.cpuCod)}</span>
+          <span>${escapeHtml(r.cpuDesc)}</span>
+          <span>${escapeHtml(r.insumoCod)} · ${escapeHtml(r.insumoDesc)}</span>
+          <span>${fmtNum(r.coef)}</span>
+          <span>${fmtMoeda(r.total)}</span>
+        </div>`).join('')}
+    </div>
+    ${rows.length > 80 ? `<div class="form-help">Mostrando 80 de ${rows.length} ocorrência(s).</div>` : ''}
+  `;
+}
+
+function cpuOperacaoPesquisar() {
+  const alvo = codigoChave(document.getElementById('cpu-op-insumo')?.value);
+  if (!alvo) { toast('Informe o código do insumo ou composição para pesquisar.', 'error'); return; }
+  const rows = [];
+  cpuOperacoesEscopo().forEach(cpu => {
+    if (codigoChave(cpu.cod) === alvo || textoChave(cpu.desc).includes(textoChave(alvo))) {
+      rows.push({
+        cpuCod: cpu.cod,
+        cpuDesc: cpu.desc,
+        insumoCod: 'CPU',
+        insumoDesc: 'Composição localizada',
+        coef: 1,
+        total: Number(cpu.precoUnitario) || 0
+      });
+    }
+    (cpu.insumos || []).forEach(ins => {
+      if (codigoChave(ins.cod) !== alvo && !textoChave(ins.desc).includes(textoChave(alvo))) return;
+      rows.push({
+        cpuCod: cpu.cod,
+        cpuDesc: cpu.desc,
+        insumoCod: ins.cod,
+        insumoDesc: ins.desc,
+        coef: Number(ins.coef) || 0,
+        total: (Number(ins.coef) || 0) * (Number(ins.preco) || 0)
+      });
+    });
+  });
+  const totalQtd = rows.reduce((s, r) => s + (Number(r.coef) || 0), 0);
+  const totalValor = rows.reduce((s, r) => s + (Number(r.total) || 0), 0);
+  cpuOperacoesRenderResultado(rows, `${rows.length} ocorrência(s) · coeficiente total ${fmtNum(totalQtd)} · valor direto ${fmtMoeda(totalValor)}`);
+}
+
+function cpuOperacaoTrocar() {
+  const alvo = codigoChave(document.getElementById('cpu-op-insumo')?.value);
+  const novo = codigoChave(document.getElementById('cpu-op-novo')?.value);
+  if (!alvo || !novo) { toast('Informe o insumo atual e o novo insumo.', 'error'); return; }
+  const ref = buscarReferenciaPorCodigo(novo);
+  if (!ref) { toast('Novo insumo não encontrado. Cadastre-o em Insumos antes de trocar.', 'error'); return; }
+  const escopo = cpuOperacoesEscopo();
+  const ocorrencias = [];
+  escopo.forEach(cpu => (cpu.insumos || []).forEach(ins => {
+    if (codigoChave(ins.cod) === alvo) ocorrencias.push({ cpu, ins });
+  }));
+  if (!ocorrencias.length) { toast('Nenhuma ocorrência encontrada para troca.', 'info'); return; }
+  if (!confirm(`Trocar ${alvo} por ${novo} em ${ocorrencias.length} ocorrência(s) de ${new Set(ocorrencias.map(o => o.cpu.cod)).size} composição(ões)?`)) return;
+  ocorrencias.forEach(({ cpu, ins }) => {
+    ins.cod = ref.codigo;
+    ins.desc = ref.descricao;
+    ins.unid = ref.unidade;
+    ins.tipo = cpuTipoManual(ref.tipo, ref.descricao);
+    ins.preco = ref.precoUnitario;
+    ins.fonte = ref.fonte;
+    cpuRecalcularComposicaoSalva(cpu);
+  });
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  cpuOperacaoPesquisar();
+  toast('Insumo trocado e CPUs recalculadas.', 'success');
+}
+
+function cpuOperacaoExcluir() {
+  const alvo = codigoChave(document.getElementById('cpu-op-insumo')?.value);
+  if (!alvo) { toast('Informe o insumo que será excluído das composições.', 'error'); return; }
+  const escopo = cpuOperacoesEscopo();
+  let ocorrencias = 0;
+  escopo.forEach(cpu => {
+    ocorrencias += (cpu.insumos || []).filter(ins => codigoChave(ins.cod) === alvo).length;
+  });
+  if (!ocorrencias) { toast('Nenhuma ocorrência encontrada para exclusão.', 'info'); return; }
+  if (!confirm(`Excluir ${alvo} de ${ocorrencias} ocorrência(s) no escopo selecionado? As CPUs serão recalculadas.`)) return;
+  escopo.forEach(cpu => {
+    const antes = (cpu.insumos || []).length;
+    cpu.insumos = (cpu.insumos || []).filter(ins => codigoChave(ins.cod) !== alvo);
+    if (cpu.insumos.length !== antes) cpuRecalcularComposicaoSalva(cpu);
+  });
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  cpuOperacaoPesquisar();
+  toast('Insumo excluído das composições selecionadas.', 'success');
+}
+
+function cpuOperacaoCopiar() {
+  const origemCod = codigoChave(document.getElementById('cpu-op-insumo')?.value);
+  const destinoCod = String(document.getElementById('cpu-op-copia-cod')?.value || '').trim().toUpperCase();
+  const destinoDesc = String(document.getElementById('cpu-op-copia-desc')?.value || '').trim();
+  if (!origemCod || !destinoCod) { toast('Informe a composição de origem e o novo código.', 'error'); return; }
+  const origem = CPU_BIBLIOTECA.find(cpu => codigoChave(cpu.cod) === origemCod);
+  if (!origem) { toast('Composição de origem não encontrada na biblioteca.', 'error'); return; }
+  const existente = CPU_BIBLIOTECA.find(cpu => codigoChave(cpu.cod) === codigoChave(destinoCod));
+  if (existente && !confirm(`A composição ${destinoCod} já existe. Substituir pela cópia?`)) return;
+  const copia = {
+    ...JSON.parse(JSON.stringify(origem)),
+    id: makeId('cpu'),
+    cod: destinoCod,
+    desc: destinoDesc || origem.desc,
+    criadaEm: new Date().toLocaleDateString('pt-BR'),
+    origemCopia: origem.cod
+  };
+  cpuRecalcularComposicaoSalva(copia);
+  const idx = CPU_BIBLIOTECA.findIndex(cpu => codigoChave(cpu.cod) === codigoChave(destinoCod));
+  if (idx >= 0) CPU_BIBLIOTECA[idx] = copia;
+  else CPU_BIBLIOTECA.push(copia);
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  cpuVerFicha(copia.id);
+  cpuOperacoesRenderResultado([], `Composição ${destinoCod} copiada de ${origem.cod}.`);
+  toast('Composição copiada para novo código.', 'success');
+}
+
+function cpuNormalizarComposicaoExterna(raw, bancoNome = 'Banco externo') {
+  const cod = String(raw.cod || raw.codigo || raw.codigoComposicao || raw.cpu || '').trim().toUpperCase();
+  const desc = String(raw.desc || raw.descricao || raw.nome || '').trim();
+  if (!cod || !desc) return null;
+  const cpu = {
+    id: raw.id || makeId('cpu-ext'),
+    cod,
+    desc,
+    unid: String(raw.unid || raw.unidade || raw.un || 'UN').trim() || 'UN',
+    tipo: String(raw.tipo || raw.categoria || 'Serviços Gerais').trim() || 'Serviços Gerais',
+    encargos: raw.encargos || 'nd',
+    encPct: Number(raw.encPct ?? raw.encargosPct ?? 127.5) || 127.5,
+    prod: Math.max(0.0001, Number(raw.prod ?? raw.producao ?? raw.producaoEquipe ?? 1) || 1),
+    insumos: Array.isArray(raw.insumos) ? raw.insumos.map(ins => ({
+      cod: String(ins.cod || ins.codigo || ins.codigoInsumo || '').trim().toUpperCase(),
+      desc: String(ins.desc || ins.descricao || '').trim(),
+      unid: String(ins.unid || ins.unidade || ins.un || 'UN').trim() || 'UN',
+      tipo: cpuTipoManual(ins.tipo || ins.grupo || ins.categoria, ins.desc || ins.descricao),
+      coef: Number(ins.coef ?? ins.indice ?? ins.consumo ?? ins.qtd ?? 1) || 1,
+      preco: Number(ins.preco ?? ins.precoUnitario ?? ins.valor ?? 0) || 0,
+      fonte: ins.fonte || bancoNome
+    })).filter(ins => ins.cod || ins.desc) : [],
+    origemBanco: bancoNome,
+    criadaEm: new Date().toLocaleDateString('pt-BR')
+  };
+  cpuRecalcularComposicaoSalva(cpu);
+  return cpu;
+}
+
+function cpuHeaderIndex(headers, aliases) {
+  const keys = headers.map(cpuHeaderKey);
+  return keys.findIndex(key => aliases.some(alias => key.includes(alias)));
+}
+
+function cpuRowsToObjects(raw) {
+  const headerRow = cpuFindHeaderRow(raw);
+  if (headerRow < 0) return [];
+  const headers = (raw[headerRow] || []).map(v => String(v || '').trim());
+  return raw.slice(headerRow + 1).map(row => ({ headers, row })).filter(({ row }) => row.some(v => String(v || '').trim()));
+}
+
+function cpuParseBancoExternoSheets(wb, fileName) {
+  const composicoes = new Map();
+  const ensureCpu = (cod, data = {}) => {
+    const code = String(cod || '').trim().toUpperCase();
+    if (!code) return null;
+    if (!composicoes.has(code)) {
+      composicoes.set(code, cpuNormalizarComposicaoExterna({
+        cod: code,
+        descricao: data.descricao || data.desc || code,
+        unidade: data.unidade || data.unid || 'UN',
+        tipo: data.tipo || 'Serviços Gerais',
+        encPct: data.encPct,
+        prod: data.prod,
+        insumos: []
+      }, fileName));
+    } else {
+      const cpu = composicoes.get(code);
+      Object.assign(cpu, Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== '')));
+    }
+    return composicoes.get(code);
+  };
+
+  wb.SheetNames.forEach(sheetName => {
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header:1, defval:'' });
+    cpuRowsToObjects(raw).forEach(({ headers, row }) => {
+      const get = aliases => {
+        const idx = cpuHeaderIndex(headers, aliases);
+        return idx >= 0 ? row[idx] : '';
+      };
+      const codCpu = String(get(['CPU','COMPOSICAO','COMPOSIÇÃO','CODIGO_COMPOSICAO','COD_DA_COMPOSICAO']) || '').trim().toUpperCase();
+      const codGenerico = String(get(['CODIGO','COD','ITEM']) || '').trim().toUpperCase();
+      const desc = String(get(['DESCRICAO','DESCRIÇÃO','DESC','NOME']) || '').trim();
+      const codInsumo = String(get(['CODIGO_INSUMO','COD_INSUMO','INSUMO']) || '').trim().toUpperCase();
+      const coef = parseNumeroBR(get(['COEF','INDICE','ÍNDICE','CONSUMO','QTD','QUANT']));
+      const preco = parseNumeroBR(get(['PRECO','PREÇO','VALOR','CUSTO','UNIT']));
+      const unid = String(get(['UNIDADE','UNID','UN']) || '').trim();
+      const tipo = String(get(['TIPO','GRUPO','CATEGORIA']) || '').trim();
+      const prod = parseNumeroBR(get(['PRODUCAO','PRODUÇÃO','PROD_EQUIPE','PRODUTIVIDADE']));
+      const encPct = parseNumeroBR(get(['ENCARGOS','ENC_PCT']));
+
+      if (codCpu && (codInsumo || (codGenerico && desc && (coef || preco)))) {
+        const cpu = ensureCpu(codCpu, {});
+        const insCod = codInsumo || codGenerico;
+        if (cpu && (insCod || desc)) {
+          cpu.insumos.push({
+            cod: insCod,
+            desc,
+            unid: unid || 'UN',
+            tipo: cpuTipoManual(tipo, desc),
+            coef: coef || 1,
+            preco: preco || 0,
+            fonte: `${fileName}/${sheetName}`
+          });
+        }
+      } else if (codGenerico && desc) {
+        const cpu = ensureCpu(codGenerico, {
+          desc,
+          descricao: desc,
+          unid: unid || 'UN',
+          unidade: unid || 'UN',
+          tipo: tipo || 'Serviços Gerais',
+          prod: prod || 1,
+          encPct: encPct || undefined
+        });
+        if (cpu) {
+          cpu.desc = desc || cpu.desc;
+          cpu.unid = unid || cpu.unid;
+          cpu.tipo = tipo || cpu.tipo;
+          cpu.prod = prod || cpu.prod || 1;
+          if (encPct) cpu.encPct = encPct;
+        }
+      }
+    });
+  });
+  return [...composicoes.values()].filter(Boolean).map(cpu => {
+    cpuRecalcularComposicaoSalva(cpu);
+    return cpu;
+  });
+}
+
+async function cpuImportarBancoExterno(event) {
+  const files = Array.from(event?.target?.files || []);
+  if (!files.length) return;
+  let importados = 0;
+  try {
+    for (const file of files) {
+      let composicoes = [];
+      if (/\.json$/i.test(file.name)) {
+        const data = JSON.parse(await file.text());
+        const list = Array.isArray(data) ? data : (Array.isArray(data.composicoes) ? data.composicoes : []);
+        composicoes = list.map(item => cpuNormalizarComposicaoExterna(item, file.name)).filter(Boolean);
+      } else {
+        if (!window.XLSX) throw new Error('Biblioteca XLSX não carregada.');
+        const wb = XLSX.read(await file.arrayBuffer(), { type:'array' });
+        composicoes = cpuParseBancoExternoSheets(wb, file.name);
+      }
+      const banco = {
+        id: makeId('banco'),
+        nome: file.name,
+        origem: file.name,
+        importadoEm: new Date().toISOString(),
+        composicoes
+      };
+      STATE.cpuBancosExternos = [...(STATE.cpuBancosExternos || []).filter(b => b.nome !== file.name), banco];
+      importados += composicoes.length;
+    }
+    saveState();
+    cpuBancoExternoRender();
+    toast(`${importados} composição(ões) importada(s) para bancos externos.`, importados ? 'success' : 'warning');
+  } catch (err) {
+    toast(err.message || 'Erro ao importar banco externo.', 'error');
+  } finally {
+    if (event?.target) event.target.value = '';
+  }
+}
+
+function cpuBancoExternoAtual() {
+  normalizeState();
+  const select = document.getElementById('cpu-banco-select');
+  const id = select?.value || STATE.cpuBancosExternos?.[0]?.id || '';
+  return (STATE.cpuBancosExternos || []).find(b => b.id === id) || null;
+}
+
+function cpuBancoExternoRender() {
+  const select = document.getElementById('cpu-banco-select');
+  const list = document.getElementById('cpu-banco-lista');
+  if (!select || !list) return;
+  normalizeState();
+  const bancos = STATE.cpuBancosExternos || [];
+  const currentValue = select.value;
+  select.innerHTML = bancos.length
+    ? bancos.map(b => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.nome)} · ${(b.composicoes || []).length} CPU(s)</option>`).join('')
+    : '<option value="">Nenhum banco importado</option>';
+  if (currentValue && bancos.some(b => b.id === currentValue)) select.value = currentValue;
+  const banco = cpuBancoExternoAtual();
+  if (!banco) {
+    list.innerHTML = 'Nenhum banco externo importado.';
+    return;
+  }
+  const q = textoChave(document.getElementById('cpu-banco-busca')?.value || '');
+  const comps = (banco.composicoes || []).filter(cpu => !q || textoChave(`${cpu.cod} ${cpu.desc} ${cpu.tipo}`).includes(q)).slice(0, 80);
+  if (!comps.length) {
+    list.innerHTML = '<div class="empty-state" style="padding:12px">Nenhuma composição encontrada neste banco.</div>';
+    return;
+  }
+  list.innerHTML = comps.map(cpu => `<div class="cpu-banco-row">
+    <div><strong>${escapeHtml(cpu.cod)}</strong><span>${escapeHtml(cpu.desc)} · ${escapeHtml(cpu.unid)} · ${fmtMoeda(cpu.precoUnitario)}</span></div>
+    <button class="btn btn-outline btn-sm" onclick="cpuCopiarBancoExterno(${inlineJsArg(banco.id)}, ${inlineJsArg(cpu.id)})">Copiar</button>
+  </div>`).join('');
+}
+
+function cpuCopiarBancoExterno(bancoId, cpuId) {
+  const banco = (STATE.cpuBancosExternos || []).find(b => String(b.id) === String(bancoId));
+  const origem = banco?.composicoes?.find(cpu => String(cpu.id) === String(cpuId));
+  if (!banco || !origem) { toast('Composição externa não encontrada.', 'error'); return; }
+  const prefixo = String(document.getElementById('cpu-banco-prefixo')?.value || '').trim().toUpperCase();
+  const destinoCampo = String(document.getElementById('cpu-banco-destino')?.value || '').trim().toUpperCase();
+  const destinoCod = destinoCampo || `${prefixo}${origem.cod}`.toUpperCase();
+  if (!destinoCod) { toast('Informe um código de destino ou prefixo.', 'error'); return; }
+  const existente = CPU_BIBLIOTECA.find(cpu => codigoChave(cpu.cod) === codigoChave(destinoCod));
+  if (existente && !confirm(`A composição ${destinoCod} já existe. Substituir?`)) return;
+  const copia = cpuNormalizarComposicaoExterna({
+    ...clonePlain(origem, {}),
+    id: makeId('cpu'),
+    cod: destinoCod,
+    origemCopia: `${banco.nome}/${origem.cod}`,
+    insumos: clonePlain(origem.insumos, [])
+  }, banco.nome);
+  const idx = CPU_BIBLIOTECA.findIndex(cpu => codigoChave(cpu.cod) === codigoChave(destinoCod));
+  if (idx >= 0) CPU_BIBLIOTECA[idx] = copia;
+  else CPU_BIBLIOTECA.push(copia);
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  cpuEditorAbrir(copia.id, { fromStack:true });
+  toast('Composição copiada do banco externo com recodificação.', 'success');
+}
+
+function cpuRecalcularBiblioteca() {
+  (CPU_BIBLIOTECA || []).forEach(cpu => cpuRecalcularComposicaoSalva(cpu));
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  toast('Biblioteca de CPUs recalculada.', 'success');
 }
 
 let _cpuFichaSelecionada = null;
 function cpuVerFicha(id) {
-  const c = CPU_BIBLIOTECA.find(x => x.id === id);
+  const c = CPU_BIBLIOTECA.find(x => String(x.id) === String(id));
   if (!c) return;
   _cpuFichaSelecionada = c;
   document.getElementById('cpu-ficha-card').style.display = 'block';
-  const grupos = { M:0, E:0, S:0, T:0 };
-  c.insumos.forEach(i => { grupos[i.tipo] += i.coef * i.preco; });
+  const grupos = { M:0, E:0, S:0, T:0, AX:0 };
+  c.insumos.forEach(i => {
+    const tipo = ['M','E','S','T','AX'].includes(i.tipo) ? i.tipo : (cpuEditorFindByCode(i.cod) ? 'AX' : 'M');
+    grupos[tipo] += i.coef * i.preco;
+  });
   const moEnc = grupos.S * c.encPct / 100;
   const rows = c.insumos.map(ins => {
-    const tagLabels = { M:'Mat', E:'Eq', S:'MO', T:'Tr' };
-    const tagColors = { M:'cpu-tag-M', E:'cpu-tag-E', S:'cpu-tag-S', T:'cpu-tag-T' };
+    const tagLabels = { M:'Mat', E:'Eq', S:'MO', T:'Tr', AX:'Aux' };
+    const tagColors = { M:'cpu-tag-M', E:'cpu-tag-E', S:'cpu-tag-S', T:'cpu-tag-T', AX:'cpu-tag-M' };
+    const tipo = ['M','E','S','T','AX'].includes(ins.tipo) ? ins.tipo : (cpuEditorFindByCode(ins.cod) ? 'AX' : 'M');
     return `<div class="cpu-insumo-row" style="padding:5px 0;font-size:11px">
       <span style="color:var(--gold);font-family:monospace">${ins.cod}</span>
       <span style="overflow:hidden;text-overflow:ellipsis" title="${ins.desc}">
-        <span class="cpu-tag ${tagColors[ins.tipo]}" style="margin-right:4px;font-size:9px">${tagLabels[ins.tipo]}</span>${ins.desc}
+        <span class="cpu-tag ${tagColors[tipo]}" style="margin-right:4px;font-size:9px">${tagLabels[tipo]}</span>${ins.desc}
       </span>
       <span>${ins.unid}</span><span>${ins.coef}</span>
       <span>${fmtMoeda(ins.preco)}</span>
