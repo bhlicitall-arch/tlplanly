@@ -1617,6 +1617,11 @@ function insumosNormalizarManual(raw, options = {}) {
     dataReferencia: raw.dataReferencia || raw.data || new Date().toLocaleDateString('pt-BR'),
     memoriaCustoHorario: raw.memoriaCustoHorario || '',
     parcelasCustoHorario: raw.parcelasCustoHorario || null,
+    modoCalculo: raw.modoCalculo || raw.tipoCalculo || (raw.memoriaCustoHorario ? 'calculada' : 'manual'),
+    salarioMensal: Number(raw.salarioMensal ?? raw.salario ?? 0) || 0,
+    beneficiosMensais: Number(raw.beneficiosMensais ?? raw.beneficios ?? 0) || 0,
+    encargosPct: Number(raw.encargosPct ?? raw.encargos ?? 0) || 0,
+    horasProdutivasMes: Number(raw.horasProdutivasMes ?? raw.horas ?? 0) || 0,
     custoProdutivo: raw.custoProdutivo ?? preco,
     manual: true,
     importado: !!options.importado || raw.importado === true,
@@ -1655,13 +1660,92 @@ function insumosGrupoAlterado() {
   const grupo = document.getElementById('ins-grupo')?.value || 'M';
   const wrap = document.getElementById('ins-improd-wrap');
   const improd = document.getElementById('ins-improd');
+  const modo = document.getElementById('ins-modo-calculo');
   if (wrap) wrap.style.opacity = grupo === 'E' ? '1' : '.45';
   if (improd) {
     improd.disabled = grupo !== 'E';
     if (grupo !== 'E') improd.value = '';
   }
+  if (modo && grupo !== 'S' && modo.value === 'calculada') modo.value = 'manual';
   const codigo = document.getElementById('ins-codigo');
   if (codigo && !codigo.value.trim()) codigo.placeholder = `Ex: ${insumosPrefixoPorGrupo(grupo)}0001`;
+  insumosModoCalculoAlterado();
+}
+
+function insumosModoCalculoAlterado() {
+  const grupo = document.getElementById('ins-grupo')?.value || 'M';
+  const modo = document.getElementById('ins-modo-calculo')?.value || 'manual';
+  const panel = document.getElementById('ins-mao-calculada-panel');
+  const preco = document.getElementById('ins-preco');
+  const visible = grupo === 'S' && modo === 'calculada';
+  if (panel) panel.style.display = visible ? '' : 'none';
+  if (preco) {
+    preco.readOnly = visible;
+    preco.title = visible ? 'Valor calculado pela composição da mão de obra' : '';
+  }
+  const help = document.getElementById('ins-form-help');
+  if (help) {
+    help.textContent = visible
+      ? 'Modo calculado ativo: calcule salário, benefícios, encargos e horas produtivas para atualizar o custo unitário do insumo.'
+      : 'O custo improdutivo fica disponível apenas para equipamentos.';
+  }
+}
+
+function calcularCustoMaoObraDados({ salario = 0, beneficios = 0, encargos = 0, horas = 189, beneficiosCompostos = [] } = {}) {
+  const sal = Number(salario) || 0;
+  const ben = Number(beneficios) || 0;
+  const enc = Number(encargos) || 0;
+  const h = Math.max(1, Number(horas) || 189);
+  const base = sal + ben;
+  const encargosValor = base * enc / 100;
+  const custoHora = (base + encargosValor) / h;
+  const benMemoria = beneficiosCompostos.length
+    ? ` Benefícios compostos: ${beneficiosCompostos.map(i => `${i.descricao} ${fmtMoeda(beneficioTotalMensal(i))}/mês`).join('; ')}.`
+    : '';
+  const memoria = `(${fmtMoeda(sal)} salário + ${fmtMoeda(ben)} benefícios) + ${enc.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% encargos sobre salário + benefícios / ${h} h produtivas.${benMemoria}`;
+  return {
+    salario: sal,
+    beneficios: ben,
+    encargos: enc,
+    horas: h,
+    encargosValor: roundCustoHorario(encargosValor),
+    custoHora: roundCustoHorario(custoHora),
+    memoria,
+    beneficiosCompostos: clonePlain(beneficiosCompostos, [])
+  };
+}
+
+function insumosCalcularMaoObra() {
+  const calc = calcularCustoMaoObraDados({
+    salario: readNumeroCampo('ins-mo-salario'),
+    beneficios: readNumeroCampo('ins-mo-beneficios'),
+    encargos: readNumeroCampo('ins-mo-encargos'),
+    horas: readNumeroCampo('ins-mo-horas')
+  });
+  const preview = document.getElementById('ins-mo-preview');
+  if (preview) {
+    preview.innerHTML = `<strong>Custo horário calculado:</strong> ${fmtMoeda(calc.custoHora)}<br><span>${escapeHtml(calc.memoria)}</span>`;
+  }
+  return calc;
+}
+
+function insumosAplicarCustoMaoObra() {
+  const grupo = document.getElementById('ins-grupo')?.value || 'M';
+  if (grupo !== 'S') {
+    toast('O cálculo de mão de obra só se aplica a insumos do grupo Mão de obra.', 'error');
+    return null;
+  }
+  const calc = insumosCalcularMaoObra();
+  if (calc.custoHora <= 0) {
+    toast('Informe salário, benefícios, encargos e horas produtivas para calcular.', 'error');
+    return null;
+  }
+  const preco = document.getElementById('ins-preco');
+  const fonte = document.getElementById('ins-fonte');
+  if (preco) preco.value = String(calc.custoHora).replace('.', ',');
+  if (fonte && (!fonte.value.trim() || fonte.value.trim() === 'Cadastro manual')) fonte.value = 'TLPlanly/Cálculo de mão de obra';
+  toast('Custo calculado aplicado ao insumo.', 'success');
+  return calc;
 }
 
 function insumosLimparFormulario() {
@@ -1674,25 +1758,48 @@ function insumosLimparFormulario() {
   set('ins-preco');
   set('ins-improd');
   set('ins-fonte', 'Cadastro manual');
+  set('ins-modo-calculo', 'manual');
+  set('ins-mo-salario');
+  set('ins-mo-beneficios');
+  set('ins-mo-encargos', '127.5');
+  set('ins-mo-horas', '189');
+  const preview = document.getElementById('ins-mo-preview');
+  if (preview) preview.innerHTML = '';
   insumosGrupoAlterado();
 }
 
 function insumosSalvarManual() {
   normalizeState();
+  const grupo = document.getElementById('ins-grupo')?.value || 'M';
+  const modoCalculo = document.getElementById('ins-modo-calculo')?.value || 'manual';
+  const calcMaoObra = grupo === 'S' && modoCalculo === 'calculada'
+    ? insumosAplicarCustoMaoObra()
+    : null;
+  if (grupo === 'S' && modoCalculo === 'calculada' && !calcMaoObra) return;
   const raw = {
     codigo: document.getElementById('ins-codigo')?.value,
     descricao: document.getElementById('ins-desc')?.value,
     unidade: document.getElementById('ins-unid')?.value,
-    grupo: document.getElementById('ins-grupo')?.value,
+    grupo,
     preco: readNumeroCampo('ins-preco'),
     custoImprodutivo: readNumeroCampo('ins-improd'),
     fonte: document.getElementById('ins-fonte')?.value,
-    data: document.getElementById('ins-data')?.value
+    data: document.getElementById('ins-data')?.value,
+    modoCalculo,
+    memoriaCustoHorario: calcMaoObra?.memoria || '',
+    salarioMensal: calcMaoObra?.salario || 0,
+    beneficiosMensais: calcMaoObra?.beneficios || 0,
+    encargosPct: calcMaoObra?.encargos || 0,
+    horasProdutivasMes: calcMaoObra?.horas || 0,
+    custoProdutivo: calcMaoObra?.custoHora || readNumeroCampo('ins-preco')
   };
   const item = insumosNormalizarManual(raw);
   if (!item.codigo) { toast('Informe o código do insumo.', 'error'); return; }
   if (!item.descricao) { toast('Informe a descrição do insumo.', 'error'); return; }
   insumosSalvarManualItem(item);
+  if (grupo === 'S' && modoCalculo === 'calculada' && calcMaoObra?.custoHora > 0) {
+    custosMaoObraRegistrarDeInsumo(item, calcMaoObra);
+  }
   insumosRender();
   cpuRenderManualCount();
   toast('Insumo salvo na base manual', 'success');
@@ -1712,6 +1819,18 @@ function insumosEditarManual(codigo) {
   set('ins-preco', String(insumosPrecoItem(item)).replace('.', ','));
   set('ins-improd', grupo === 'E' ? String(insumosCustoImprodutivo(item)).replace('.', ',') : '');
   set('ins-fonte', item.fonte || '');
+  const modo = item.modoCalculo === 'calculada' || item.memoriaCustoHorario ? 'calculada' : 'manual';
+  set('ins-modo-calculo', grupo === 'S' ? modo : 'manual');
+  set('ins-mo-salario', item.salarioMensal ? String(item.salarioMensal) : '');
+  set('ins-mo-beneficios', item.beneficiosMensais ? String(item.beneficiosMensais) : '');
+  set('ins-mo-encargos', item.encargosPct ? String(item.encargosPct) : '127.5');
+  set('ins-mo-horas', item.horasProdutivasMes ? String(item.horasProdutivasMes) : '189');
+  const preview = document.getElementById('ins-mo-preview');
+  if (preview) {
+    preview.innerHTML = item.memoriaCustoHorario
+      ? `<strong>Custo horário salvo:</strong> ${fmtMoeda(insumosPrecoItem(item))}<br><span>${escapeHtml(item.memoriaCustoHorario)}</span>`
+      : '';
+  }
   insumosGrupoAlterado();
   showView('insumos');
 }
@@ -4029,31 +4148,18 @@ function custosMaoObraAplicarBeneficios() {
 }
 
 function custosMaoObraCalcular() {
-  const salario = readNumeroCampo('mo-salario');
-  const beneficios = readNumeroCampo('mo-beneficios');
-  const encargos = readNumeroCampo('mo-encargos');
-  const horas = Math.max(1, readNumeroCampo('mo-horas') || 189);
-  const base = salario + beneficios;
-  const encargosValor = base * encargos / 100;
-  const custoHora = (base + encargosValor) / horas;
-  const benMemoria = MAO_OBRA_BENEFICIOS_DRAFT.length
-    ? ` Benefícios compostos: ${MAO_OBRA_BENEFICIOS_DRAFT.map(i => `${i.descricao} ${fmtMoeda(beneficioTotalMensal(i))}/mês`).join('; ')}.`
-    : '';
-  const memoria = `(${fmtMoeda(salario)} salário + ${fmtMoeda(beneficios)} benefícios) + ${encargos.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% encargos sobre salário + benefícios / ${horas} h produtivas.${benMemoria}`;
+  const calc = calcularCustoMaoObraDados({
+    salario: readNumeroCampo('mo-salario'),
+    beneficios: readNumeroCampo('mo-beneficios'),
+    encargos: readNumeroCampo('mo-encargos'),
+    horas: readNumeroCampo('mo-horas'),
+    beneficiosCompostos: MAO_OBRA_BENEFICIOS_DRAFT
+  });
   const preview = document.getElementById('mo-preview');
   if (preview) {
-    preview.innerHTML = `<strong>Custo horário:</strong> ${fmtMoeda(custoHora)}<br><span>${escapeHtml(memoria)}</span>`;
+    preview.innerHTML = `<strong>Custo horário:</strong> ${fmtMoeda(calc.custoHora)}<br><span>${escapeHtml(calc.memoria)}</span>`;
   }
-  ULTIMO_CALC_MAO_OBRA = {
-    salario,
-    beneficios,
-    encargos,
-    horas,
-    encargosValor: roundCustoHorario(encargosValor),
-    custoHora: roundCustoHorario(custoHora),
-    memoria,
-    beneficiosCompostos: JSON.parse(JSON.stringify(MAO_OBRA_BENEFICIOS_DRAFT))
-  };
+  ULTIMO_CALC_MAO_OBRA = calc;
   return ULTIMO_CALC_MAO_OBRA;
 }
 
@@ -4121,6 +4227,33 @@ function custosMaoObraAtualizarInsumo(options = {}) {
   if (typeof insumosRender === 'function') insumosRender();
   if (!options.silent) toast('Insumo de mão de obra atualizado na base manual.', 'success');
   return saved;
+}
+
+function custosMaoObraRegistrarDeInsumo(item, calc) {
+  if (!item?.codigo || !item?.descricao || !calc?.custoHora) return null;
+  normalizeState();
+  const cod = item.codigoSinapi || item.codigo;
+  const registro = {
+    id: makeId('mo'),
+    tipo: 'mao-obra',
+    cod,
+    cargo: item.descricao,
+    salarioMensal: calc.salario,
+    beneficiosMensais: calc.beneficios,
+    beneficiosCompostos: calc.beneficiosCompostos || [],
+    encargosPct: calc.encargos,
+    horasProdutivasMes: calc.horas,
+    custoHora: roundUnitPrice(calc.custoHora),
+    memoria: calc.memoria,
+    origem: 'insumo-calculado',
+    criadoEm: new Date().toISOString()
+  };
+  STATE.maoObraHoraria = [
+    ...(STATE.maoObraHoraria || []).filter(r => codigoChave(r.cod) !== codigoChave(cod)),
+    registro
+  ];
+  if (typeof custosHorariosRender === 'function') custosHorariosRender();
+  return registro;
 }
 
 function custoHorarioRegistros() {

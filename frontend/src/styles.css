@@ -357,6 +357,11 @@ body.core-only .core-section{
 .insumos-advanced-card{border-color:color-mix(in srgb,var(--gold) 16%,var(--border))}
 .insumos-advanced-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
 .ins-adv-table .cpu-op-head,.ins-adv-table .cpu-op-row{grid-template-columns:100px minmax(220px,1fr) 110px 90px 120px}
+.ins-calc-panel{
+  margin-top:14px;padding:12px;border:1px solid color-mix(in srgb,var(--gold) 24%,var(--border));
+  border-radius:var(--radius);background:color-mix(in srgb,var(--gold) 5%,var(--bg3));
+}
+.ins-calc-panel .calc-preview{margin-top:10px}
 #ins-improd-wrap{transition:opacity var(--transition)}
 #ins-tabela .badge{
   background:color-mix(in srgb,var(--gold) 14%,var(--bg3));
