@@ -1534,25 +1534,32 @@ function obrasServicoEhPrincipal(item) {
   return item?.tipoItem === 'grupo' || item?.ehGrupo === true || item?.origem === 'servico-grupo';
 }
 
+function obrasServicoCodigoBase(cod) {
+  return String(cod || '').trim().replace(/[.\-/\s]+$/g, '');
+}
+
+function obrasServicoPertenceAoGrupo(filhoCod, grupoCod) {
+  const prefixo = obrasServicoCodigoBase(grupoCod);
+  const filho = obrasServicoCodigoBase(filhoCod);
+  if (!prefixo || !filho || filho === prefixo) return false;
+  return filho.startsWith(`${prefixo}.`) || filho.startsWith(`${prefixo}-`) || filho.startsWith(`${prefixo}/`);
+}
+
 function obrasServicoSubtotalFilhos(item, lista = STATE.orcamento) {
-  const prefixo = String(item?.cod || '').trim();
+  const prefixo = obrasServicoCodigoBase(item?.cod);
   if (!prefixo) return 0;
   return (lista || []).reduce((total, filho) => {
     if (!filho || filho === item || obrasServicoEhPrincipal(filho)) return total;
-    const codFilho = String(filho.cod || '').trim();
-    const pertence = codFilho.startsWith(`${prefixo}.`) || codFilho.startsWith(`${prefixo}-`) || codFilho.startsWith(`${prefixo}/`);
-    return pertence ? total + itemValor(filho) : total;
+    return obrasServicoPertenceAoGrupo(filho.cod, prefixo) ? total + itemValor(filho) : total;
   }, 0);
 }
 
 function obrasServicoSubtotalVendaFilhos(item, lista = STATE.orcamento) {
-  const prefixo = String(item?.cod || '').trim();
+  const prefixo = obrasServicoCodigoBase(item?.cod);
   if (!prefixo) return 0;
   return (lista || []).reduce((total, filho) => {
     if (!filho || filho === item || obrasServicoEhPrincipal(filho)) return total;
-    const codFilho = String(filho.cod || '').trim();
-    const pertence = codFilho.startsWith(`${prefixo}.`) || codFilho.startsWith(`${prefixo}-`) || codFilho.startsWith(`${prefixo}/`);
-    return pertence ? total + itemValorVenda(filho) : total;
+    return obrasServicoPertenceAoGrupo(filho.cod, prefixo) ? total + itemValorVenda(filho) : total;
   }, 0);
 }
 
@@ -1718,11 +1725,12 @@ function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
   if (!desc || desc.length < 3) return null;
   const codRaw = raw?.cod || raw?.codigo || raw?.item || '';
   const cod = limparCodigo(codRaw) || `SVC-${String((STATE.orcamento || []).length + index + 1).padStart(3, '0')}`;
-  const unidRaw = String(raw?.unid ?? raw?.unidade ?? '').trim();
+  const unidRawOriginal = String(raw?.unid ?? raw?.unidade ?? '').trim();
+  const unidRaw = /^(0|[-—])$/i.test(unidRawOriginal) ? '' : unidRawOriginal;
   const qtdRaw = raw?.qtd ?? raw?.quantidade ?? raw?.qtde ?? '';
   const temQtd = String(qtdRaw ?? '').trim() !== '' && parseNumeroBR(qtdRaw) > 0;
   const isPrincipal = raw?.semUnidQtd === true || (!unidRaw && !temQtd);
-  const qtd = isPrincipal ? 0 : (Number(raw?.qtd) || parseNumeroBR(qtdRaw) || 1);
+  const qtd = isPrincipal ? 0 : (temQtd ? (Number(raw?.qtd) || parseNumeroBR(qtdRaw)) : 0);
   const precoRaw = raw?.preco ?? raw?.valorUnitario ?? raw?.custoUnitario ?? raw?.precoUnitario ?? 0;
   const preco = Number(precoRaw) || parseNumeroBR(precoRaw) || 0;
   const precoVendaRaw = raw?.precoVenda ?? raw?.valorVenda ?? raw?.precoVendaUnitario ?? raw?.vendaUnitaria ?? preco;
@@ -1736,7 +1744,8 @@ function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
     cod,
     desc,
     unid: isPrincipal ? '' : normalizarUnidadeImportacao(unidRaw || 'UN'),
-    qtd: isPrincipal ? 0 : (qtd > 0 ? qtd : 1),
+    qtd: isPrincipal ? 0 : (qtd > 0 ? qtd : 0),
+    quantidadeEmBranco: isPrincipal || !temQtd,
     preco: isPrincipal ? 0 : preco,
     ref: isPrincipal ? 0 : preco,
     precoVenda: isPrincipal ? 0 : precoVenda,
@@ -1895,12 +1904,13 @@ function obrasServicosRender() {
     const subtotalVenda = principal ? obrasServicoSubtotalVendaFilhos(it, servicos) : 0;
     const total = principal ? subtotal : itemValor(it);
     const totalVenda = principal ? subtotalVenda : itemValorVenda(it);
+    const qtdVazia = principal || it.quantidadeEmBranco === true || !(Number(it.qtd) > 0);
     const cpuLabel = principal ? 'Item principal / subtotal' : (it.composicaoCod ? `${it.composicaoCod} · ${it.composicaoDesc || ''}` : 'Sem composição vinculada');
     return `<tr class="${principal ? 'obra-servico-principal' : ''}">
       <td class="td-mono">${escapeHtml(it.cod || '')}</td>
       <td><strong>${escapeHtml(it.desc || '')}</strong></td>
       <td>${principal ? '—' : escapeHtml(it.unid || '')}</td>
-      <td>${principal ? '—' : fmtNum(it.qtd || 0)}</td>
+      <td>${qtdVazia ? '—' : fmtNum(it.qtd || 0)}</td>
       <td>${escapeHtml(cpuLabel)}</td>
       <td>${principal ? '—' : fmtMoeda(it.preco || 0)}</td>
       <td>${principal ? '—' : fmtMoeda(obrasServicoVendaUnitario(it))}</td>
@@ -6772,17 +6782,21 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
 
     if (purpose === 'orcamento') {
       const qtdRaw = sheetCell(row, mapping.qtd);
-      const unidRaw = sheetCell(row, mapping.unid);
-      const qtd = qtdRaw ? parseNumeroBR(qtdRaw) : 0;
+      const unidRawOriginal = sheetCell(row, mapping.unid);
+      const unidRaw = /^(0|[-—])$/i.test(unidRawOriginal) ? '' : unidRawOriginal;
+      const qtdInformada = String(qtdRaw ?? '').trim() !== '' && parseNumeroBR(qtdRaw) > 0;
+      const qtd = qtdInformada ? parseNumeroBR(qtdRaw) : 0;
       const preco = parseNumeroBR(sheetCell(row, mapping.preco));
       const precoVenda = parseNumeroBR(sheetCell(row, mapping.precoVenda));
       const totalLinha = parseNumeroBR(sheetCell(row, mapping.total));
       const totalVendaLinha = parseNumeroBR(sheetCell(row, mapping.totalVenda));
+      const semUnidQtd = !unidRaw && !qtdInformada;
       const item = {
         cod: limparCodigo(sheetCell(row, mapping.cod)),
         desc: sheetCell(row, mapping.desc),
         unid: unidRaw ? normalizarUnidadeImportacao(unidRaw) : '',
         qtd,
+        quantidadeEmBranco: !qtdInformada,
         preco,
         precoVenda: precoVenda || preco,
         totalLinha,
@@ -6791,10 +6805,10 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
         capitulo: sheetCell(row, mapping.categoria) || 'Serviços',
         origem: 'excel',
         linhaOrigem: joined,
-        semUnidQtd: !unidRaw && !qtdRaw
+        semUnidQtd
       };
       if (!item.desc || item.desc.length < 3) return;
-      if (!item.semUnidQtd && (!Number.isFinite(qtd) || qtd <= 0)) result.issues.push(`Linha ${rowNumber}: quantidade inválida.`);
+      if (!item.semUnidQtd && qtdRaw && !qtdInformada) result.issues.push(`Linha ${rowNumber}: quantidade vazia ou zerada mantida em branco.`);
       if (!Number.isFinite(preco) || preco < 0) result.issues.push(`Linha ${rowNumber}: custo unitário inválido.`);
       result.items.push(item);
       return;
