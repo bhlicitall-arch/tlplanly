@@ -193,6 +193,7 @@
       </div>
       <div class="obra-service-actions">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('obra-serv-import-input')?.click()">Importar Excel/PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="obrasCalculoAbrir()">Calcular planilha</button>
         <button class="btn btn-outline btn-sm" onclick="obrasServicoLimparFormulario()">Novo serviço</button>
       </div>
     </div>
@@ -200,8 +201,10 @@
     <div class="obra-servico-form">
       <div><label class="form-label">Item / código</label><input id="obra-serv-cod" class="form-input" placeholder="Ex: 01.01 ou SVC-001"/></div>
       <div class="obra-servico-desc"><label class="form-label">Serviço</label><input id="obra-serv-desc" class="form-input" placeholder="Ex: Escavação, transporte, concreto, drenagem..."/></div>
-      <div><label class="form-label">Unidade</label><input id="obra-serv-unid" class="form-input" placeholder="m³" value="UN"/></div>
-      <div><label class="form-label">Quantidade</label><input id="obra-serv-qtd" class="form-input" type="number" min="0" step="0.0001" value="1"/></div>
+      <div><label class="form-label">Unidade</label><input id="obra-serv-unid" class="form-input" placeholder="m³"/></div>
+      <div><label class="form-label">Quantidade</label><input id="obra-serv-qtd" class="form-input" type="number" min="0" step="0.0001" placeholder="0,000"/></div>
+      <div><label class="form-label">Custo unit.</label><input id="obra-serv-custo" class="form-input" type="number" min="0" step="0.01" placeholder="0,00"/></div>
+      <div><label class="form-label">Preço venda</label><input id="obra-serv-venda" class="form-input" type="number" min="0" step="0.01" placeholder="0,00"/></div>
       <button class="btn btn-gold" onclick="obrasServicoSalvar()">Salvar serviço</button>
     </div>
     <div class="obra-vinculo-form">
@@ -212,9 +215,34 @@
     </div>
     <div class="tbl-wrap mt-3">
       <table>
-        <thead><tr><th>Item</th><th>Serviço</th><th>Un</th><th>Qtd</th><th>Composição</th><th>Preço unit.</th><th>Total</th><th>Ações</th></tr></thead>
-        <tbody id="obra-servicos-lista"><tr><td colspan="8" class="empty-state" style="padding:18px">Nenhum serviço cadastrado nesta obra.</td></tr></tbody>
+        <thead><tr><th>Item</th><th>Serviço</th><th>Un</th><th>Qtd</th><th>Composição</th><th>Custo unit.</th><th>Venda unit.</th><th>Total custo</th><th>Total venda</th><th>Ações</th></tr></thead>
+        <tbody id="obra-servicos-lista"><tr><td colspan="10" class="empty-state" style="padding:18px">Nenhum serviço cadastrado nesta obra.</td></tr></tbody>
       </table>
+    </div>
+  </div>
+
+  <div id="obra-calc-modal" class="modal-backdrop obra-calc-backdrop" style="display:none" onclick="if(event.target===this) obrasCalculoFechar()">
+    <div class="obra-calc-modal">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title">Cálculo da <span>Planilha</span></div>
+          <div class="text-sm" style="color:var(--text2);margin-top:4px">Recalcule custos por composição e confira custo e venda da planilha.</div>
+        </div>
+        <button class="cloud-close" onclick="obrasCalculoFechar()" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="obra-calc-options">
+        <label class="obra-checkline"><input id="obra-calc-equip" type="checkbox"/><span>Calcular custo horário de equipamentos</span></label>
+        <label class="obra-checkline"><input id="obra-calc-mao" type="checkbox"/><span>Calcular custo horário de mão de obra</span></label>
+      </div>
+      <div class="obra-calc-actions">
+        <button class="btn btn-gold" onclick="obrasCalculoExecutar()">Calcular</button>
+        <button class="btn btn-outline" onclick="obrasCalculoFechar()">Fechar</button>
+      </div>
+      <div class="obra-calc-totals">
+        <div><span>Total da Planilha (Custo)</span><strong id="obra-calc-total-custo">R$ 0,00</strong></div>
+        <div><span>Total da Planilha (Venda)</span><strong id="obra-calc-total-venda">R$ 0,00</strong></div>
+      </div>
+      <div id="obra-calc-status" class="form-help">Sem BDI configurado, a venda será igual ao custo.</div>
     </div>
   </div>
 
@@ -1997,6 +2025,7 @@
           <div class="flex">
             <span id="cpu-lib-count" style="font-size:12px;color:var(--text3)">0 composições</span>
             <button class="btn btn-outline btn-sm" onclick="cpuImportarBiblioteca()">&#128228; Importar</button>
+            <input id="cpu-lib-import-input" type="file" accept=".json,.xlsx,.xls,.ods,.csv" style="display:none" onchange="cpuImportarBibliotecaArquivo(event)"/>
             <button class="btn btn-outline btn-sm" onclick="cpuExportarBibliotecaExcel()">&#128229; Excel</button>
             <button class="btn btn-outline btn-sm" onclick="cpuExportarBibliotecaPDF()">&#128438; PDF</button>
           </div>
@@ -2017,6 +2046,68 @@
           <div style="padding:32px;text-align:center;color:var(--text3)">
             <div style="font-size:28px;margin-bottom:8px">&#9881;</div>
             Nenhuma composição salva ainda.<br>Crie sua primeira CPU ao lado.
+          </div>
+        </div>
+
+        <div id="cpu-import-map-card" class="cpu-import-map-card" style="display:none">
+          <div class="sec-header">
+            <div>
+              <div class="sec-title">Importar <span>composições via Excel</span></div>
+              <div id="cpu-import-file-label" class="text-sm" style="color:var(--text2);margin-top:4px">Selecione o arquivo e confira as colunas antes de executar.</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="cpuImportarBibliotecaCancelar()">Cancelar</button>
+          </div>
+
+          <div class="grid grid-4 cpu-import-settings" style="gap:10px">
+            <div>
+              <label class="form-label">Arquivo / aba</label>
+              <select id="cpu-import-sheet" class="form-select" onchange="cpuImportarBibliotecaSelecionarAba(this.value)"></select>
+            </div>
+            <div>
+              <label class="form-label">Linha inicial</label>
+              <input id="cpu-import-start-row" class="form-input" type="number" min="1" step="1" value="2" oninput="cpuImportarBibliotecaPreview()"/>
+            </div>
+            <label class="obra-checkline cpu-import-check">
+              <input id="cpu-import-overwrite" type="checkbox"/>
+              <span>Sobrescrever existentes</span>
+            </label>
+            <div class="cpu-import-detect">
+              <label class="form-label">&nbsp;</label>
+              <button class="btn btn-outline btn-sm" onclick="cpuImportarBibliotecaSugerirColunas()">Detectar colunas</button>
+            </div>
+          </div>
+
+          <div class="cpu-import-map-block">
+            <div class="cpu-import-map-title">Composição (colunas)</div>
+            <div class="cpu-import-map-grid">
+              <div><label class="form-label">Código</label><input id="cpu-map-cpu-cod" class="form-input" placeholder="A" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Descrição</label><input id="cpu-map-cpu-desc" class="form-input" placeholder="B" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Descrição completa</label><input id="cpu-map-cpu-desc-full" class="form-input" placeholder="0" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Unidade</label><input id="cpu-map-cpu-unid" class="form-input" placeholder="C" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Tipo da composição</label><input id="cpu-map-cpu-tipo" class="form-input" placeholder="D" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Produção por hora</label><input id="cpu-map-cpu-prod" class="form-input" placeholder="E" oninput="cpuImportarBibliotecaPreview()"/></div>
+            </div>
+          </div>
+
+          <div class="cpu-import-map-block">
+            <div class="cpu-import-map-title">Recurso da composição (colunas)</div>
+            <div class="cpu-import-map-grid">
+              <div><label class="form-label">Código</label><input id="cpu-map-ins-cod" class="form-input" placeholder="F" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Quantidade</label><input id="cpu-map-ins-qtd" class="form-input" placeholder="G" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Coeficiente produtivo</label><input id="cpu-map-ins-coef" class="form-input" placeholder="H" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">DMT</label><input id="cpu-map-ins-dmt" class="form-input" placeholder="I" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Descrição</label><input id="cpu-map-ins-desc" class="form-input" placeholder="J" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Unidade</label><input id="cpu-map-ins-unid" class="form-input" placeholder="0" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Grupo / tipo</label><input id="cpu-map-ins-tipo" class="form-input" placeholder="0" oninput="cpuImportarBibliotecaPreview()"/></div>
+              <div><label class="form-label">Preço unit.</label><input id="cpu-map-ins-preco" class="form-input" placeholder="0" oninput="cpuImportarBibliotecaPreview()"/></div>
+            </div>
+          </div>
+
+          <div id="cpu-import-preview" class="sheet-preview-grid cpu-import-preview"></div>
+          <div id="cpu-import-status" class="form-help"></div>
+          <div class="flex flex-wrap mt-3">
+            <button class="btn btn-gold" onclick="cpuImportarBibliotecaExecutar()">Executar importação</button>
+            <button class="btn btn-outline" onclick="cpuImportarBibliotecaCancelar()">Cancelar</button>
           </div>
         </div>
       </div>

@@ -300,7 +300,7 @@ body.core-only .core-section{
 .obra-servicos-card{margin-bottom:18px;border-color:color-mix(in srgb,var(--gold) 20%,var(--border))}
 .obra-service-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .obra-servico-form{
-  display:grid;grid-template-columns:minmax(120px,.55fr) minmax(260px,1.4fr) minmax(90px,.35fr) minmax(120px,.45fr) auto;
+  display:grid;grid-template-columns:minmax(115px,.55fr) minmax(250px,1.35fr) minmax(80px,.32fr) minmax(105px,.42fr) minmax(105px,.42fr) minmax(105px,.42fr) auto;
   gap:10px;align-items:end;margin-bottom:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);
 }
 .obra-servico-desc{min-width:0}
@@ -316,6 +316,28 @@ body.core-only .core-section{
 .obra-checkline input{accent-color:var(--gold)}
 .obra-search{width:min(360px,100%)}
 .obra-row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.obra-servico-principal td{
+  background:color-mix(in srgb,var(--gold) 9%,var(--card));
+  font-weight:850;
+}
+.obra-servico-principal td:first-child{
+  border-left:3px solid var(--gold);
+}
+.obra-calc-backdrop{display:flex;align-items:center;justify-content:center;padding:18px}
+.obra-calc-modal{
+  width:min(620px,calc(100vw - 32px));background:var(--card);
+  border:1px solid color-mix(in srgb,var(--gold) 34%,var(--border));
+  border-radius:var(--radius-lg);box-shadow:0 22px 60px rgba(0,0,0,.38);padding:18px;
+}
+.obra-calc-options{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px}
+.obra-calc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.obra-calc-totals{
+  border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);
+  padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;
+}
+.obra-calc-totals div{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:10px}
+.obra-calc-totals span{display:block;font-size:11px;color:var(--text3);font-weight:900;text-transform:uppercase;letter-spacing:.35px;margin-bottom:4px}
+.obra-calc-totals strong{display:block;font-size:18px;color:var(--text)}
 .obra-workspace-card{margin-bottom:18px;border-color:color-mix(in srgb,var(--gold) 18%,var(--border))}
 .workspace-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
 .obra-open-tools{
@@ -357,6 +379,7 @@ body.core-only .core-section{
   .obra-active-actions{justify-content:flex-start}
   .obra-service-actions{justify-content:flex-start}
   .obra-servico-form,.obra-vinculo-form{grid-template-columns:1fr}
+  .obra-calc-totals{grid-template-columns:1fr}
   .obra-lote-form{grid-template-columns:1fr}
   .workspace-grid,.obra-open-tools{grid-template-columns:1fr}
 }
@@ -434,6 +457,23 @@ body.core-only .core-section{
 .cpu-op-scope-item span{min-width:0}
 .cpu-op-scope-item strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cpu-op-scope-item small{display:block;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cpu-import-map-card{
+  margin-top:12px;border:1px solid color-mix(in srgb,var(--gold) 26%,var(--border));
+  border-radius:var(--radius);background:color-mix(in srgb,var(--gold) 4%,var(--bg3));padding:14px;
+}
+.cpu-import-settings{align-items:end}
+.cpu-import-check{margin:0;min-height:38px}
+.cpu-import-detect .btn{width:100%;justify-content:center}
+.cpu-import-map-block{
+  margin-top:14px;padding-top:12px;border-top:1px solid var(--border);
+}
+.cpu-import-map-title{
+  font-size:12px;font-weight:900;color:var(--text);margin-bottom:10px;
+  text-transform:uppercase;letter-spacing:.35px;
+}
+.cpu-import-map-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.cpu-import-map-grid .form-input{text-transform:uppercase}
+.cpu-import-preview{margin-top:14px;max-height:260px}
 .cpu-external-card,.cpu-utility-card{border-color:color-mix(in srgb,var(--gold) 14%,var(--border))}
 .cpu-banco-lista{
   margin-top:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);
@@ -452,6 +492,7 @@ body.core-only .core-section{
   .cpu-ops-grid{grid-template-columns:1fr!important}
   .cpu-ops-grid>*{grid-column:auto!important}
   .cpu-op-head,.cpu-op-row{grid-template-columns:1fr;gap:4px}
+  .cpu-import-map-grid,
   .cpu-open-summary,.cpu-open-groups,.cpu-op-scope-grid,.equipe-grid{grid-template-columns:1fr!important}
 }
 .cost-parcel-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}

@@ -1530,14 +1530,63 @@ function obrasServicoCodigoPadrao() {
   return `SVC-${seq}`;
 }
 
+function obrasServicoEhPrincipal(item) {
+  return item?.tipoItem === 'grupo' || item?.ehGrupo === true || item?.origem === 'servico-grupo';
+}
+
+function obrasServicoSubtotalFilhos(item, lista = STATE.orcamento) {
+  const prefixo = String(item?.cod || '').trim();
+  if (!prefixo) return 0;
+  return (lista || []).reduce((total, filho) => {
+    if (!filho || filho === item || obrasServicoEhPrincipal(filho)) return total;
+    const codFilho = String(filho.cod || '').trim();
+    const pertence = codFilho.startsWith(`${prefixo}.`) || codFilho.startsWith(`${prefixo}-`) || codFilho.startsWith(`${prefixo}/`);
+    return pertence ? total + itemValor(filho) : total;
+  }, 0);
+}
+
+function obrasServicoSubtotalVendaFilhos(item, lista = STATE.orcamento) {
+  const prefixo = String(item?.cod || '').trim();
+  if (!prefixo) return 0;
+  return (lista || []).reduce((total, filho) => {
+    if (!filho || filho === item || obrasServicoEhPrincipal(filho)) return total;
+    const codFilho = String(filho.cod || '').trim();
+    const pertence = codFilho.startsWith(`${prefixo}.`) || codFilho.startsWith(`${prefixo}-`) || codFilho.startsWith(`${prefixo}/`);
+    return pertence ? total + itemValorVenda(filho) : total;
+  }, 0);
+}
+
+function obrasServicoVendaUnitario(item) {
+  const custo = Number(item?.preco ?? item?.custoUnitario ?? 0) || 0;
+  const vendaManual = Number(item?.precoVenda ?? item?.valorVenda ?? item?.precoVendaUnitario ?? 0) || 0;
+  if (vendaManual > 0) return vendaManual;
+  return roundUnitPrice(totalComBDI(custo));
+}
+
+function itemValorVenda(item) {
+  if (obrasServicoEhPrincipal(item)) return 0;
+  const qtd = Number(item?.qtd) || 0;
+  const venda = obrasServicoVendaUnitario(item);
+  const calculado = qtd * venda;
+  const totalLinha = Number(item?.totalVendaLinha ?? item?.totalVenda ?? 0) || 0;
+  const veioDeImportacao = !!(item?.linhaOrigem || item?.origemArquivo || item?.origemMetodo || item?.certStatus);
+  if (veioDeImportacao && totalLinha > 0) {
+    const divergencia = Math.abs(totalLinha - calculado) / Math.max(totalLinha, 1);
+    if (divergencia <= 0.10) return totalLinha;
+  }
+  return calculado;
+}
+
 function obrasServicoLimparFormulario() {
   const card = document.getElementById('obra-servicos-card');
   if (card) card.dataset.editId = '';
   const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value; };
   set('obra-serv-cod', obrasServicoCodigoPadrao());
   set('obra-serv-desc');
-  set('obra-serv-unid', 'UN');
-  set('obra-serv-qtd', '1');
+  set('obra-serv-unid');
+  set('obra-serv-qtd');
+  set('obra-serv-custo');
+  set('obra-serv-venda');
 }
 
 function obrasServicoSalvar() {
@@ -1550,10 +1599,17 @@ function obrasServicoSalvar() {
   const editId = card?.dataset.editId || '';
   const cod = document.getElementById('obra-serv-cod')?.value?.trim() || obrasServicoCodigoPadrao();
   const desc = document.getElementById('obra-serv-desc')?.value?.trim();
-  const unid = document.getElementById('obra-serv-unid')?.value?.trim() || 'UN';
-  const qtd = readNumeroCampo('obra-serv-qtd') || 0;
+  const unidRaw = document.getElementById('obra-serv-unid')?.value?.trim() || '';
+  const qtdRaw = document.getElementById('obra-serv-qtd')?.value?.trim() || '';
+  const isPrincipal = !unidRaw && !qtdRaw;
+  const unid = isPrincipal ? '' : unidRaw;
+  const qtd = isPrincipal ? 0 : (readNumeroCampo('obra-serv-qtd') || 0);
+  const custoUnitario = isPrincipal ? 0 : (readNumeroCampo('obra-serv-custo') || 0);
+  const vendaInformada = isPrincipal ? 0 : (readNumeroCampo('obra-serv-venda') || 0);
+  const precoVenda = isPrincipal ? 0 : (vendaInformada || (hasBDI() ? roundUnitPrice(totalComBDI(custoUnitario)) : custoUnitario));
   if (!desc) { toast('Informe a descrição do serviço da obra.', 'error'); return; }
-  if (qtd <= 0) { toast('Informe a quantidade do serviço.', 'error'); return; }
+  if (!isPrincipal && !unid) { toast('Informe a unidade ou deixe unidade e quantidade vazias para item principal.', 'error'); return; }
+  if (!isPrincipal && qtd <= 0) { toast('Informe a quantidade do serviço ou deixe unidade e quantidade vazias para item principal.', 'error'); return; }
 
   const existente = editId ? STATE.orcamento.find(it => it.id === editId) : null;
   if (existente) {
@@ -1561,6 +1617,21 @@ function obrasServicoSalvar() {
     existente.desc = desc;
     existente.unid = unid;
     existente.qtd = qtd;
+    existente.preco = roundUnitPrice(custoUnitario);
+    existente.ref = roundUnitPrice(custoUnitario);
+    existente.precoVenda = roundUnitPrice(precoVenda);
+    existente.tipoItem = isPrincipal ? 'grupo' : 'servico';
+    existente.ehGrupo = isPrincipal;
+    if (isPrincipal) {
+      existente.preco = 0;
+      existente.ref = 0;
+      existente.precoVenda = 0;
+      existente.totalLinha = 0;
+      existente.totalVendaLinha = 0;
+      delete existente.composicaoId;
+      delete existente.composicaoCod;
+      delete existente.composicaoDesc;
+    }
     existente.capitulo = existente.capitulo || 'Serviços da Obra';
     existente.cat = existente.cat || 'Serviço da obra';
   } else {
@@ -1570,12 +1641,15 @@ function obrasServicoSalvar() {
       desc,
       unid,
       qtd,
-      preco: 0,
-      ref: 0,
-      cat: 'Serviço da obra',
+      preco: roundUnitPrice(custoUnitario),
+      ref: roundUnitPrice(custoUnitario),
+      precoVenda: roundUnitPrice(precoVenda),
+      cat: isPrincipal ? 'Grupo de serviços' : 'Serviço da obra',
       capitulo: 'Serviços da Obra',
+      tipoItem: isPrincipal ? 'grupo' : 'servico',
+      ehGrupo: isPrincipal,
       ordem: STATE.orcamento.length + 1,
-      origem: 'servico-obra'
+      origem: isPrincipal ? 'servico-grupo' : 'servico-obra'
     });
   }
   invalidarDescontoPregao('serviço da obra alterado');
@@ -1594,8 +1668,10 @@ function obrasServicoEditar(id) {
   const set = (field, value = '') => { const el = document.getElementById(field); if (el) el.value = value; };
   set('obra-serv-cod', item.cod || '');
   set('obra-serv-desc', item.desc || '');
-  set('obra-serv-unid', item.unid || 'UN');
-  set('obra-serv-qtd', Number(item.qtd) || 1);
+  set('obra-serv-unid', obrasServicoEhPrincipal(item) ? '' : (item.unid || ''));
+  set('obra-serv-qtd', obrasServicoEhPrincipal(item) ? '' : (Number(item.qtd) || ''));
+  set('obra-serv-custo', obrasServicoEhPrincipal(item) ? '' : (Number(item.preco) || ''));
+  set('obra-serv-venda', obrasServicoEhPrincipal(item) ? '' : (Number(item.precoVenda) || ''));
   obrasScrollServicos();
 }
 
@@ -1618,10 +1694,12 @@ function obrasServicoVincularCPU() {
   const item = (STATE.orcamento || []).find(it => it.id === itemId);
   const cpu = (typeof CPU_BIBLIOTECA !== 'undefined' ? CPU_BIBLIOTECA : []).find(c => String(c.id) === String(cpuId));
   if (!item) { toast('Selecione um serviço cadastrado.', 'error'); return; }
+  if (obrasServicoEhPrincipal(item)) { toast('Item principal recebe subtotal dos itens filhos. Vincule CPU em um serviço como 100.1, 100.2 etc.', 'warning'); return; }
   if (!cpu) { toast('Selecione uma composição para vincular ao serviço.', 'error'); return; }
   const preco = Number(cpu.precoUnitario) || 0;
   item.preco = roundUnitPrice(preco);
   item.ref = roundUnitPrice(preco);
+  item.precoVenda = roundUnitPrice(totalComBDI(preco));
   item.composicaoId = cpu.id;
   item.composicaoCod = cpu.cod;
   item.composicaoDesc = cpu.desc;
@@ -1640,25 +1718,34 @@ function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
   if (!desc || desc.length < 3) return null;
   const codRaw = raw?.cod || raw?.codigo || raw?.item || '';
   const cod = limparCodigo(codRaw) || `SVC-${String((STATE.orcamento || []).length + index + 1).padStart(3, '0')}`;
-  const qtd = Number(raw?.qtd) || parseNumeroBR(raw?.quantidade || raw?.qtde || '') || 1;
+  const unidRaw = String(raw?.unid ?? raw?.unidade ?? '').trim();
+  const qtdRaw = raw?.qtd ?? raw?.quantidade ?? raw?.qtde ?? '';
+  const temQtd = String(qtdRaw ?? '').trim() !== '' && parseNumeroBR(qtdRaw) > 0;
+  const isPrincipal = raw?.semUnidQtd === true || (!unidRaw && !temQtd);
+  const qtd = isPrincipal ? 0 : (Number(raw?.qtd) || parseNumeroBR(qtdRaw) || 1);
   const preco = Number(raw?.preco ?? raw?.valorUnitario ?? raw?.custoUnitario ?? 0) || 0;
+  const precoVenda = Number(raw?.precoVenda ?? raw?.valorVenda ?? raw?.precoVendaUnitario ?? preco) || preco;
   const totalLinha = Number(raw?.totalLinha ?? raw?.total ?? 0) || 0;
   return {
     id: makeId('orc'),
     cod,
     desc,
-    unid: normalizarUnidadeImportacao(raw?.unid || raw?.unidade || 'UN'),
-    qtd: qtd > 0 ? qtd : 1,
-    preco,
-    ref: preco,
-    cat: 'Serviço da obra',
+    unid: isPrincipal ? '' : normalizarUnidadeImportacao(unidRaw || 'UN'),
+    qtd: isPrincipal ? 0 : (qtd > 0 ? qtd : 1),
+    preco: isPrincipal ? 0 : preco,
+    ref: isPrincipal ? 0 : preco,
+    precoVenda: isPrincipal ? 0 : precoVenda,
+    cat: isPrincipal ? 'Grupo de serviços' : 'Serviço da obra',
     capitulo: 'Serviços da Obra',
+    tipoItem: isPrincipal ? 'grupo' : 'servico',
+    ehGrupo: isPrincipal,
     ordem: (STATE.orcamento || []).length + index + 1,
-    origem: 'servico-importado',
+    origem: isPrincipal ? 'servico-grupo' : 'servico-importado',
     origemArquivo,
     origemMetodo: raw?.origemMetodo || raw?.origem || 'importacao',
     linhaOrigem: raw?.linhaOrigem || '',
-    totalLinha
+    totalLinha: isPrincipal ? 0 : totalLinha,
+    totalVendaLinha: isPrincipal ? 0 : (Number(raw?.totalVendaLinha ?? raw?.totalVenda ?? totalLinha) || totalLinha)
   };
 }
 
@@ -1763,7 +1850,9 @@ function obrasServicosParseLinhasGenericas(linhas) {
       unid: normalizarUnidadeImportacao(tail[1]),
       qtd: parseNumeroBR(tail[2]) || 1,
       preco: parseNumeroBR(tail[3]) || 0,
+      precoVenda: parseNumeroBR(tail[3]) || 0,
       totalLinha: parseNumeroBR(tail[4]) || 0,
+      totalVendaLinha: parseNumeroBR(tail[4]) || 0,
       origem: 'pdf',
       origemMetodo: 'PDF planilha de serviços',
       linhaOrigem: cleaned
@@ -1779,9 +1868,10 @@ function obrasServicosRender() {
   if (!tbody && !servSelect && !cpuSelect) return;
   const servicos = Array.isArray(STATE.orcamento) ? STATE.orcamento : [];
   if (servSelect) {
-    servSelect.innerHTML = servicos.length
-      ? servicos.map(it => `<option value="${escapeHtml(it.id)}">${escapeHtml(it.cod || '')} · ${escapeHtml(it.desc || '')}</option>`).join('')
-      : '<option value="">Nenhum serviço cadastrado</option>';
+    const vinculaveis = servicos.filter(it => !obrasServicoEhPrincipal(it));
+    servSelect.innerHTML = vinculaveis.length
+      ? vinculaveis.map(it => `<option value="${escapeHtml(it.id)}">${escapeHtml(it.cod || '')} · ${escapeHtml(it.desc || '')}</option>`).join('')
+      : '<option value="">Nenhum serviço item cadastrado</option>';
   }
   const cpus = typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
   if (cpuSelect) {
@@ -1791,26 +1881,174 @@ function obrasServicosRender() {
   }
   if (!tbody) return;
   if (!servicos.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state" style="padding:18px">Nenhum serviço cadastrado nesta obra.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state" style="padding:18px">Nenhum serviço cadastrado nesta obra.</td></tr>';
     return;
   }
   tbody.innerHTML = servicos.map(it => {
-    const total = itemValor(it);
-    const cpuLabel = it.composicaoCod ? `${it.composicaoCod} · ${it.composicaoDesc || ''}` : 'Sem composição vinculada';
-    return `<tr>
+    const principal = obrasServicoEhPrincipal(it);
+    const subtotal = principal ? obrasServicoSubtotalFilhos(it, servicos) : 0;
+    const subtotalVenda = principal ? obrasServicoSubtotalVendaFilhos(it, servicos) : 0;
+    const total = principal ? subtotal : itemValor(it);
+    const totalVenda = principal ? subtotalVenda : itemValorVenda(it);
+    const cpuLabel = principal ? 'Item principal / subtotal' : (it.composicaoCod ? `${it.composicaoCod} · ${it.composicaoDesc || ''}` : 'Sem composição vinculada');
+    return `<tr class="${principal ? 'obra-servico-principal' : ''}">
       <td class="td-mono">${escapeHtml(it.cod || '')}</td>
       <td><strong>${escapeHtml(it.desc || '')}</strong></td>
-      <td>${escapeHtml(it.unid || '')}</td>
-      <td>${fmtNum(it.qtd || 0)}</td>
+      <td>${principal ? '—' : escapeHtml(it.unid || '')}</td>
+      <td>${principal ? '—' : fmtNum(it.qtd || 0)}</td>
       <td>${escapeHtml(cpuLabel)}</td>
-      <td>${it.composicaoCod ? fmtMoeda(it.preco || 0) : '<span class="badge badge-warn">A vincular</span>'}</td>
+      <td>${principal ? '—' : fmtMoeda(it.preco || 0)}</td>
+      <td>${principal ? '—' : fmtMoeda(obrasServicoVendaUnitario(it))}</td>
       <td><strong>${fmtMoeda(total)}</strong></td>
+      <td><strong>${fmtMoeda(totalVenda)}</strong></td>
       <td><div class="obra-row-actions">
         <button class="btn btn-outline btn-sm" onclick="obrasServicoEditar(${inlineJsArg(it.id)})">Editar</button>
         <button class="btn btn-outline btn-sm" onclick="obrasServicoExcluir(${inlineJsArg(it.id)})">Excluir</button>
       </div></td>
     </tr>`;
   }).join('');
+}
+
+function obrasCalculoTotaisAtuais() {
+  const lista = STATE.orcamento || [];
+  return {
+    custo: lista.reduce((s, it) => s + itemValor(it), 0),
+    venda: lista.reduce((s, it) => s + itemValorVenda(it), 0)
+  };
+}
+
+function obrasCalculoSetTotais(totais = obrasCalculoTotaisAtuais()) {
+  const custo = document.getElementById('obra-calc-total-custo');
+  const venda = document.getElementById('obra-calc-total-venda');
+  if (custo) custo.textContent = fmtMoeda(totais.custo || 0);
+  if (venda) venda.textContent = fmtMoeda(totais.venda || 0);
+  const status = document.getElementById('obra-calc-status');
+  if (status) {
+    status.textContent = hasBDI()
+      ? `BDI configurado: ${bdiText('0%')}. Ao calcular, a venda será custo + BDI.`
+      : 'Sem BDI configurado, a venda será igual ao custo.';
+    status.className = 'form-help';
+  }
+}
+
+function obrasCalculoAbrir() {
+  normalizeState();
+  const modal = document.getElementById('obra-calc-modal');
+  if (modal) modal.style.display = 'flex';
+  obrasCalculoSetTotais();
+}
+
+function obrasCalculoFechar() {
+  const modal = document.getElementById('obra-calc-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function obrasCalculoGrupoInsumo(ins) {
+  const cod = codigoChave(ins?.cod || ins?.codigo);
+  if (cod.startsWith('IE')) return 'E';
+  if (cod.startsWith('IH')) return 'S';
+  return cpuTipoManual(ins?.tipo || ins?.natureza || ins?.categoria, ins?.desc || ins?.descricao || '');
+}
+
+function obrasCalculoAtualizarInsumosCpu(flags = {}) {
+  const cpus = typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
+  let insumosAtualizados = 0;
+  let cpusAtualizadas = 0;
+  cpus.forEach(cpu => {
+    let mudou = false;
+    (cpu.insumos || []).forEach(ins => {
+      const grupo = obrasCalculoGrupoInsumo(ins);
+      const deveAtualizar = (flags.equipamentos && grupo === 'E') || (flags.maoObra && grupo === 'S');
+      if (!deveAtualizar) return;
+      const code = ins.cod || ins.codigo;
+      const ref = lookupPreco(code);
+      const precoAtual = Number(ref?.preco ?? ref?.item?.precoMedio ?? ref?.item?.preco ?? 0) || 0;
+      if (precoAtual <= 0) return;
+      if (Math.abs((Number(ins.preco) || 0) - precoAtual) > 0.0001) {
+        ins.preco = precoAtual;
+        ins.desc = ins.desc || ref?.item?.descricao || ins.desc;
+        ins.unid = ins.unid || ref?.item?.unidade || ins.unid;
+        ins.fonte = ref?.fonte || ins.fonte;
+        mudou = true;
+        insumosAtualizados++;
+      }
+    });
+    cpuRecalcularComposicaoSalva(cpu);
+    if (mudou) cpusAtualizadas++;
+  });
+  if (cpusAtualizadas && typeof cpuSaveLib === 'function') cpuSaveLib();
+  return { cpusAtualizadas, insumosAtualizados };
+}
+
+function obrasCalculoCpuDoItem(item) {
+  const cpus = typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
+  if (!cpus.length || !item) return null;
+  return cpus.find(cpu => String(cpu.id) === String(item.composicaoId))
+    || cpus.find(cpu => codigoChave(cpu.cod) === codigoChave(item.composicaoCod))
+    || null;
+}
+
+function obrasCalculoAplicarServicos() {
+  let itensComCpu = 0;
+  let itensManuais = 0;
+  (STATE.orcamento || []).forEach(item => {
+    if (obrasServicoEhPrincipal(item)) {
+      item.preco = 0;
+      item.ref = 0;
+      item.precoVenda = 0;
+      item.totalLinha = 0;
+      item.totalVendaLinha = 0;
+      return;
+    }
+    const cpu = obrasCalculoCpuDoItem(item);
+    if (cpu) {
+      const custo = roundUnitPrice(Number(cpu.precoUnitario) || 0);
+      item.preco = custo;
+      item.ref = custo;
+      item.precoVenda = roundUnitPrice(totalComBDI(custo));
+      item.composicaoId = cpu.id;
+      item.composicaoCod = cpu.cod;
+      item.composicaoDesc = cpu.desc;
+      item.totalLinha = 0;
+      item.totalVendaLinha = 0;
+      itensComCpu++;
+    } else {
+      const custo = roundUnitPrice(Number(item.preco ?? item.custoUnitario ?? 0) || 0);
+      item.preco = custo;
+      item.ref = Number(item.ref) || custo;
+      item.precoVenda = hasBDI() ? roundUnitPrice(totalComBDI(custo)) : custo;
+      itensManuais++;
+    }
+  });
+  return { itensComCpu, itensManuais };
+}
+
+function obrasCalculoExecutar() {
+  normalizeState();
+  const flags = {
+    equipamentos: !!document.getElementById('obra-calc-equip')?.checked,
+    maoObra: !!document.getElementById('obra-calc-mao')?.checked
+  };
+  const atualizacao = obrasCalculoAtualizarInsumosCpu(flags);
+  if (!flags.equipamentos && !flags.maoObra) {
+    const cpus = typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
+    cpus.forEach(cpu => cpuRecalcularComposicaoSalva(cpu));
+    if (cpus.length && typeof cpuSaveLib === 'function') cpuSaveLib();
+  }
+  const aplicacao = obrasCalculoAplicarServicos();
+  const totais = obrasCalculoTotaisAtuais();
+  obrasCalculoSetTotais(totais);
+  saveState();
+  obrasRender();
+  if (typeof renderElaborar === 'function') renderElaborar();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
+  const status = document.getElementById('obra-calc-status');
+  if (status) {
+    status.className = 'form-help ok';
+    status.textContent = `${aplicacao.itensComCpu} serviço(s) com composição e ${aplicacao.itensManuais} manual(is). ${atualizacao.insumosAtualizados} insumo(s) de custo horário atualizado(s).`;
+  }
+  toast('Planilha de serviços calculada.', 'success');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1941,12 +2179,60 @@ function insumosSalvarManualItem(raw, options = {}) {
   return byCode.get(code);
 }
 
+function insumosManualPorCodigo(codigo) {
+  const code = codigoChave(codigo);
+  if (!code) return null;
+  return (STATE.insumosManuais || []).find(i => codigoChave(i.codigoSinapi || i.codigo) === code) || null;
+}
+
+function insumosPreencherFormularioManual(item, options = {}) {
+  if (!item) return false;
+  const grupo = insumosGrupoNormalizado(item.grupo || item.tipo || item.natureza, item.codigoSinapi || item.codigo, item.descricao);
+  const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value; };
+  set('ins-codigo', item.codigoSinapi || item.codigo || '');
+  set('ins-desc', item.descricao || '');
+  set('ins-unid', item.unidade || item.unid || 'UN');
+  set('ins-grupo', grupo);
+  set('ins-data', insumosDataInputValue(item.dataReferencia || item.data));
+  set('ins-preco', String(insumosPrecoItem(item)).replace('.', ','));
+  set('ins-improd', grupo === 'E' ? String(insumosCustoImprodutivo(item)).replace('.', ',') : '');
+  set('ins-fonte', item.fonte || '');
+  const modo = item.modoCalculo === 'calculada' || item.memoriaCustoHorario ? 'calculada' : 'manual';
+  set('ins-modo-calculo', grupo === 'S' ? modo : 'manual');
+  set('ins-mo-salario', item.salarioMensal ? String(item.salarioMensal) : '');
+  set('ins-mo-beneficios', item.beneficiosMensais ? String(item.beneficiosMensais) : '');
+  set('ins-mo-encargos', item.encargosPct ? String(item.encargosPct) : '127.5');
+  set('ins-mo-horas', item.horasProdutivasMes ? String(item.horasProdutivasMes) : '189');
+  MAO_OBRA_BENEFICIOS_DRAFT = clonePlain(item.beneficiosCompostos || [], []).map(i => ({ ...i, id: i.id || makeId('ben') }));
+  insumosMaoObraRenderBeneficios();
+  const benPreview = document.getElementById('ins-ben-preview');
+  if (benPreview) {
+    const totalBeneficios = MAO_OBRA_BENEFICIOS_DRAFT.reduce((s, i) => s + beneficioTotalMensal(i), 0);
+    benPreview.textContent = totalBeneficios ? `Benefícios mensais calculados: ${fmtMoeda(totalBeneficios)}.` : '';
+    benPreview.className = totalBeneficios ? 'form-help ok' : 'form-help';
+  }
+  const preview = document.getElementById('ins-mo-preview');
+  if (preview) {
+    preview.innerHTML = item.memoriaCustoHorario
+      ? `<strong>Custo horário salvo:</strong> ${fmtMoeda(insumosPrecoItem(item))}<br><span>${escapeHtml(item.memoriaCustoHorario)}</span>`
+      : '';
+  }
+  insumosGrupoAlterado();
+  if (!options.silent) toast('Insumo manual carregado para edição.', 'info');
+  return true;
+}
+
 function insumosCodigoAlterado() {
   const codigo = document.getElementById('ins-codigo')?.value || '';
   const grupo = insumosGrupoPorPrefixo(codigo);
   if (grupo) {
     const sel = document.getElementById('ins-grupo');
     if (sel) sel.value = grupo;
+  }
+  const existente = insumosManualPorCodigo(codigo);
+  if (existente) {
+    insumosPreencherFormularioManual(existente, { silent:true });
+    return;
   }
   insumosGrupoAlterado();
 }
@@ -2558,7 +2844,7 @@ function adicionarItem() {
   const cat = document.getElementById('addCat').value;
   const capitulo = document.getElementById('addCapitulo')?.value?.trim() || cat || 'Serviços';
   if (!cod || !desc) { toast('Informe código e descrição do item', 'error'); return; }
-  STATE.orcamento.push({ id: makeId('orc'), cod, desc, unid, qtd, preco, ref, cat, capitulo, ordem: STATE.orcamento.length + 1 });
+  STATE.orcamento.push({ id: makeId('orc'), cod, desc, unid, qtd, preco, ref, precoVenda: roundUnitPrice(totalComBDI(preco)), cat, capitulo, ordem: STATE.orcamento.length + 1 });
   invalidarDescontoPregao('item adicionado ao orçamento');
   saveState();
   renderElaborar();
@@ -2651,18 +2937,19 @@ function renderElaborar() {
     return;
   }
   const rows = STATE.orcamento.map((it, i) => {
-    const total = itemValor(it);
+    const principal = obrasServicoEhPrincipal(it);
+    const total = principal ? obrasServicoSubtotalFilhos(it, STATE.orcamento) : itemValor(it);
     const desvHtml = desvioHtml(it);
-    return `<tr>
+    return `<tr class="${principal ? 'obra-servico-principal' : ''}">
       <td class="td-mono">${i+1}</td>
       <td><input class="table-input mono" value="${escapeHtml(it.cod || '')}" onchange="editarItemCampo(${i},'cod',this.value)"/></td>
       <td>
         <input class="table-input table-input-desc" value="${escapeHtml(it.desc || '')}" onchange="editarItemCampo(${i},'desc',this.value)"/>
         <input class="table-input table-input-sub" value="${escapeHtml(it.capitulo || it.cat || 'Serviços')}" onchange="editarItemCampo(${i},'capitulo',this.value)" placeholder="Capítulo"/>
       </td>
-      <td><input class="table-input compact" value="${escapeHtml(it.unid || 'UN')}" onchange="editarItemCampo(${i},'unid',this.value)"/></td>
-      <td><input class="table-input num" type="number" min="0" step="0.001" value="${Number(it.qtd || 0)}" onchange="editarItemCampo(${i},'qtd',this.value)"/></td>
-      <td><input class="table-input num" type="number" min="0" step="0.01" value="${Number(it.preco || 0)}" onchange="editarItemCampo(${i},'preco',this.value)"/></td>
+      <td><input class="table-input compact" value="${principal ? '' : escapeHtml(it.unid || 'UN')}" onchange="editarItemCampo(${i},'unid',this.value)" ${principal ? 'placeholder="—"' : ''}/></td>
+      <td><input class="table-input num" type="number" min="0" step="0.001" value="${principal ? '' : Number(it.qtd || 0)}" onchange="editarItemCampo(${i},'qtd',this.value)" ${principal ? 'placeholder="—"' : ''}/></td>
+      <td><input class="table-input num" type="number" min="0" step="0.01" value="${principal ? '' : Number(it.preco || 0)}" onchange="editarItemCampo(${i},'preco',this.value)" ${principal ? 'placeholder="—"' : ''}/></td>
       <td style="color:var(--gold)">${it.ref > 0 ? fmtMoeda(it.ref) : '—'}</td>
       <td id="elab-desv-${i}">${desvHtml}</td>
       <td><strong id="elab-row-total-${i}">${fmtMoeda(total)}</strong></td>
@@ -2715,7 +3002,8 @@ function atualizarLinhaElaborar(idx) {
   if (!it) return;
   const rowTotal = document.getElementById('elab-row-total-' + idx);
   const desv = document.getElementById('elab-desv-' + idx);
-  if (rowTotal) rowTotal.textContent = fmtMoeda(itemValor(it));
+  const total = obrasServicoEhPrincipal(it) ? obrasServicoSubtotalFilhos(it, STATE.orcamento) : itemValor(it);
+  if (rowTotal) rowTotal.textContent = fmtMoeda(total);
   if (desv) desv.innerHTML = desvioHtml(it);
 }
 
@@ -2724,7 +3012,11 @@ function editarItemCampo(idx, campo, valor) {
   if (!it) return;
   if (['qtd','preco','ref'].includes(campo)) {
     it[campo] = parseFloat(String(valor).replace(',', '.')) || 0;
-    if (['qtd','preco'].includes(campo)) it.totalLinha = 0;
+    if (campo === 'preco') it.precoVenda = roundUnitPrice(totalComBDI(it.preco));
+    if (['qtd','preco'].includes(campo)) {
+      it.totalLinha = 0;
+      it.totalVendaLinha = 0;
+    }
     if (['qtd','preco'].includes(campo)) invalidarDescontoPregao('preço ou quantidade alterado manualmente');
   }
   else it[campo] = String(valor || '').trim();
@@ -4045,6 +4337,7 @@ function itemLabel(item) {
 }
 
 function itemValor(item) {
+  if (obrasServicoEhPrincipal(item)) return 0;
   const qtd = Number(item?.qtd) || 0;
   const preco = Number(item?.preco) || 0;
   const calculado = qtd * preco;
@@ -6458,23 +6751,27 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
     }
 
     if (purpose === 'orcamento') {
-      const qtd = parseNumeroBR(sheetCell(row, mapping.qtd)) || 1;
+      const qtdRaw = sheetCell(row, mapping.qtd);
+      const unidRaw = sheetCell(row, mapping.unid);
+      const qtd = qtdRaw ? parseNumeroBR(qtdRaw) : 0;
       const preco = parseNumeroBR(sheetCell(row, mapping.preco));
       const totalLinha = parseNumeroBR(sheetCell(row, mapping.total));
       const item = {
         cod: limparCodigo(sheetCell(row, mapping.cod)),
         desc: sheetCell(row, mapping.desc),
-        unid: normalizarUnidadeImportacao(sheetCell(row, mapping.unid) || 'UN'),
+        unid: unidRaw ? normalizarUnidadeImportacao(unidRaw) : '',
         qtd,
         preco,
+        precoVenda: preco,
         totalLinha,
         cat: sheetCell(row, mapping.categoria) || 'Serviços',
         capitulo: sheetCell(row, mapping.categoria) || 'Serviços',
         origem: 'excel',
-        linhaOrigem: joined
+        linhaOrigem: joined,
+        semUnidQtd: !unidRaw && !qtdRaw
       };
       if (!item.desc || item.desc.length < 3) return;
-      if (!Number.isFinite(qtd) || qtd <= 0) result.issues.push(`Linha ${rowNumber}: quantidade inválida.`);
+      if (!item.semUnidQtd && (!Number.isFinite(qtd) || qtd <= 0)) result.issues.push(`Linha ${rowNumber}: quantidade inválida.`);
       if (!Number.isFinite(preco) || preco < 0) result.issues.push(`Linha ${rowNumber}: custo unitário inválido.`);
       result.items.push(item);
       return;
@@ -9913,6 +10210,7 @@ let CPU = {
 let CPU_BIBLIOTECA = Array.isArray(STATE.cpuBiblioteca) ? STATE.cpuBiblioteca : [];   // composições salvas
 let CPU_EDITOR = { activeId: null, stack: [], selectedIndex: 0 };
 let CPU_OP_SELECTED = new Set();
+let CPU_IMPORT_BIBLIOTECA = { file: null, sheets: [], currentIndex: 0 };
 
 // Persiste biblioteca
 function cpuSaveLib() {
@@ -11114,19 +11412,347 @@ function cpuExportarBibliotecaPDF() {
 }
 
 function cpuImportarBiblioteca() {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = '.json';
-  inp.onchange = async function(e) {
-    try {
-      const txt = await e.target.files[0].text();
-      const data = JSON.parse(txt);
-      if (!Array.isArray(data)) throw new Error('Formato inválido');
-      CPU_BIBLIOTECA = [...CPU_BIBLIOTECA, ...data];
-      cpuSaveLib(); cpuRenderBiblioteca();
-      toast(data.length + ' composições importadas', 'success');
-    } catch(err) { toast('Erro: ' + err.message, 'error'); }
+  const input = document.getElementById('cpu-lib-import-input');
+  if (input) input.click();
+}
+
+async function cpuImportarBibliotecaArquivo(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  try {
+    if (/\.json$/i.test(file.name)) {
+      const data = JSON.parse(await file.text());
+      const list = Array.isArray(data) ? data : (Array.isArray(data.composicoes) ? data.composicoes : []);
+      if (!list.length) throw new Error('JSON sem composições válidas.');
+      const composicoes = list.map(item => cpuNormalizarComposicaoExterna(item, file.name)).filter(Boolean);
+      const res = cpuImportarBibliotecaAdicionar(composicoes, { overwrite:false });
+      cpuImportarBibliotecaCancelar({ keepInput:true });
+      toast(`${res.adicionadas} adicionada(s), ${res.ignoradas} já existente(s).`, res.adicionadas ? 'success' : 'warning');
+      return;
+    }
+    if (!window.XLSX) throw new Error('Leitor de Excel não carregado.');
+    const sheets = await lerPlanilhasArquivo(file);
+    if (!sheets.length) throw new Error('Nenhuma aba com dados encontrada no arquivo.');
+    CPU_IMPORT_BIBLIOTECA = { file, fileName:file.name, sheets, currentIndex:0 };
+    cpuImportarBibliotecaRenderSheets();
+    document.getElementById('cpu-import-map-card')?.style.setProperty('display', 'block');
+    const label = document.getElementById('cpu-import-file-label');
+    if (label) label.textContent = `${file.name} · ${sheets.length} aba(s) detectada(s)`;
+    cpuImportarBibliotecaSugerirColunas();
+  } catch (err) {
+    toast(`Erro na importação: ${err.message || err}`, 'error');
+  } finally {
+    if (event?.target) event.target.value = '';
+  }
+}
+
+function cpuImportarBibliotecaRenderSheets() {
+  const select = document.getElementById('cpu-import-sheet');
+  if (!select) return;
+  const sheets = CPU_IMPORT_BIBLIOTECA.sheets || [];
+  select.innerHTML = sheets.map((entry, index) => `<option value="${index}">${escapeHtml(entry.sheetName)} · ${entry.raw.length} linha(s)</option>`).join('');
+  select.value = String(CPU_IMPORT_BIBLIOTECA.currentIndex || 0);
+}
+
+function cpuImportarBibliotecaSheetAtual() {
+  return (CPU_IMPORT_BIBLIOTECA.sheets || [])[Number(CPU_IMPORT_BIBLIOTECA.currentIndex) || 0] || null;
+}
+
+function cpuImportarBibliotecaCancelar(options = {}) {
+  CPU_IMPORT_BIBLIOTECA = { file: null, sheets: [], currentIndex: 0 };
+  const card = document.getElementById('cpu-import-map-card');
+  if (card) card.style.display = 'none';
+  const preview = document.getElementById('cpu-import-preview');
+  if (preview) preview.innerHTML = '';
+  const status = document.getElementById('cpu-import-status');
+  if (status) { status.textContent = ''; status.className = 'form-help'; }
+  if (!options.keepInput) {
+    const input = document.getElementById('cpu-lib-import-input');
+    if (input) input.value = '';
+  }
+}
+
+function cpuImportarBibliotecaSelecionarAba(value) {
+  CPU_IMPORT_BIBLIOTECA.currentIndex = Number(value) || 0;
+  cpuImportarBibliotecaSugerirColunas();
+}
+
+function cpuColumnIndexFromLetter(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw || raw === '0' || raw === '-' || raw === 'IGNORAR') return -1;
+  if (/^\d+$/.test(raw)) return Math.max(-1, Number(raw) - 1);
+  if (!/^[A-Z]+$/.test(raw)) return -1;
+  let n = 0;
+  for (const ch of raw) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+function cpuColumnLetterFromIndex(index) {
+  return index >= 0 ? sheetColumnLetter(index) : '';
+}
+
+function cpuImportarBibliotecaSetCol(id, index) {
+  const el = document.getElementById(id);
+  if (el) el.value = cpuColumnLetterFromIndex(index);
+}
+
+function cpuImportarBibliotecaGetCol(id) {
+  return cpuColumnIndexFromLetter(document.getElementById(id)?.value || '');
+}
+
+function cpuImportarBibliotecaHeaderIndex(rawRows, aliases) {
+  const rows = sheetNormalizeRows(rawRows);
+  for (let r = 0; r < Math.min(25, rows.length); r++) {
+    const row = rows[r] || [];
+    let best = { index:-1, score:0 };
+    row.forEach((cell, index) => {
+      const score = sheetScoreHeader(cell, aliases);
+      if (score > best.score) best = { index, score };
+    });
+    if (best.score >= 4) return best.index;
+  }
+  return -1;
+}
+
+function cpuImportarBibliotecaSugerirColunas() {
+  const entry = cpuImportarBibliotecaSheetAtual();
+  if (!entry) return;
+  const sugestao = sheetSuggestMapping(entry.raw, 'composicoes');
+  const maxCols = Math.max(0, ...sheetNormalizeRows(entry.raw).slice(0, 50).map(row => row.length));
+  const fallback = maxCols >= 10
+    ? { cpuCod:0, cpuDesc:1, cpuUnid:2, cpuTipo:3, cpuProd:4, insumoCod:5, insQtd:6, coef:7, insDmt:8, insumoDesc:9 }
+    : sheetDefaultMapping('composicoes', Math.max(maxCols, 8));
+  const map = sugestao.headerRow >= 0 ? sugestao.mapping : {};
+  const descFullCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['descricao completa','descrição completa','desc completa','memorial']);
+  const cpuTipoCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['tipo da composicao','tipo da composição','tipo composicao','tipo composição','categoria servico','categoria serviço']);
+  const cpuProdCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['producao por hora','produção por hora','prod equipe','produtividade','producao','produção']);
+  const insQtdCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['quantidade','quant','qtd','qtde']);
+  const insDmtCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['dmt','distancia','distância']);
+
+  const set = (id, index) => cpuImportarBibliotecaSetCol(id, index >= 0 ? index : -1);
+  set('cpu-map-cpu-cod', map.cpuCod ?? fallback.cpuCod ?? 0);
+  set('cpu-map-cpu-desc', map.cpuDesc ?? fallback.cpuDesc ?? 1);
+  set('cpu-map-cpu-unid', map.cpuUnid ?? fallback.cpuUnid ?? 2);
+  set('cpu-map-ins-cod', map.insumoCod ?? fallback.insumoCod ?? 3);
+  set('cpu-map-ins-desc', map.insumoDesc ?? fallback.insumoDesc ?? 4);
+  set('cpu-map-ins-unid', map.insumoUnid ?? fallback.insumoUnid ?? -1);
+  set('cpu-map-ins-tipo', map.tipo ?? fallback.tipo ?? -1);
+  set('cpu-map-ins-coef', map.coef ?? fallback.coef ?? 6);
+  set('cpu-map-ins-preco', map.preco ?? fallback.preco ?? -1);
+
+  set('cpu-map-cpu-desc-full', descFullCol);
+  set('cpu-map-cpu-tipo', cpuTipoCol >= 0 ? cpuTipoCol : (fallback.cpuTipo ?? -1));
+  set('cpu-map-cpu-prod', cpuProdCol >= 0 ? cpuProdCol : (fallback.cpuProd ?? -1));
+  set('cpu-map-ins-qtd', insQtdCol >= 0 ? insQtdCol : (fallback.insQtd ?? -1));
+  set('cpu-map-ins-dmt', insDmtCol >= 0 ? insDmtCol : (fallback.insDmt ?? -1));
+
+  const start = document.getElementById('cpu-import-start-row');
+  if (start) start.value = String(Math.max(1, sugestao.headerRow >= 0 ? sugestao.headerRow + 2 : 2));
+  cpuImportarBibliotecaPreview();
+}
+
+function cpuImportarBibliotecaMapeamento() {
+  return {
+    cpuCod: cpuImportarBibliotecaGetCol('cpu-map-cpu-cod'),
+    cpuDesc: cpuImportarBibliotecaGetCol('cpu-map-cpu-desc'),
+    cpuDescFull: cpuImportarBibliotecaGetCol('cpu-map-cpu-desc-full'),
+    cpuUnid: cpuImportarBibliotecaGetCol('cpu-map-cpu-unid'),
+    cpuTipo: cpuImportarBibliotecaGetCol('cpu-map-cpu-tipo'),
+    cpuProd: cpuImportarBibliotecaGetCol('cpu-map-cpu-prod'),
+    insCod: cpuImportarBibliotecaGetCol('cpu-map-ins-cod'),
+    insQtd: cpuImportarBibliotecaGetCol('cpu-map-ins-qtd'),
+    insCoef: cpuImportarBibliotecaGetCol('cpu-map-ins-coef'),
+    insDmt: cpuImportarBibliotecaGetCol('cpu-map-ins-dmt'),
+    insDesc: cpuImportarBibliotecaGetCol('cpu-map-ins-desc'),
+    insUnid: cpuImportarBibliotecaGetCol('cpu-map-ins-unid'),
+    insTipo: cpuImportarBibliotecaGetCol('cpu-map-ins-tipo'),
+    insPreco: cpuImportarBibliotecaGetCol('cpu-map-ins-preco')
   };
-  inp.click();
+}
+
+function cpuImportarBibliotecaCell(row, index) {
+  return index >= 0 ? String(row[index] ?? '').trim() : '';
+}
+
+function cpuImportarBibliotecaParseAtual() {
+  const entry = cpuImportarBibliotecaSheetAtual();
+  const result = { composicoes: [], issues: [] };
+  if (!entry) {
+    result.issues.push('Nenhuma planilha selecionada.');
+    return result;
+  }
+  const cols = cpuImportarBibliotecaMapeamento();
+  const rows = sheetNormalizeRows(entry.raw);
+  const startRowInput = Number(document.getElementById('cpu-import-start-row')?.value || 1);
+  const start = Math.max(0, startRowInput - 1);
+  const composicoes = new Map();
+  let currentCode = '';
+
+  const ensureCpu = (code, row) => {
+    const cod = limparCodigo(code).toUpperCase();
+    if (!cod) return null;
+    const descFull = cpuImportarBibliotecaCell(row, cols.cpuDescFull);
+    const desc = descFull || cpuImportarBibliotecaCell(row, cols.cpuDesc);
+    const unid = normalizarUnidadeImportacao(cpuImportarBibliotecaCell(row, cols.cpuUnid) || 'UN');
+    const tipo = cpuImportarBibliotecaCell(row, cols.cpuTipo);
+    const prod = parseNumeroBR(cpuImportarBibliotecaCell(row, cols.cpuProd));
+    if (!composicoes.has(cod)) {
+      composicoes.set(cod, {
+        id: makeId('cpu'),
+        cod,
+        desc: desc || cod,
+        descCompleta: descFull || '',
+        unid,
+        tipo: tipo || 'Serviços Gerais',
+        encargos: 'nd',
+        encPct: Number(STATE.bdiComponents?.encargos ?? 127.5) || 127.5,
+        prod: Math.max(0.0001, prod || 1),
+        insumos: [],
+        precoUnitario: 0,
+        origemBanco: entry.fileName,
+        origemAba: entry.sheetName,
+        criadaEm: new Date().toLocaleDateString('pt-BR')
+      });
+    } else {
+      const cpu = composicoes.get(cod);
+      if (desc && (!cpu.desc || cpu.desc === cod)) cpu.desc = desc;
+      if (descFull) cpu.descCompleta = descFull;
+      if (unid && unid !== 'UN') cpu.unid = unid;
+      if (tipo) cpu.tipo = tipo;
+      if (prod > 0) cpu.prod = Math.max(0.0001, prod);
+    }
+    return composicoes.get(cod);
+  };
+
+  rows.slice(start).forEach((row, offset) => {
+    const rowNumber = start + offset + 1;
+    if (!row || row.every(cell => !String(cell || '').trim())) return;
+    const joined = row.map(cell => String(cell || '')).join(' ').trim();
+    if (!joined || linhaImportacaoIgnorada(joined)) return;
+
+    const cpuCodeCell = limparCodigo(cpuImportarBibliotecaCell(row, cols.cpuCod)).toUpperCase();
+    if (cpuCodeCell) currentCode = cpuCodeCell;
+    const cpu = ensureCpu(currentCode, row);
+    if (!cpu) {
+      result.issues.push(`Linha ${rowNumber}: sem código de composição.`);
+      return;
+    }
+
+    const insCodeRaw = cpuImportarBibliotecaCell(row, cols.insCod);
+    const insDescCell = cpuImportarBibliotecaCell(row, cols.insDesc);
+    const qtdCell = cpuImportarBibliotecaCell(row, cols.insQtd);
+    const coefCell = cpuImportarBibliotecaCell(row, cols.insCoef);
+    const precoCell = cpuImportarBibliotecaCell(row, cols.insPreco);
+    const hasResource = insCodeRaw || insDescCell || qtdCell || coefCell || precoCell;
+    if (!hasResource) return;
+
+    const insCod = limparCodigo(insCodeRaw).toUpperCase() || `IMP-${String(rowNumber).padStart(4, '0')}`;
+    const lookup = insCod ? lookupPreco(insCod) : null;
+    const desc = insDescCell || lookup?.item?.descricao || insCod;
+    const coef = parseNumeroBR(coefCell) || parseNumeroBR(qtdCell) || 1;
+    const precoMapeado = precoCell ? parseNumeroBR(precoCell) : 0;
+    const preco = precoCell ? precoMapeado : (Number(lookup?.preco) || 0);
+    const tipoBase = cpuImportarBibliotecaCell(row, cols.insTipo) || lookup?.item?.tipo || lookup?.item?.categoria || lookup?.item?.natureza || '';
+    const dmt = parseNumeroBR(cpuImportarBibliotecaCell(row, cols.insDmt));
+    cpu.insumos.push({
+      cod: insCod,
+      desc,
+      unid: normalizarUnidadeImportacao(cpuImportarBibliotecaCell(row, cols.insUnid) || lookup?.item?.unidade || 'UN'),
+      tipo: cpuTipoManual(tipoBase, desc),
+      coef,
+      qtd: parseNumeroBR(qtdCell) || coef,
+      dmt: dmt || 0,
+      preco,
+      fonte: precoCell ? `${entry.fileName}/${entry.sheetName}` : (lookup?.fonte || `${entry.fileName}/${entry.sheetName}`)
+    });
+    if (!preco && !lookup) result.issues.push(`Linha ${rowNumber}: recurso ${insCod} sem preço mapeado e não encontrado na base.`);
+  });
+
+  result.composicoes = [...composicoes.values()].filter(cpu => {
+    if (!cpu.insumos.length) result.issues.push(`Composição ${cpu.cod}: sem recursos vinculados.`);
+    return cpu.cod && cpu.desc && cpu.insumos.length;
+  }).map(cpu => {
+    cpuRecalcularComposicaoSalva(cpu);
+    return cpu;
+  });
+  return result;
+}
+
+function cpuImportarBibliotecaPreview() {
+  const entry = cpuImportarBibliotecaSheetAtual();
+  const preview = document.getElementById('cpu-import-preview');
+  const status = document.getElementById('cpu-import-status');
+  if (!entry || !preview) return;
+  const cols = cpuImportarBibliotecaMapeamento();
+  const rows = sheetNormalizeRows(entry.raw);
+  const startRowInput = Number(document.getElementById('cpu-import-start-row')?.value || 1);
+  const start = Math.max(0, startRowInput - 1);
+  const previewRows = rows.slice(Math.max(0, start - 1), start + 8);
+  const columns = [
+    ['CPU', cols.cpuCod],
+    ['Descrição CPU', cols.cpuDescFull >= 0 ? cols.cpuDescFull : cols.cpuDesc],
+    ['Un', cols.cpuUnid],
+    ['Prod.', cols.cpuProd],
+    ['Recurso', cols.insCod],
+    ['Descrição recurso', cols.insDesc],
+    ['Coef.', cols.insCoef >= 0 ? cols.insCoef : cols.insQtd],
+    ['Preço', cols.insPreco]
+  ];
+  preview.innerHTML = `<table><thead><tr><th>Linha</th>${columns.map(([label, idx]) => `<th>${escapeHtml(label)}${idx >= 0 ? ` (${sheetColumnLetter(idx)})` : ''}</th>`).join('')}</tr></thead><tbody>
+    ${previewRows.map((row, i) => {
+      const line = Math.max(0, start - 1) + i + 1;
+      const klass = line < startRowInput ? 'skip-row' : (line === startRowInput ? 'header-row' : '');
+      return `<tr class="${klass}"><td>${line}</td>${columns.map(([, idx]) => `<td>${escapeHtml(cpuImportarBibliotecaCell(row, idx))}</td>`).join('')}</tr>`;
+    }).join('')}
+  </tbody></table>`;
+  const parsed = cpuImportarBibliotecaParseAtual();
+  if (status) {
+    status.className = `form-help ${parsed.composicoes.length ? 'ok' : 'error'}`;
+    const avisos = parsed.issues.length ? ` · ${Math.min(parsed.issues.length, 5)} aviso(s)` : '';
+    status.textContent = `${parsed.composicoes.length} composição(ões) pronta(s) para importar${avisos}.`;
+  }
+}
+
+function cpuImportarBibliotecaAdicionar(composicoes, options = {}) {
+  let adicionadas = 0, atualizadas = 0, ignoradas = 0;
+  (composicoes || []).forEach(cpu => {
+    if (!cpu?.cod || !cpu?.desc) { ignoradas++; return; }
+    const normalizada = {
+      ...cpu,
+      cod: String(cpu.cod).trim().toUpperCase(),
+      id: cpu.id || makeId('cpu')
+    };
+    const idx = CPU_BIBLIOTECA.findIndex(item => codigoChave(item.cod) === codigoChave(normalizada.cod));
+    if (idx >= 0) {
+      if (!options.overwrite) { ignoradas++; return; }
+      normalizada.id = CPU_BIBLIOTECA[idx].id;
+      CPU_BIBLIOTECA[idx] = normalizada;
+      atualizadas++;
+    } else {
+      CPU_BIBLIOTECA.push(normalizada);
+      adicionadas++;
+    }
+  });
+  CPU_BIBLIOTECA.forEach(cpu => cpuRecalcularComposicaoSalva(cpu));
+  cpuSaveLib();
+  cpuRenderBiblioteca();
+  return { adicionadas, atualizadas, ignoradas };
+}
+
+function cpuImportarBibliotecaExecutar() {
+  const parsed = cpuImportarBibliotecaParseAtual();
+  if (!parsed.composicoes.length) {
+    toast(parsed.issues[0] || 'Nenhuma composição válida encontrada.', 'error');
+    return;
+  }
+  const overwrite = !!document.getElementById('cpu-import-overwrite')?.checked;
+  const res = cpuImportarBibliotecaAdicionar(parsed.composicoes, { overwrite });
+  const status = document.getElementById('cpu-import-status');
+  if (status) {
+    status.className = 'form-help ok';
+    status.textContent = `${res.adicionadas} adicionada(s), ${res.atualizadas} atualizada(s), ${res.ignoradas} ignorada(s).`;
+  }
+  toast(`${res.adicionadas + res.atualizadas} composição(ões) importada(s) para a biblioteca.`, (res.adicionadas + res.atualizadas) ? 'success' : 'warning');
 }
 
 // ─── INIT FASE 3 ───────────────────────────────────────────
