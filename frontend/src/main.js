@@ -1914,6 +1914,7 @@ function insumosNormalizarManual(raw, options = {}) {
     modoCalculo: raw.modoCalculo || raw.tipoCalculo || (raw.memoriaCustoHorario ? 'calculada' : 'manual'),
     salarioMensal: Number(raw.salarioMensal ?? raw.salario ?? 0) || 0,
     beneficiosMensais: Number(raw.beneficiosMensais ?? raw.beneficios ?? 0) || 0,
+    beneficiosCompostos: clonePlain(raw.beneficiosCompostos || [], []),
     encargosPct: Number(raw.encargosPct ?? raw.encargos ?? 0) || 0,
     horasProdutivasMes: Number(raw.horasProdutivasMes ?? raw.horas ?? 0) || 0,
     custoProdutivo: raw.custoProdutivo ?? preco,
@@ -1983,6 +1984,7 @@ function insumosModoCalculoAlterado() {
       ? 'Modo calculado ativo: calcule salário, benefícios, encargos e horas produtivas para atualizar o custo unitário do insumo.'
       : 'O custo improdutivo fica disponível apenas para equipamentos.';
   }
+  if (visible) insumosMaoObraRenderBeneficios();
 }
 
 function calcularCustoMaoObraDados({ salario = 0, beneficios = 0, encargos = 0, horas = 189, beneficiosCompostos = [] } = {}) {
@@ -2009,12 +2011,106 @@ function calcularCustoMaoObraDados({ salario = 0, beneficios = 0, encargos = 0, 
   };
 }
 
+function insumosMaoObraAdicionarBeneficio() {
+  const raw = document.getElementById('ins-ben-desc')?.value?.trim();
+  const qtd = readNumeroCampo('ins-ben-qtd') || 1;
+  let preco = readNumeroCampo('ins-ben-preco');
+  const periodo = document.getElementById('ins-ben-periodo')?.value || 'mensal';
+  const fatorMes = readNumeroCampo('ins-ben-fator') || beneficioFatorPadrao(periodo);
+  const preview = document.getElementById('ins-ben-preview');
+  if (!raw) {
+    toast('Informe o benefício ou código do insumo.', 'error');
+    return;
+  }
+  const ref = buscarReferenciaPorCodigo(raw);
+  const descricao = ref?.descricao || raw;
+  if (ref && !preco) preco = ref.precoUnitario;
+  if (preco <= 0) {
+    toast('Informe o preço unitário do benefício.', 'error');
+    return;
+  }
+  MAO_OBRA_BENEFICIOS_DRAFT.push({
+    id: makeId('ben'),
+    codigo: ref?.codigo || '',
+    descricao,
+    quantidade: qtd,
+    precoUnitario: preco,
+    periodicidade: periodo,
+    fatorMes,
+    fonte: ref?.fonte || 'Informado'
+  });
+  ['ins-ben-desc','ins-ben-preco','ins-ben-fator'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const qtdEl = document.getElementById('ins-ben-qtd');
+  if (qtdEl) qtdEl.value = '1';
+  if (preview) {
+    preview.textContent = `${descricao} adicionado à composição de benefícios.`;
+    preview.className = 'form-help ok';
+  }
+  insumosMaoObraRenderBeneficios();
+  insumosMaoObraAplicarBeneficios({ silent:true });
+}
+
+function insumosMaoObraRemoverBeneficio(id) {
+  MAO_OBRA_BENEFICIOS_DRAFT = MAO_OBRA_BENEFICIOS_DRAFT.filter(i => i.id !== id);
+  insumosMaoObraRenderBeneficios();
+  insumosMaoObraAplicarBeneficios({ silent:true });
+}
+
+function insumosMaoObraLimparBeneficios() {
+  MAO_OBRA_BENEFICIOS_DRAFT = [];
+  insumosMaoObraRenderBeneficios();
+  insumosMaoObraAplicarBeneficios({ silent:true });
+}
+
+function insumosMaoObraRenderBeneficios() {
+  const tbody = document.getElementById('ins-beneficios-lista');
+  if (!tbody) return;
+  if (!MAO_OBRA_BENEFICIOS_DRAFT.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:14px">Nenhum benefício composto.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = MAO_OBRA_BENEFICIOS_DRAFT.map(i => `
+    <tr>
+      <td>${escapeHtml(i.descricao)}<div class="table-input-sub">${escapeHtml(i.codigo || i.fonte || '')}</div></td>
+      <td>${fmtNum(i.quantidade)}</td>
+      <td>${fmtMoeda(i.precoUnitario)}</td>
+      <td>${escapeHtml(i.periodicidade)}</td>
+      <td>${fmtNum(i.fatorMes)}</td>
+      <td><strong>${fmtMoeda(beneficioTotalMensal(i))}</strong></td>
+      <td><button class="btn btn-outline btn-sm" onclick="insumosMaoObraRemoverBeneficio('${escapeHtml(i.id)}')">Remover</button></td>
+    </tr>
+  `).join('');
+}
+
+function insumosMaoObraAplicarBeneficios(options = {}) {
+  const total = MAO_OBRA_BENEFICIOS_DRAFT.reduce((s, i) => s + beneficioTotalMensal(i), 0);
+  const input = document.getElementById('ins-mo-beneficios');
+  if (input) input.value = total ? String(roundCustoHorario(total, 2)).replace('.', ',') : '';
+  const preview = document.getElementById('ins-ben-preview');
+  if (preview) {
+    preview.textContent = total ? `Benefícios mensais calculados: ${fmtMoeda(total)}.` : '';
+    preview.className = total ? 'form-help ok' : 'form-help';
+  }
+  if (!options.skipPreview) insumosCalcularMaoObra();
+  if (!options.silent && total) toast('Benefícios calculados e aplicados à mão de obra.', 'success');
+  return total;
+}
+
 function insumosCalcularMaoObra() {
+  const beneficiosCompostos = clonePlain(MAO_OBRA_BENEFICIOS_DRAFT, []);
+  const beneficiosCalculados = beneficiosCompostos.length
+    ? beneficiosCompostos.reduce((s, i) => s + beneficioTotalMensal(i), 0)
+    : 0;
+  if (beneficiosCompostos.length) {
+    const input = document.getElementById('ins-mo-beneficios');
+    if (input) input.value = String(roundCustoHorario(beneficiosCalculados, 2)).replace('.', ',');
+  }
   const calc = calcularCustoMaoObraDados({
     salario: readNumeroCampo('ins-mo-salario'),
-    beneficios: readNumeroCampo('ins-mo-beneficios'),
+    beneficios: beneficiosCompostos.length ? beneficiosCalculados : readNumeroCampo('ins-mo-beneficios'),
     encargos: readNumeroCampo('ins-mo-encargos'),
-    horas: readNumeroCampo('ins-mo-horas')
+    horas: readNumeroCampo('ins-mo-horas'),
+    beneficiosCompostos
   });
   const preview = document.getElementById('ins-mo-preview');
   if (preview) {
@@ -2057,6 +2153,10 @@ function insumosLimparFormulario() {
   set('ins-mo-beneficios');
   set('ins-mo-encargos', '127.5');
   set('ins-mo-horas', '189');
+  MAO_OBRA_BENEFICIOS_DRAFT = [];
+  insumosMaoObraRenderBeneficios();
+  const benPreview = document.getElementById('ins-ben-preview');
+  if (benPreview) { benPreview.textContent = ''; benPreview.className = 'form-help'; }
   const preview = document.getElementById('ins-mo-preview');
   if (preview) preview.innerHTML = '';
   insumosGrupoAlterado();
@@ -2083,6 +2183,7 @@ function insumosSalvarManual() {
     memoriaCustoHorario: calcMaoObra?.memoria || '',
     salarioMensal: calcMaoObra?.salario || 0,
     beneficiosMensais: calcMaoObra?.beneficios || 0,
+    beneficiosCompostos: calcMaoObra?.beneficiosCompostos || [],
     encargosPct: calcMaoObra?.encargos || 0,
     horasProdutivasMes: calcMaoObra?.horas || 0,
     custoProdutivo: calcMaoObra?.custoHora || readNumeroCampo('ins-preco')
@@ -2119,6 +2220,14 @@ function insumosEditarManual(codigo) {
   set('ins-mo-beneficios', item.beneficiosMensais ? String(item.beneficiosMensais) : '');
   set('ins-mo-encargos', item.encargosPct ? String(item.encargosPct) : '127.5');
   set('ins-mo-horas', item.horasProdutivasMes ? String(item.horasProdutivasMes) : '189');
+  MAO_OBRA_BENEFICIOS_DRAFT = clonePlain(item.beneficiosCompostos || [], []).map(i => ({ ...i, id: i.id || makeId('ben') }));
+  insumosMaoObraRenderBeneficios();
+  const benPreview = document.getElementById('ins-ben-preview');
+  if (benPreview) {
+    const totalBeneficios = MAO_OBRA_BENEFICIOS_DRAFT.reduce((s, i) => s + beneficioTotalMensal(i), 0);
+    benPreview.textContent = totalBeneficios ? `Benefícios mensais calculados: ${fmtMoeda(totalBeneficios)}.` : '';
+    benPreview.className = totalBeneficios ? 'form-help ok' : 'form-help';
+  }
   const preview = document.getElementById('ins-mo-preview');
   if (preview) {
     preview.innerHTML = item.memoriaCustoHorario
@@ -4290,6 +4399,28 @@ function custosEquipamentoLimparInsumos() {
   custosEquipamentoCalcular();
 }
 
+function custosEquipamentoAtualizarPrecosInsumosDraft() {
+  let mudou = false;
+  EQUIPAMENTO_INSUMOS_DRAFT = EQUIPAMENTO_INSUMOS_DRAFT.map(item => {
+    const ref = buscarReferenciaPorCodigo(item.codigo);
+    if (!ref) return item;
+    const precoAtual = Number(ref.precoUnitario) || 0;
+    const next = {
+      ...item,
+      codigo: ref.codigo || item.codigo,
+      descricao: ref.descricao || item.descricao,
+      unidade: ref.unidade || item.unidade,
+      tipo: ref.tipo || item.tipo,
+      precoUnitario: precoAtual,
+      fonte: ref.fonte || item.fonte
+    };
+    if (Math.abs((Number(item.precoUnitario) || 0) - precoAtual) > 0.0001 || item.fonte !== next.fonte) mudou = true;
+    return next;
+  });
+  if (mudou) custosEquipamentoRenderInsumos();
+  return mudou;
+}
+
 function custosEquipamentoRenderInsumos() {
   const tbody = document.getElementById('eq-insumos-lista');
   if (!tbody) return;
@@ -4334,6 +4465,7 @@ function custosEquipamentoCalcular() {
     parcelas.aluguel = readNumeroCampo('eq-man-aluguel');
     parcelas.outros = readNumeroCampo('eq-man-outros');
   } else {
+    custosEquipamentoAtualizarPrecosInsumosDraft();
     const aquisicao = readNumeroCampo('eq-aquisicao');
     const residual = Math.min(aquisicao, readNumeroCampo('eq-residual'));
     const vida = readNumeroCampo('eq-vida');
@@ -4437,7 +4569,7 @@ function custosEquipamentoSalvar() {
 }
 
 function custosEquipamentoAtualizarInsumo(options = {}) {
-  const calc = options.calc || ULTIMO_CALC_EQUIPAMENTO || custosEquipamentoCalcular();
+  const calc = options.calc || custosEquipamentoCalcular();
   const cod = options.cod || document.getElementById('eq-cod')?.value?.trim();
   const nome = options.nome || document.getElementById('eq-nome')?.value?.trim();
   if (!cod || !nome || calc.custoHora <= 0) {
@@ -4610,7 +4742,7 @@ function custosMaoObraSalvar() {
 }
 
 function custosMaoObraAtualizarInsumo(options = {}) {
-  const calc = options.calc || ULTIMO_CALC_MAO_OBRA || custosMaoObraCalcular();
+  const calc = options.calc || custosMaoObraCalcular();
   const codInput = document.getElementById('mo-cod');
   const cod = options.cod || codInput?.value?.trim() || insumosCodigoSequencial('S');
   const cargo = options.cargo || document.getElementById('mo-cargo')?.value?.trim();
@@ -4632,6 +4764,7 @@ function custosMaoObraAtualizarInsumo(options = {}) {
     memoriaCustoHorario: calc.memoria,
     salarioMensal: calc.salario,
     beneficiosMensais: calc.beneficios,
+    beneficiosCompostos: calc.beneficiosCompostos || [],
     encargosPct: calc.encargos,
     horasProdutivasMes: calc.horas
   }, { save: options.save !== false });
