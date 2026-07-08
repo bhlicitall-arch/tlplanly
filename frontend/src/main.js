@@ -1723,9 +1723,14 @@ function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
   const temQtd = String(qtdRaw ?? '').trim() !== '' && parseNumeroBR(qtdRaw) > 0;
   const isPrincipal = raw?.semUnidQtd === true || (!unidRaw && !temQtd);
   const qtd = isPrincipal ? 0 : (Number(raw?.qtd) || parseNumeroBR(qtdRaw) || 1);
-  const preco = Number(raw?.preco ?? raw?.valorUnitario ?? raw?.custoUnitario ?? 0) || 0;
-  const precoVenda = Number(raw?.precoVenda ?? raw?.valorVenda ?? raw?.precoVendaUnitario ?? preco) || preco;
-  const totalLinha = Number(raw?.totalLinha ?? raw?.total ?? 0) || 0;
+  const precoRaw = raw?.preco ?? raw?.valorUnitario ?? raw?.custoUnitario ?? raw?.precoUnitario ?? 0;
+  const preco = Number(precoRaw) || parseNumeroBR(precoRaw) || 0;
+  const precoVendaRaw = raw?.precoVenda ?? raw?.valorVenda ?? raw?.precoVendaUnitario ?? raw?.vendaUnitaria ?? preco;
+  const precoVenda = Number(precoVendaRaw) || parseNumeroBR(precoVendaRaw) || preco;
+  const totalRaw = raw?.totalLinha ?? raw?.total ?? raw?.totalCusto ?? 0;
+  const totalLinha = Number(totalRaw) || parseNumeroBR(totalRaw) || 0;
+  const totalVendaRaw = raw?.totalVendaLinha ?? raw?.totalVenda ?? raw?.valorVendaTotal ?? totalLinha;
+  const totalVendaLinha = Number(totalVendaRaw) || parseNumeroBR(totalVendaRaw) || totalLinha;
   return {
     id: makeId('orc'),
     cod,
@@ -1745,7 +1750,7 @@ function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
     origemMetodo: raw?.origemMetodo || raw?.origem || 'importacao',
     linhaOrigem: raw?.linhaOrigem || '',
     totalLinha: isPrincipal ? 0 : totalLinha,
-    totalVendaLinha: isPrincipal ? 0 : (Number(raw?.totalVendaLinha ?? raw?.totalVenda ?? totalLinha) || totalLinha)
+    totalVendaLinha: isPrincipal ? 0 : totalVendaLinha
   };
 }
 
@@ -6538,8 +6543,10 @@ const SHEET_FIELDS = {
     { key:'desc', label:'Descrição', hint:'Serviço, insumo ou especificação', required:true, aliases:['descricao','descrição','servico','serviço','especificacao','especificação','insumo'] },
     { key:'unid', label:'Unidade', hint:'UN, M2, M3, H, KG...', aliases:['unidade','unid','und','un'] },
     { key:'qtd', label:'Quantidade', hint:'Quantidade do orçamento', numeric:true, aliases:['quantidade','quant','qtd','qtde'] },
-    { key:'preco', label:'Custo unitário', hint:'Preço unitário sem BDI', numeric:true, aliases:['preco unitario','preço unitário','valor unitario','valor unitário','custo unitario','custo unitário','p unit'] },
-    { key:'total', label:'Total da linha', hint:'Opcional, usado para conferência', numeric:true, aliases:['total','preco total','preço total','valor total','custo total'] },
+    { key:'precoVenda', label:'Venda unitária', hint:'Preço de venda unitário, quando existir', numeric:true, aliases:['venda unit','venda unitario','venda unitária','preco venda','preço venda','preco de venda','preço de venda','preco venda unit','preço venda unit','valor venda','valor de venda','pv unit','p venda'] },
+    { key:'preco', label:'Custo unitário', hint:'Preço unitário sem BDI', numeric:true, aliases:['preco','preço','preco unit','preço unit','preco unitario','preço unitário','valor unit','valor unitário','valor unitario','custo unit','custo unitario','custo unitário','custo un','p unit','p unitario','p unitário','unitario','unitário'] },
+    { key:'totalVenda', label:'Total venda', hint:'Total de venda da linha, quando existir', numeric:true, aliases:['total venda','venda total','preco venda total','preço venda total','valor venda total','total preco venda','total preço venda'] },
+    { key:'total', label:'Total custo', hint:'Opcional, usado para conferência', numeric:true, aliases:['total','total custo','custo total','preco total','preço total','valor total','total da linha'] },
     { key:'categoria', label:'Categoria/capítulo', hint:'Grupo do item', aliases:['categoria','grupo','classe','capitulo','capítulo'] },
   ],
   insumos: [
@@ -6755,15 +6762,18 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
       const unidRaw = sheetCell(row, mapping.unid);
       const qtd = qtdRaw ? parseNumeroBR(qtdRaw) : 0;
       const preco = parseNumeroBR(sheetCell(row, mapping.preco));
+      const precoVenda = parseNumeroBR(sheetCell(row, mapping.precoVenda));
       const totalLinha = parseNumeroBR(sheetCell(row, mapping.total));
+      const totalVendaLinha = parseNumeroBR(sheetCell(row, mapping.totalVenda));
       const item = {
         cod: limparCodigo(sheetCell(row, mapping.cod)),
         desc: sheetCell(row, mapping.desc),
         unid: unidRaw ? normalizarUnidadeImportacao(unidRaw) : '',
         qtd,
         preco,
-        precoVenda: preco,
+        precoVenda: precoVenda || preco,
         totalLinha,
+        totalVendaLinha: totalVendaLinha || totalLinha,
         cat: sheetCell(row, mapping.categoria) || 'Serviços',
         capitulo: sheetCell(row, mapping.categoria) || 'Serviços',
         origem: 'excel',
