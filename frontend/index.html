@@ -173,7 +173,8 @@
     </div>
     <div class="obra-active-actions">
       <button class="btn btn-outline btn-sm" onclick="obrasSalvarSessaoAtual()">Salvar sessão atual como obra</button>
-      <button class="btn btn-gold btn-sm" onclick="showView('cpu')">Ir para composições</button>
+      <button class="btn btn-gold btn-sm" onclick="obrasScrollServicos()">Cadastrar serviços</button>
+      <button class="btn btn-outline btn-sm" onclick="showView('cpu')">Ir para composições</button>
     </div>
   </div>
 
@@ -182,6 +183,39 @@
     <div class="card"><div class="card-title">Planilhas / Lotes</div><div class="card-value gold" id="obra-kpi-lotes">0</div><div class="card-sub">na obra ativa</div></div>
     <div class="card"><div class="card-title">Itens</div><div class="card-value green" id="obra-kpi-itens">0</div><div class="card-sub">no orçamento ativo</div></div>
     <div class="card"><div class="card-title">Recentes</div><div class="card-value" id="obra-kpi-recentes">0</div><div class="card-sub">últimas consultas</div></div>
+  </div>
+
+  <div class="card obra-servicos-card" id="obra-servicos-card">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">Serviços <span>da Obra</span></div>
+        <div class="text-sm" style="color:var(--text2);margin-top:4px">Cadastre primeiro os serviços do orçamento; depois vincule cada serviço a uma composição analítica.</div>
+      </div>
+      <div class="obra-service-actions">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('obra-serv-import-input')?.click()">Importar Excel/PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="obrasServicoLimparFormulario()">Novo serviço</button>
+      </div>
+    </div>
+    <input id="obra-serv-import-input" type="file" accept=".xlsx,.xls,.ods,.csv,.pdf" multiple style="display:none" onchange="obrasServicosImportarArquivo(event)"/>
+    <div class="obra-servico-form">
+      <div><label class="form-label">Item / código</label><input id="obra-serv-cod" class="form-input" placeholder="Ex: 01.01 ou SVC-001"/></div>
+      <div class="obra-servico-desc"><label class="form-label">Serviço</label><input id="obra-serv-desc" class="form-input" placeholder="Ex: Escavação, transporte, concreto, drenagem..."/></div>
+      <div><label class="form-label">Unidade</label><input id="obra-serv-unid" class="form-input" placeholder="m³" value="UN"/></div>
+      <div><label class="form-label">Quantidade</label><input id="obra-serv-qtd" class="form-input" type="number" min="0" step="0.0001" value="1"/></div>
+      <button class="btn btn-gold" onclick="obrasServicoSalvar()">Salvar serviço</button>
+    </div>
+    <div class="obra-vinculo-form">
+      <div><label class="form-label">Serviço cadastrado</label><select id="obra-serv-select" class="form-select"></select></div>
+      <div><label class="form-label">Composição / CPU</label><select id="obra-serv-cpu" class="form-select"></select></div>
+      <button class="btn btn-outline" onclick="obrasServicoVincularCPU()">Vincular composição</button>
+      <button class="btn btn-outline" onclick="showView('cpu')">Criar composição</button>
+    </div>
+    <div class="tbl-wrap mt-3">
+      <table>
+        <thead><tr><th>Item</th><th>Serviço</th><th>Un</th><th>Qtd</th><th>Composição</th><th>Preço unit.</th><th>Total</th><th>Ações</th></tr></thead>
+        <tbody id="obra-servicos-lista"><tr><td colspan="8" class="empty-state" style="padding:18px">Nenhum serviço cadastrado nesta obra.</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="card obra-workspace-card">
@@ -2059,7 +2093,7 @@
             <option value="nao_calcular">Não calcular</option>
           </select>
         </div>
-        <div><label class="form-label">Código do equipamento</label><input id="eq-cod" class="form-input" placeholder="Ex: IE0001" onblur="custosEquipamentoLookup()"/></div>
+        <div><label class="form-label">Código do equipamento</label><input id="eq-cod" class="form-input" placeholder="Ex: IE0001" oninput="custosEquipamentoCodigoChange()" onkeydown="custosEquipamentoCodigoKeydown(event)" onblur="custosEquipamentoLookup()"/></div>
         <div><label class="form-label">Equipamento</label><input id="eq-nome" class="form-input" placeholder="Digite o código para buscar"/></div>
       </div>
       <div id="eq-lookup-status" class="form-help"></div>

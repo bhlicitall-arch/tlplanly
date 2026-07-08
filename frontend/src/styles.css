@@ -297,6 +297,17 @@ body.core-only .core-section{
 .obra-active-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .obra-kpis{margin-bottom:18px}
 .obra-layout{align-items:start}
+.obra-servicos-card{margin-bottom:18px;border-color:color-mix(in srgb,var(--gold) 20%,var(--border))}
+.obra-service-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.obra-servico-form{
+  display:grid;grid-template-columns:minmax(120px,.55fr) minmax(260px,1.4fr) minmax(90px,.35fr) minmax(120px,.45fr) auto;
+  gap:10px;align-items:end;margin-bottom:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);
+}
+.obra-servico-desc{min-width:0}
+.obra-vinculo-form{
+  display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,1.4fr) auto auto;
+  gap:10px;align-items:end;margin-bottom:12px;padding:12px;border:1px solid color-mix(in srgb,var(--gold) 18%,var(--border));border-radius:var(--radius);background:color-mix(in srgb,var(--gold) 5%,var(--bg3));
+}
 .obra-checkline{
   display:flex;align-items:center;gap:8px;align-self:end;
   min-height:38px;padding:9px 10px;border:1px solid var(--border);
@@ -344,6 +355,8 @@ body.core-only .core-section{
 @media(max-width:980px){
   .obra-active-banner{flex-direction:column;align-items:flex-start}
   .obra-active-actions{justify-content:flex-start}
+  .obra-service-actions{justify-content:flex-start}
+  .obra-servico-form,.obra-vinculo-form{grid-template-columns:1fr}
   .obra-lote-form{grid-template-columns:1fr}
   .workspace-grid,.obra-open-tools{grid-template-columns:1fr}
 }

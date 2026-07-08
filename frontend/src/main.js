@@ -1517,6 +1517,300 @@ function obrasRender() {
       </div>`).join('');
     }
   }
+  obrasServicosRender();
+}
+
+function obrasScrollServicos() {
+  document.getElementById('obra-servicos-card')?.scrollIntoView({ behavior:'smooth', block:'start' });
+  setTimeout(() => document.getElementById('obra-serv-desc')?.focus(), 250);
+}
+
+function obrasServicoCodigoPadrao() {
+  const seq = String((STATE.orcamento || []).length + 1).padStart(2, '0');
+  return `SVC-${seq}`;
+}
+
+function obrasServicoLimparFormulario() {
+  const card = document.getElementById('obra-servicos-card');
+  if (card) card.dataset.editId = '';
+  const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value; };
+  set('obra-serv-cod', obrasServicoCodigoPadrao());
+  set('obra-serv-desc');
+  set('obra-serv-unid', 'UN');
+  set('obra-serv-qtd', '1');
+}
+
+function obrasServicoSalvar() {
+  normalizeState();
+  if (!obraAtiva()) {
+    toast('Crie ou abra uma obra antes de cadastrar serviços.', 'error');
+    return;
+  }
+  const card = document.getElementById('obra-servicos-card');
+  const editId = card?.dataset.editId || '';
+  const cod = document.getElementById('obra-serv-cod')?.value?.trim() || obrasServicoCodigoPadrao();
+  const desc = document.getElementById('obra-serv-desc')?.value?.trim();
+  const unid = document.getElementById('obra-serv-unid')?.value?.trim() || 'UN';
+  const qtd = readNumeroCampo('obra-serv-qtd') || 0;
+  if (!desc) { toast('Informe a descrição do serviço da obra.', 'error'); return; }
+  if (qtd <= 0) { toast('Informe a quantidade do serviço.', 'error'); return; }
+
+  const existente = editId ? STATE.orcamento.find(it => it.id === editId) : null;
+  if (existente) {
+    existente.cod = cod;
+    existente.desc = desc;
+    existente.unid = unid;
+    existente.qtd = qtd;
+    existente.capitulo = existente.capitulo || 'Serviços da Obra';
+    existente.cat = existente.cat || 'Serviço da obra';
+  } else {
+    STATE.orcamento.push({
+      id: makeId('orc'),
+      cod,
+      desc,
+      unid,
+      qtd,
+      preco: 0,
+      ref: 0,
+      cat: 'Serviço da obra',
+      capitulo: 'Serviços da Obra',
+      ordem: STATE.orcamento.length + 1,
+      origem: 'servico-obra'
+    });
+  }
+  invalidarDescontoPregao('serviço da obra alterado');
+  saveState();
+  obrasServicoLimparFormulario();
+  obrasRender();
+  if (typeof renderElaborar === 'function') renderElaborar();
+  toast(existente ? 'Serviço atualizado.' : 'Serviço cadastrado. Agora vincule uma composição.', 'success');
+}
+
+function obrasServicoEditar(id) {
+  const item = (STATE.orcamento || []).find(it => it.id === id);
+  if (!item) return;
+  const card = document.getElementById('obra-servicos-card');
+  if (card) card.dataset.editId = id;
+  const set = (field, value = '') => { const el = document.getElementById(field); if (el) el.value = value; };
+  set('obra-serv-cod', item.cod || '');
+  set('obra-serv-desc', item.desc || '');
+  set('obra-serv-unid', item.unid || 'UN');
+  set('obra-serv-qtd', Number(item.qtd) || 1);
+  obrasScrollServicos();
+}
+
+function obrasServicoExcluir(id) {
+  const item = (STATE.orcamento || []).find(it => it.id === id);
+  if (!item) return;
+  if (!confirm(`Excluir o serviço ${item.cod || ''} - ${item.desc || ''}?`)) return;
+  STATE.orcamento = STATE.orcamento.filter(it => it.id !== id);
+  STATE.orcamento.forEach((it, idx) => { it.ordem = idx + 1; });
+  invalidarDescontoPregao('serviço da obra excluído');
+  saveState();
+  obrasRender();
+  if (typeof renderElaborar === 'function') renderElaborar();
+  toast('Serviço excluído da obra.', 'info');
+}
+
+function obrasServicoVincularCPU() {
+  const itemId = document.getElementById('obra-serv-select')?.value || '';
+  const cpuId = document.getElementById('obra-serv-cpu')?.value || '';
+  const item = (STATE.orcamento || []).find(it => it.id === itemId);
+  const cpu = (typeof CPU_BIBLIOTECA !== 'undefined' ? CPU_BIBLIOTECA : []).find(c => String(c.id) === String(cpuId));
+  if (!item) { toast('Selecione um serviço cadastrado.', 'error'); return; }
+  if (!cpu) { toast('Selecione uma composição para vincular ao serviço.', 'error'); return; }
+  const preco = Number(cpu.precoUnitario) || 0;
+  item.preco = roundUnitPrice(preco);
+  item.ref = roundUnitPrice(preco);
+  item.composicaoId = cpu.id;
+  item.composicaoCod = cpu.cod;
+  item.composicaoDesc = cpu.desc;
+  item.cat = cpu.tipo || item.cat || 'Serviço da obra';
+  item.capitulo = cpu.tipo || item.capitulo || 'Serviços da Obra';
+  item.totalLinha = 0;
+  invalidarDescontoPregao('composição vinculada ao serviço');
+  saveState();
+  obrasRender();
+  if (typeof renderElaborar === 'function') renderElaborar();
+  toast('Composição vinculada ao serviço da obra.', 'success');
+}
+
+function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
+  const desc = String(raw?.desc || raw?.descricao || raw?.servico || '').replace(/\s+/g, ' ').trim();
+  if (!desc || desc.length < 3) return null;
+  const codRaw = raw?.cod || raw?.codigo || raw?.item || '';
+  const cod = limparCodigo(codRaw) || `SVC-${String((STATE.orcamento || []).length + index + 1).padStart(3, '0')}`;
+  const qtd = Number(raw?.qtd) || parseNumeroBR(raw?.quantidade || raw?.qtde || '') || 1;
+  const preco = Number(raw?.preco ?? raw?.valorUnitario ?? raw?.custoUnitario ?? 0) || 0;
+  const totalLinha = Number(raw?.totalLinha ?? raw?.total ?? 0) || 0;
+  return {
+    id: makeId('orc'),
+    cod,
+    desc,
+    unid: normalizarUnidadeImportacao(raw?.unid || raw?.unidade || 'UN'),
+    qtd: qtd > 0 ? qtd : 1,
+    preco,
+    ref: preco,
+    cat: 'Serviço da obra',
+    capitulo: 'Serviços da Obra',
+    ordem: (STATE.orcamento || []).length + index + 1,
+    origem: 'servico-importado',
+    origemArquivo,
+    origemMetodo: raw?.origemMetodo || raw?.origem || 'importacao',
+    linhaOrigem: raw?.linhaOrigem || '',
+    totalLinha
+  };
+}
+
+async function obrasServicosImportarArquivo(event) {
+  const input = event?.target;
+  const files = Array.from(input?.files || []);
+  if (input) input.value = '';
+  if (!files.length) return;
+  if (!obraAtiva()) {
+    toast('Crie ou abra uma obra antes de importar a relação de serviços.', 'error');
+    return;
+  }
+
+  const importados = [];
+  const avisos = [];
+  for (const file of files) {
+    try {
+      const ext = getFileExt(file);
+      let items = [];
+      if (SPREADSHEET_EXTS.includes(ext)) {
+        const sheets = await lerPlanilhasArquivo(file);
+        sheets.forEach(entry => {
+          const sugestao = sheetSuggestMapping(entry.raw, 'orcamento');
+          const parsed = sheetParseMappedRows(entry.raw, sugestao.mapping, 'orcamento', sugestao.headerRow);
+          items.push(...parsed.items.map(it => ({ ...it, origemMetodo: `Planilha ${entry.sheetName}` })));
+          avisos.push(...parsed.issues.map(msg => `${file.name}/${entry.sheetName}: ${msg}`));
+        });
+      } else if (ext === 'pdf') {
+        items = await obrasServicosExtrairPDF(file);
+      } else {
+        avisos.push(`${file.name}: formato ignorado.`);
+        continue;
+      }
+      items.forEach((item, idx) => {
+        const normalizado = obrasServicoNormalizarImportado(item, file.name, importados.length + idx);
+        if (normalizado) importados.push(normalizado);
+      });
+    } catch (err) {
+      avisos.push(`${file.name}: ${err.message}`);
+    }
+  }
+
+  if (!importados.length) {
+    toast(avisos[0] || 'Nenhum serviço válido foi encontrado no arquivo.', 'error');
+    return;
+  }
+
+  STATE.orcamento = [...(STATE.orcamento || []), ...importados];
+  STATE.orcamento.forEach((it, idx) => { it.ordem = idx + 1; });
+  invalidarDescontoPregao('serviços importados para a obra');
+  saveState();
+  obrasRender();
+  if (typeof renderElaborar === 'function') renderElaborar();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
+  const extra = avisos.length ? ` ${Math.min(avisos.length, 3)} aviso(s) para revisar.` : '';
+  toast(`${importados.length} serviço(s) importado(s) para a obra.${extra}`, avisos.length ? 'info' : 'success');
+}
+
+async function obrasServicosExtrairPDF(file) {
+  if (!window.pdfjsLib) throw new Error('PDF.js não carregou.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const linhas = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const byY = {};
+    tc.items.forEach(item => {
+      const y = Math.round(item.transform[5]);
+      if (!byY[y]) byY[y] = [];
+      byY[y].push({ x: Math.round(item.transform[4]), text: String(item.str || '').trim() });
+    });
+    Object.keys(byY).map(Number).sort((a, b) => b - a).forEach(y => {
+      const line = byY[y].sort((a, b) => a.x - b.x).map(part => part.text).join(' ').replace(/\s+/g, ' ').trim();
+      if (line) linhas.push(line);
+    });
+    await sleep(5);
+  }
+  const estruturados = parsearLinhas(linhas);
+  const genericos = obrasServicosParseLinhasGenericas(linhas);
+  return genericos.length > estruturados.length ? genericos : estruturados;
+}
+
+function obrasServicosParseLinhasGenericas(linhas) {
+  const tailRe = new RegExp(`\\b(${UNIDADE_TAIL_IMPORT_RE_SRC})\\b\\s+(${NUM_IMPORT_RE_SRC})(?:\\s+(?:R\\$\\s*)?(${NUM_IMPORT_RE_SRC}))?(?:\\s+(?:R\\$\\s*)?(${NUM_IMPORT_RE_SRC}))?\\s*$`, 'i');
+  const rows = [];
+  (linhas || []).forEach(line => {
+    const cleaned = String(line || '').replace(/\s+/g, ' ').trim();
+    if (!cleaned || linhaImportacaoIgnorada(cleaned)) return;
+    const tail = cleaned.match(tailRe);
+    if (!tail || tail.index === undefined) return;
+    const before = cleaned.slice(0, tail.index).trim();
+    const head = before.match(/^([A-Z]{0,4}\d[\w.\-/]*(?:\s+\d[\w.\-/]*){0,5})\s+(.{4,})$/i);
+    if (!head) return;
+    const cod = limparCodigo(head[1]).replace(/\s+/g, '.');
+    const desc = head[2].replace(/\s+/g, ' ').trim();
+    if (!cod || desc.length < 4) return;
+    rows.push({
+      cod,
+      desc,
+      unid: normalizarUnidadeImportacao(tail[1]),
+      qtd: parseNumeroBR(tail[2]) || 1,
+      preco: parseNumeroBR(tail[3]) || 0,
+      totalLinha: parseNumeroBR(tail[4]) || 0,
+      origem: 'pdf',
+      origemMetodo: 'PDF planilha de serviços',
+      linhaOrigem: cleaned
+    });
+  });
+  return rows;
+}
+
+function obrasServicosRender() {
+  const tbody = document.getElementById('obra-servicos-lista');
+  const servSelect = document.getElementById('obra-serv-select');
+  const cpuSelect = document.getElementById('obra-serv-cpu');
+  if (!tbody && !servSelect && !cpuSelect) return;
+  const servicos = Array.isArray(STATE.orcamento) ? STATE.orcamento : [];
+  if (servSelect) {
+    servSelect.innerHTML = servicos.length
+      ? servicos.map(it => `<option value="${escapeHtml(it.id)}">${escapeHtml(it.cod || '')} · ${escapeHtml(it.desc || '')}</option>`).join('')
+      : '<option value="">Nenhum serviço cadastrado</option>';
+  }
+  const cpus = typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
+  if (cpuSelect) {
+    cpuSelect.innerHTML = cpus.length
+      ? cpus.map(cpu => `<option value="${escapeHtml(String(cpu.id))}">${escapeHtml(cpu.cod || '')} · ${escapeHtml(cpu.desc || '')} · ${fmtMoeda(cpu.precoUnitario || 0)}</option>`).join('')
+      : '<option value="">Nenhuma CPU salva ainda</option>';
+  }
+  if (!tbody) return;
+  if (!servicos.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state" style="padding:18px">Nenhum serviço cadastrado nesta obra.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = servicos.map(it => {
+    const total = itemValor(it);
+    const cpuLabel = it.composicaoCod ? `${it.composicaoCod} · ${it.composicaoDesc || ''}` : 'Sem composição vinculada';
+    return `<tr>
+      <td class="td-mono">${escapeHtml(it.cod || '')}</td>
+      <td><strong>${escapeHtml(it.desc || '')}</strong></td>
+      <td>${escapeHtml(it.unid || '')}</td>
+      <td>${fmtNum(it.qtd || 0)}</td>
+      <td>${escapeHtml(cpuLabel)}</td>
+      <td>${it.composicaoCod ? fmtMoeda(it.preco || 0) : '<span class="badge badge-warn">A vincular</span>'}</td>
+      <td><strong>${fmtMoeda(total)}</strong></td>
+      <td><div class="obra-row-actions">
+        <button class="btn btn-outline btn-sm" onclick="obrasServicoEditar(${inlineJsArg(it.id)})">Editar</button>
+        <button class="btn btn-outline btn-sm" onclick="obrasServicoExcluir(${inlineJsArg(it.id)})">Excluir</button>
+      </div></td>
+    </tr>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3714,6 +4008,7 @@ let EQUIPAMENTO_INSUMOS_DRAFT = [];
 let MAO_OBRA_BENEFICIOS_DRAFT = [];
 let ULTIMO_CALC_EQUIPAMENTO = null;
 let ULTIMO_CALC_MAO_OBRA = null;
+let EQUIPAMENTO_COD_ATUAL = '';
 
 function roundCustoHorario(v, casas = 4) {
   const factor = Math.pow(10, casas);
@@ -3777,15 +4072,123 @@ function custosEquipamentoModoChange() {
   if (insumos) insumos.style.display = modo === 'parcelas_calculadas' ? '' : 'none';
 }
 
-function custosEquipamentoLookup() {
+function custosEquipamentoSetCampo(id, value = '') {
+  const el = document.getElementById(id);
+  if (el) el.value = value === null || value === undefined ? '' : value;
+}
+
+function custosEquipamentoLimparCamposCodigo() {
+  [
+    'eq-nome','eq-aquisicao','eq-residual','eq-k-manutencao','eq-juros','eq-impostos','eq-combustivel','eq-operador',
+    'eq-man-depreciacao','eq-man-juros','eq-man-impostos','eq-man-manutencao','eq-man-material','eq-man-mao-obra','eq-man-aluguel','eq-man-outros'
+  ].forEach(id => custosEquipamentoSetCampo(id, ''));
+  custosEquipamentoSetCampo('eq-vida', '10000');
+  custosEquipamentoSetCampo('eq-fator', '1');
+  const status = document.getElementById('eq-lookup-status');
+  if (status) { status.textContent = ''; status.className = 'form-help'; }
+  const preview = document.getElementById('eq-preview');
+  if (preview) preview.innerHTML = '';
+  const insPreview = document.getElementById('eq-ins-preview');
+  if (insPreview) { insPreview.textContent = ''; insPreview.className = 'form-help'; }
+  EQUIPAMENTO_INSUMOS_DRAFT = [];
+  ULTIMO_CALC_EQUIPAMENTO = null;
+  custosEquipamentoRenderInsumos();
+}
+
+function custosEquipamentoCodigoChange() {
+  const cod = codigoChave(document.getElementById('eq-cod')?.value || '');
+  if (!cod) {
+    if (EQUIPAMENTO_COD_ATUAL) custosEquipamentoLimparCamposCodigo();
+    EQUIPAMENTO_COD_ATUAL = '';
+    return;
+  }
+  if (EQUIPAMENTO_COD_ATUAL && cod !== EQUIPAMENTO_COD_ATUAL) {
+    custosEquipamentoLimparCamposCodigo();
+    EQUIPAMENTO_COD_ATUAL = '';
+  }
+}
+
+function custosEquipamentoCodigoKeydown(event) {
+  if (event?.key !== 'Enter') return;
+  event.preventDefault();
+  custosEquipamentoLookup({ force:true });
+}
+
+function custosEquipamentoRegistroPorCodigo(cod) {
+  const code = codigoChave(cod);
+  return (STATE.equipamentosHorarios || []).slice().reverse().find(r => codigoChave(r.cod) === code) || null;
+}
+
+function custosEquipamentoSetParcelasManual(parcelas = {}) {
+  custosEquipamentoSetCampo('eq-man-depreciacao', roundCustoHorario(parcelas.depreciacao || 0));
+  custosEquipamentoSetCampo('eq-man-juros', roundCustoHorario(parcelas.juros || 0));
+  custosEquipamentoSetCampo('eq-man-impostos', roundCustoHorario(parcelas.impostosSeguros || parcelas.impostos || 0));
+  custosEquipamentoSetCampo('eq-man-manutencao', roundCustoHorario(parcelas.manutencao || 0));
+  custosEquipamentoSetCampo('eq-man-material', roundCustoHorario(parcelas.material || 0));
+  custosEquipamentoSetCampo('eq-man-mao-obra', roundCustoHorario(parcelas.maoObra || parcelas.mao_obra || 0));
+  custosEquipamentoSetCampo('eq-man-aluguel', roundCustoHorario(parcelas.aluguel || 0));
+  custosEquipamentoSetCampo('eq-man-outros', roundCustoHorario(parcelas.outros || 0));
+}
+
+function custosEquipamentoAplicarRegistro(registro) {
+  if (!registro) return false;
+  const modo = registro.modoCalculo || 'parcelas_calculadas';
+  const modoEl = document.getElementById('eq-modo');
+  if (modoEl) modoEl.value = ['parcelas_calculadas','parcelas_informadas','nao_calcular'].includes(modo) ? modo : 'parcelas_calculadas';
+  custosEquipamentoSetCampo('eq-nome', registro.nome || registro.desc || '');
+  custosEquipamentoSetCampo('eq-aquisicao', registro.aquisicao || '');
+  custosEquipamentoSetCampo('eq-residual', registro.valorResidual || registro.residual || '');
+  custosEquipamentoSetCampo('eq-vida', registro.vidaHoras || registro.vidaUtil || 10000);
+  custosEquipamentoSetCampo('eq-fator', registro.fatorDepreciacao || 1);
+  custosEquipamentoSetCampo('eq-k-manutencao', registro.fatorManutencao || '');
+  custosEquipamentoSetCampo('eq-juros', registro.jurosHora || 0);
+  custosEquipamentoSetCampo('eq-impostos', registro.impostosSegurosHora || 0);
+  EQUIPAMENTO_INSUMOS_DRAFT = (registro.insumos || []).map(i => ({ ...i, id: i.id || makeId('eqins') }));
+  const materialInsumos = somaInsumosPorParcela('material');
+  const maoObraInsumos = somaInsumosPorParcela('mao_obra');
+  custosEquipamentoSetCampo('eq-combustivel', roundCustoHorario(Math.max(0, (Number(registro.materialHora) || 0) - materialInsumos)));
+  custosEquipamentoSetCampo('eq-operador', roundCustoHorario(Math.max(0, (Number(registro.maoObraHora) || 0) - maoObraInsumos)));
+  custosEquipamentoSetParcelasManual(registro.parcelas || {
+    depreciacao: registro.depreciacaoHora,
+    juros: registro.jurosHora,
+    impostosSeguros: registro.impostosSegurosHora,
+    manutencao: registro.manutencaoHora,
+    material: registro.materialHora,
+    maoObra: registro.maoObraHora,
+    aluguel: registro.aluguelHora,
+    outros: registro.outrosHora
+  });
+  custosEquipamentoModoChange();
+  custosEquipamentoRenderInsumos();
+  custosEquipamentoCalcular();
+  return true;
+}
+
+function custosEquipamentoAplicarParcelasReferencia(item) {
+  const parcelas = item?.parcelasCustoHorario || item?.parcelas;
+  if (!parcelas) return false;
+  const modoEl = document.getElementById('eq-modo');
+  if (modoEl) modoEl.value = 'parcelas_informadas';
+  custosEquipamentoSetParcelasManual(parcelas);
+  custosEquipamentoModoChange();
+  custosEquipamentoCalcular();
+  return true;
+}
+
+function custosEquipamentoLookup(options = {}) {
   const cod = document.getElementById('eq-cod')?.value?.trim();
   const status = document.getElementById('eq-lookup-status');
   if (!cod) {
+    EQUIPAMENTO_COD_ATUAL = '';
+    custosEquipamentoLimparCamposCodigo();
     if (status) { status.textContent = ''; status.className = 'form-help'; }
     return null;
   }
+  const code = codigoChave(cod);
+  if (EQUIPAMENTO_COD_ATUAL && code !== EQUIPAMENTO_COD_ATUAL) custosEquipamentoLimparCamposCodigo();
   const ref = buscarReferenciaPorCodigo(cod);
   if (!ref) {
+    EQUIPAMENTO_COD_ATUAL = '';
     if (status) {
       status.textContent = 'Código não encontrado na base de insumos. Cadastre o equipamento em Insumos/Bases antes de aprovar o custo.';
       status.className = 'form-help error';
@@ -3793,10 +4196,19 @@ function custosEquipamentoLookup() {
     return null;
   }
   const nome = document.getElementById('eq-nome');
-  if (nome && !nome.value.trim()) nome.value = ref.descricao;
+  if (nome) nome.value = ref.descricao;
+  EQUIPAMENTO_COD_ATUAL = code;
+  const registro = custosEquipamentoRegistroPorCodigo(code);
+  const aplicouRegistro = custosEquipamentoAplicarRegistro(registro);
+  const aplicouParcelas = !aplicouRegistro && custosEquipamentoAplicarParcelasReferencia(ref.item);
   if (status) {
-    status.textContent = `${ref.descricao} · ${ref.unidade} · ${fmtMoeda(ref.precoUnitario)} · ${ref.fonte}`;
+    const origem = aplicouRegistro ? 'custo horário salvo carregado' : aplicouParcelas ? 'parcelas salvas carregadas' : ref.fonte;
+    status.textContent = `${ref.descricao} · ${ref.unidade} · ${fmtMoeda(ref.precoUnitario)} · ${origem}`;
     status.className = 'form-help ok';
+  }
+  if (options.force && !aplicouRegistro && !aplicouParcelas) {
+    const preview = document.getElementById('eq-preview');
+    if (preview) preview.innerHTML = '';
   }
   return ref;
 }
