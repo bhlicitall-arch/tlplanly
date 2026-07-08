@@ -6558,15 +6558,20 @@ const SHEET_FIELDS = {
     { key:'grupo', label:'Grupo de custo', hint:'Código do grupo cadastrado na etapa anterior', aliases:['grupo','grupo custo','grupo de custo','codigo grupo','cod grupo'] },
   ],
   composicoes: [
-    { key:'cpuCod', label:'Código da CPU', hint:'Obrigatório', required:true, aliases:['codigo cpu','cod cpu','composicao','composição','codigo composicao','codigo servico'] },
-    { key:'cpuDesc', label:'Descrição da CPU', hint:'Serviço composto', aliases:['descricao cpu','descrição cpu','descricao composicao','servico','serviço'] },
-    { key:'cpuUnid', label:'Unidade da CPU', hint:'Unidade do serviço', aliases:['unidade cpu','unid cpu','unidade servico','unidade serviço'] },
-    { key:'insumoCod', label:'Código do insumo', hint:'Obrigatório para vincular', required:true, aliases:['codigo insumo','cod insumo','insumo','codigo recurso','recurso'] },
-    { key:'insumoDesc', label:'Descrição do insumo', hint:'Opcional se o código já existir', aliases:['descricao insumo','descrição insumo','descricao recurso','recurso descricao'] },
-    { key:'insumoUnid', label:'Unidade do insumo', hint:'UN, H, KG...', aliases:['unidade insumo','unid insumo','unidade recurso'] },
+    { key:'cpuCod', label:'Cod. Composição', hint:'Obrigatório', required:true, aliases:['cod composicao','cod composição','codigo cpu','cod cpu','composicao','composição','codigo composicao','codigo composição','codigo servico'] },
+    { key:'cpuDesc', label:'Desc. Composição', hint:'Descrição abreviada do serviço composto', aliases:['desc composicao','desc composição','descricao cpu','descrição cpu','descricao composicao','descrição composição','servico','serviço'] },
+    { key:'cpuDescCompleta', label:'Desc. Compl. Comp', hint:'Descrição completa da composição', aliases:['desc compl comp','desc completa comp','descricao completa composicao','descrição completa composição','descricao completa','descrição completa','memorial composicao'] },
+    { key:'cpuUnid', label:'Unid. Composição', hint:'Unidade do serviço', aliases:['unid','unidade','unidade cpu','unid cpu','unidade servico','unidade serviço','unid composicao','unid composição'] },
+    { key:'prod', label:'Prod. Equipe', hint:'Produção da equipe por hora', numeric:true, aliases:['prod equipe','produção equipe','producao equipe','producao da equipe','produção da equipe','produtividade','produção por hora','producao por hora'] },
+    { key:'insumoCod', label:'Cod. Insumo', hint:'Obrigatório para vincular', required:true, aliases:['cod insumo','codigo insumo','código insumo','insumo','codigo recurso','código recurso','recurso'] },
+    { key:'insumoDesc', label:'Desc. Insumo', hint:'Opcional se o código já existir', aliases:['desc insumo','descricao insumo','descrição insumo','descricao recurso','descrição recurso','recurso descricao'] },
+    { key:'insumoUnid', label:'Unid. Insumo', hint:'UN, H, KG...', aliases:['unid insumo','unidade insumo','unid recurso','unidade recurso'] },
+    { key:'preco', label:'Preço Insumo', hint:'Custo produtivo do insumo', numeric:true, aliases:['preco insumo','preço insumo','preco produtivo','preço produtivo','preco','preço','custo','valor','preco unitario','custo unitario'] },
+    { key:'precoImprod', label:'Preço Improd.', hint:'Custo improdutivo do equipamento/recurso', numeric:true, aliases:['preco improd','preço improd','preco improdutivo','preço improdutivo','custo improd','custo improdutivo','valor improd'] },
+    { key:'coef', label:'Índice', hint:'Consumo produtivo do insumo por unidade da CPU', required:true, numeric:true, aliases:['indice','índice','coeficiente','coef','consumo','indice produtivo','índice produtivo','quantidade insumo'] },
+    { key:'coefImprod', label:'Índice Improd.', hint:'Consumo improdutivo do recurso', numeric:true, aliases:['indice improd','índice improd','indice improdutivo','índice improdutivo','coef improd','coeficiente improd','consumo improd'] },
+    { key:'qtdEquip', label:'Qtde Equip.', hint:'Quantidade de equipamentos/recursos na equipe', numeric:true, aliases:['qtde equip','qtd equip','quant equip','quantidade equip','quantidade equipamento','qtd equipe','qtde equipe'] },
     { key:'tipo', label:'Tipo do insumo', hint:'M, S, E ou T', aliases:['tipo','classe','categoria','grupo','natureza'] },
-    { key:'coef', label:'Coeficiente', hint:'Consumo do insumo por unidade da CPU', required:true, numeric:true, aliases:['coeficiente','coef','consumo','indice','índice','quantidade insumo'] },
-    { key:'preco', label:'Custo unitário do insumo', hint:'Pode vir da base importada', numeric:true, aliases:['preco','preço','custo','valor','preco unitario','custo unitario'] },
   ]
 };
 
@@ -6637,7 +6642,9 @@ function sheetDefaultMapping(purpose, maxCols) {
   } else if (purpose === 'insumos') {
     set('cod', 0); set('desc', 1); set('preco', 2); set('unid', 3); set('tipo', 4); set('grupo', 5);
   } else if (purpose === 'composicoes') {
-    set('cpuCod', 0); set('cpuDesc', 1); set('cpuUnid', 2); set('insumoCod', 3); set('insumoDesc', 4); set('tipo', 5); set('coef', 6); set('preco', 7);
+    set('cpuCod', 0); set('cpuDesc', 1); set('cpuDescCompleta', 2); set('cpuUnid', 3); set('prod', 4);
+    set('insumoCod', 5); set('insumoDesc', 6); set('insumoUnid', 7); set('preco', 8); set('precoImprod', 9);
+    set('coef', 10); set('coefImprod', 11); set('qtdEquip', 12);
   } else {
     set('cod', 0); set('desc', 1); set('unid', 2); set('qtd', 3); set('preco', 4); set('total', 5); set('categoria', 6);
   }
@@ -6711,6 +6718,12 @@ function sheetCell(row, idx) {
 }
 
 function normalizarTipoInsumoImportacao(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (/^IH/.test(raw)) return 'S';
+  if (/^IE/.test(raw)) return 'E';
+  if (/^IT/.test(raw)) return 'T';
+  if (/^IM/.test(raw)) return 'M';
+  if (/^IS/.test(raw)) return 'M';
   const n = sheetNormText(value);
   if (/mao|mdo|obra|pedreiro|servente|oficial|horista|carpinteiro|eletricista|encanador|pintor/.test(n)) return 'S';
   if (/equip|maquina|caminhao|trator|escavadeira|betoneira|andaime|guindaste/.test(n)) return 'E';
@@ -6819,30 +6832,49 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
       return;
     }
     const lookup = lookupPreco(insumoCod);
+    const insumoDesc = sheetCell(row, mapping.insumoDesc) || lookup?.item?.descricao || insumoCod;
     const precoMapeado = parseNumeroBR(sheetCell(row, mapping.preco));
+    const precoImprodMapeado = parseNumeroBR(sheetCell(row, mapping.precoImprod));
+    const precoImprodLookup = Number(lookup?.item?.custoImprodutivo ?? lookup?.item?.precoImprodutivo ?? lookup?.item?.improdutivo ?? 0) || 0;
+    const coef = parseNumeroBR(sheetCell(row, mapping.coef));
+    const coefImprod = parseNumeroBR(sheetCell(row, mapping.coefImprod));
+    const qtdEquip = parseNumeroBR(sheetCell(row, mapping.qtdEquip));
     const insumo = {
       cod: insumoCod,
-      desc: sheetCell(row, mapping.insumoDesc) || lookup?.item?.descricao || insumoCod,
+      desc: insumoDesc,
       unid: normalizarUnidadeImportacao(sheetCell(row, mapping.insumoUnid) || lookup?.item?.unidade || 'UN'),
-      tipo: normalizarTipoInsumoImportacao(sheetCell(row, mapping.tipo)),
-      coef: parseNumeroBR(sheetCell(row, mapping.coef)),
-      preco: precoMapeado || lookup?.preco || 0
+      tipo: normalizarTipoInsumoImportacao(sheetCell(row, mapping.tipo) || insumoCod || insumoDesc),
+      coef,
+      indice: coef,
+      coefImprod,
+      indiceImprodutivo: coefImprod,
+      qtdEquip,
+      quantidadeEquipamento: qtdEquip,
+      preco: precoMapeado || lookup?.preco || 0,
+      precoImprod: precoImprodMapeado || precoImprodLookup || 0,
+      precoImprodutivo: precoImprodMapeado || precoImprodLookup || 0
     };
-    if (!insumo.coef) result.issues.push(`Linha ${rowNumber}: coeficiente ausente ou zerado.`);
+    if (!insumo.coef && !insumo.coefImprod) result.issues.push(`Linha ${rowNumber}: índice produtivo/improdutivo ausente ou zerado.`);
     const cpu = cpuMap.get(cpuCod) || {
       id: makeId('cpu'),
       cod: cpuCod,
       desc: sheetCell(row, mapping.cpuDesc) || cpuCod,
+      descCompleta: sheetCell(row, mapping.cpuDescCompleta),
+      descricaoCompleta: sheetCell(row, mapping.cpuDescCompleta),
       unid: normalizarUnidadeImportacao(sheetCell(row, mapping.cpuUnid) || 'UN'),
       tipo: 'Serviços',
-      encargos: 'nd',
-      encPct: 127.5,
+      encargos: 'importado',
+      encPct: 0,
+      prod: parseNumeroBR(sheetCell(row, mapping.prod)) || 1,
+      producaoEquipe: parseNumeroBR(sheetCell(row, mapping.prod)) || 1,
+      modeloCalculo: 'compor',
+      importadoCompor: true,
       insumos: [],
       precoUnitario: 0,
       criadaEm: new Date().toLocaleDateString('pt-BR')
     };
     cpu.insumos.push(insumo);
-    cpu.precoUnitario = cpu.insumos.reduce((s, i) => s + (Number(i.coef) || 0) * (Number(i.preco) || 0), 0);
+    cpu.precoUnitario = cpuEditorCalcularDetalhes(cpu).custoUnitario;
     cpuMap.set(cpuCod, cpu);
   });
   result.composicoes = [...cpuMap.values()];
@@ -7463,9 +7495,17 @@ function registrarComposicoesImportadas(composicoes) {
     const normalizada = { ...comp, id: idx >= 0 ? CPU_BIBLIOTECA[idx].id : (comp.id || makeId('cpu')) };
     normalizada.insumos = (normalizada.insumos || []).map(ins => {
       const lookup = lookupPreco(ins.cod);
-      return { ...ins, preco: Number(ins.preco) || lookup?.preco || 0, desc: ins.desc || lookup?.item?.descricao || ins.cod, unid: ins.unid || lookup?.item?.unidade || 'UN' };
+      const precoImprod = Number(ins.precoImprod ?? ins.precoImprodutivo ?? lookup?.item?.custoImprodutivo ?? lookup?.item?.precoImprodutivo ?? 0) || 0;
+      return {
+        ...ins,
+        preco: Number(ins.preco) || lookup?.preco || 0,
+        precoImprod,
+        precoImprodutivo: precoImprod,
+        desc: ins.desc || lookup?.item?.descricao || ins.cod,
+        unid: ins.unid || lookup?.item?.unidade || 'UN'
+      };
     });
-    normalizada.precoUnitario = normalizada.insumos.reduce((s, i) => s + (Number(i.coef) || 0) * (Number(i.preco) || 0), 0);
+    normalizada.precoUnitario = cpuEditorCalcularDetalhes(normalizada).custoUnitario;
     if (idx >= 0) CPU_BIBLIOTECA[idx] = normalizada;
     else CPU_BIBLIOTECA.push(normalizada);
     count++;
@@ -7487,9 +7527,14 @@ function atualizarCpusPorInsumosImportados(insumos) {
       ins.unid = ref.unidade || ins.unid;
       ins.tipo = ref.tipo || ins.tipo;
       ins.preco = Number(ref.precoMedio) || Number(ins.preco) || 0;
+      const improd = Number(ref.custoImprodutivo ?? ref.precoImprodutivo ?? ref.improdutivo ?? 0) || 0;
+      if (improd) {
+        ins.precoImprod = improd;
+        ins.precoImprodutivo = improd;
+      }
       mudou = true;
     });
-    if (mudou) cpu.precoUnitario = (cpu.insumos || []).reduce((s, i) => s + (Number(i.coef) || 0) * (Number(i.preco) || 0), 0);
+    if (mudou) cpu.precoUnitario = cpuEditorCalcularDetalhes(cpu).custoUnitario;
   });
   if (mudou) {
     cpuSaveLib();
@@ -10751,6 +10796,32 @@ function cpuEditorFindByCode(cod) {
   return (CPU_BIBLIOTECA || []).find(cpu => codigoChave(cpu.cod) === code) || null;
 }
 
+function cpuInsumoIndiceImprodutivo(ins) {
+  return Number(ins?.coefImprod ?? ins?.indiceImprodutivo ?? ins?.indiceImprod ?? 0) || 0;
+}
+
+function cpuInsumoPrecoImprodutivo(ins) {
+  return Number(ins?.precoImprod ?? ins?.precoImprodutivo ?? ins?.custoImprodutivo ?? ins?.improdutivo ?? 0) || 0;
+}
+
+function cpuInsumoQtdEquipamento(ins) {
+  return Math.max(1, Number(ins?.qtdEquip ?? ins?.quantidadeEquipamento ?? ins?.qtdeEquip ?? 1) || 1);
+}
+
+function cpuUsaModeloCompor(cpu) {
+  return !!(cpu?.modeloCalculo === 'compor' || cpu?.importadoCompor || (cpu?.insumos || []).some(ins =>
+    cpuInsumoIndiceImprodutivo(ins) || cpuInsumoPrecoImprodutivo(ins) || Number(ins?.qtdEquip ?? ins?.quantidadeEquipamento ?? 0)
+  ));
+}
+
+function cpuInsumoTotalHora(ins, tipo, usarCompor = false) {
+  const coef = Number(ins?.coef ?? ins?.indice ?? 0) || 0;
+  const preco = Number(ins?.preco ?? ins?.precoUnitario ?? 0) || 0;
+  if (!usarCompor || tipo !== 'E') return coef * preco;
+  const improd = cpuInsumoIndiceImprodutivo(ins) * cpuInsumoPrecoImprodutivo(ins);
+  return cpuInsumoQtdEquipamento(ins) * ((coef * preco) + improd);
+}
+
 function cpuEditorAbrir(id, options = {}) {
   const cpu = cpuEditorFindById(id);
   if (!cpu) { toast('Composição não encontrada na biblioteca.', 'error'); return; }
@@ -10767,16 +10838,17 @@ function cpuEditorCalcularDetalhes(cpu) {
   const grupos = { E:0, S:0, M:0, T:0, AX:0 };
   const encPct = Number(cpu?.encPct) || 0;
   const prod = Math.max(0.0001, Number(cpu?.prod) || 1);
+  const usarCompor = cpuUsaModeloCompor(cpu);
   (cpu?.insumos || []).forEach(ins => {
-    const total = (Number(ins.coef) || 0) * (Number(ins.preco) || 0);
     const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
+    const total = cpuInsumoTotalHora(ins, tipo, usarCompor);
     grupos[tipo] = (grupos[tipo] || 0) + total;
   });
-  const maoComEnc = grupos.S * (1 + encPct / 100);
+  const maoComEnc = usarCompor ? grupos.S : grupos.S * (1 + encPct / 100);
   const equipamentoProd = grupos.E / prod;
   const maoProd = maoComEnc / prod;
   const custoUnitario = roundUnitPrice(grupos.M + grupos.T + grupos.AX + equipamentoProd + maoProd);
-  return { grupos, encPct, prod, maoComEnc, equipamentoProd, maoProd, custoUnitario };
+  return { grupos, encPct, prod, maoComEnc, equipamentoProd, maoProd, custoUnitario, usarCompor };
 }
 
 function cpuEditorRender() {
@@ -10817,15 +10889,18 @@ function cpuEditorRender() {
   if (!tbody) return;
   const rows = cpu.insumos || [];
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state" style="padding:18px">Esta composição não possui insumos.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="empty-state" style="padding:18px">Esta composição não possui insumos.</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map((ins, idx) => {
     const aux = cpuEditorFindByCode(ins.cod);
     const tipo = aux ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
     const coef = Number(ins.coef) || 0;
+    const coefImprod = cpuInsumoIndiceImprodutivo(ins);
+    const qtdEquip = tipo === 'E' ? cpuInsumoQtdEquipamento(ins) : 0;
     const preco = Number(ins.preco) || 0;
-    const total = coef * preco;
+    const precoImprod = cpuInsumoPrecoImprodutivo(ins);
+    const total = cpuInsumoTotalHora(ins, tipo, detalhes.usarCompor);
     const totalProd = (tipo === 'E' || tipo === 'S') ? total / detalhes.prod : total;
     return `<tr class="${CPU_EDITOR.selectedIndex === idx ? 'cpu-editor-selected' : ''}">
       <td><input type="radio" name="cpu-editor-row" ${CPU_EDITOR.selectedIndex === idx ? 'checked' : ''} onchange="cpuEditorSelecionarLinha(${idx})"/></td>
@@ -10834,7 +10909,10 @@ function cpuEditorRender() {
       <td>${escapeHtml(ins.unid || ins.unidade || '')}</td>
       <td><span class="badge">${tipo === 'AX' ? 'Auxiliar' : escapeHtml(cpuTipoDescricao(tipo))}</span></td>
       <td>${fmtNum(coef)}</td>
+      <td>${coefImprod ? fmtNum(coefImprod) : '—'}</td>
+      <td>${qtdEquip ? fmtNum(qtdEquip) : '—'}</td>
       <td>${fmtMoeda(preco)}</td>
+      <td>${precoImprod ? fmtMoeda(precoImprod) : '—'}</td>
       <td><strong>${fmtMoeda(total)}</strong></td>
       <td>${fmtMoeda(totalProd)}</td>
     </tr>`;
@@ -10883,18 +10961,13 @@ function cpuEditorRecalcular(options = {}) {
 }
 
 function cpuRecalcularComposicaoSalva(cpu) {
-  const grupos = { M:0, E:0, S:0, T:0, AX:0 };
   (cpu.insumos || []).forEach(ins => {
     const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
-    const subtotal = (Number(ins.coef) || 0) * (Number(ins.preco) || 0);
-    grupos[tipo] = (grupos[tipo] || 0) + subtotal;
     ins.tipo = tipo;
   });
-  const encPct = Number(cpu.encPct ?? STATE.bdiComponents?.encargos ?? 127.5) || 0;
-  const moComEnc = grupos.S * (1 + encPct / 100);
-  const prod = Math.max(0.0001, Number(cpu.prod) || 1);
-  cpu.precoUnitario = roundUnitPrice(grupos.M + grupos.T + grupos.AX + ((grupos.E + moComEnc) / prod));
-  cpu.gruposCusto = grupos;
+  const detalhes = cpuEditorCalcularDetalhes(cpu);
+  cpu.precoUnitario = detalhes.custoUnitario;
+  cpu.gruposCusto = detalhes.grupos;
   cpu.atualizadaEm = new Date().toISOString();
   return cpu.precoUnitario;
 }
