@@ -1741,6 +1741,40 @@ function obrasServicoCpuLista() {
   return typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
 }
 
+function obrasServicoExtrairCodigoCPU(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/\b[A-Z]{1,6}[\-.]?\d{2,8}(?:[\-.]\d+)?\b/i);
+  return limparCodigo(match ? match[0] : raw).toUpperCase();
+}
+
+function obrasServicoCpuPorCodigo(codigo) {
+  const code = codigoChave(obrasServicoExtrairCodigoCPU(codigo));
+  if (!code) return null;
+  const cpus = obrasServicoCpuLista();
+  const exact = cpus.find(cpu => codigoChave(cpu.cod) === code);
+  if (exact) return exact;
+  const partial = cpus.filter(cpu => codigoChave(cpu.cod).startsWith(code));
+  return partial.length === 1 ? partial[0] : null;
+}
+
+function obrasServicoAplicarCPU(item, cpu) {
+  if (!item || !cpu) return item;
+  const preco = Number(cpu.precoUnitario) || 0;
+  item.preco = roundUnitPrice(preco);
+  item.ref = roundUnitPrice(preco);
+  item.precoVenda = roundUnitPrice(totalComBDI(preco));
+  item.composicaoId = cpu.id;
+  item.composicaoCod = cpu.cod;
+  item.composicaoDesc = cpu.desc;
+  item.cat = cpu.tipo || item.cat || 'Serviço da obra';
+  item.capitulo = cpu.tipo || item.capitulo || 'Serviços da Obra';
+  item.totalLinha = 0;
+  item.totalVendaLinha = 0;
+  delete item.composicaoCodPendente;
+  return item;
+}
+
 function obrasServicoAtualizarCodigoCPU(options = {}) {
   const select = document.getElementById('obra-serv-cpu');
   const input = document.getElementById('obra-serv-cpu-codigo');
@@ -1754,12 +1788,9 @@ function obrasServicoSelecionarCPUPorCodigo(options = {}) {
   const input = document.getElementById('obra-serv-cpu-codigo');
   const select = document.getElementById('obra-serv-cpu');
   if (!input || !select) return false;
-  const code = codigoChave(input.value);
+  const code = codigoChave(obrasServicoExtrairCodigoCPU(input.value));
   if (!code) return false;
-  const cpus = obrasServicoCpuLista();
-  const exact = cpus.find(cpu => codigoChave(cpu.cod) === code);
-  const partial = exact ? [] : cpus.filter(cpu => codigoChave(cpu.cod).startsWith(code));
-  const cpu = exact || (partial.length === 1 ? partial[0] : null);
+  const cpu = obrasServicoCpuPorCodigo(code);
   if (!cpu) {
     if (!options.silent) toast('Composição não encontrada para o código informado.', 'error');
     return false;
@@ -1786,16 +1817,7 @@ function obrasServicoVincularCPU() {
   if (!item) { toast('Selecione um serviço cadastrado.', 'error'); return; }
   if (obrasServicoEhPrincipal(item)) { toast('Item principal recebe subtotal dos itens filhos. Vincule CPU em um serviço como 100.1, 100.2 etc.', 'warning'); return; }
   if (!cpu) { toast('Selecione uma composição para vincular ao serviço.', 'error'); return; }
-  const preco = Number(cpu.precoUnitario) || 0;
-  item.preco = roundUnitPrice(preco);
-  item.ref = roundUnitPrice(preco);
-  item.precoVenda = roundUnitPrice(totalComBDI(preco));
-  item.composicaoId = cpu.id;
-  item.composicaoCod = cpu.cod;
-  item.composicaoDesc = cpu.desc;
-  item.cat = cpu.tipo || item.cat || 'Serviço da obra';
-  item.capitulo = cpu.tipo || item.capitulo || 'Serviços da Obra';
-  item.totalLinha = 0;
+  obrasServicoAplicarCPU(item, cpu);
   invalidarDescontoPregao('composição vinculada ao serviço');
   saveState();
   obrasRender();
@@ -1822,7 +1844,10 @@ function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
   const totalLinha = Number(totalRaw) || parseNumeroBR(totalRaw) || 0;
   const totalVendaRaw = raw?.totalVendaLinha ?? raw?.totalVenda ?? raw?.valorVendaTotal ?? totalLinha;
   const totalVendaLinha = Number(totalVendaRaw) || parseNumeroBR(totalVendaRaw) || totalLinha;
-  return {
+  const composicaoCodRaw = raw?.composicaoCod ?? raw?.codigoComposicao ?? raw?.codComposicao ?? raw?.cpuCod ?? raw?.codigoCpu ?? raw?.composicao ?? '';
+  const composicaoCod = obrasServicoExtrairCodigoCPU(composicaoCodRaw);
+  const cpu = !isPrincipal ? obrasServicoCpuPorCodigo(composicaoCod) : null;
+  const item = {
     id: makeId('orc'),
     cod,
     desc,
@@ -1844,6 +1869,164 @@ function obrasServicoNormalizarImportado(raw, origemArquivo = '', index = 0) {
     totalLinha: isPrincipal ? 0 : totalLinha,
     totalVendaLinha: isPrincipal ? 0 : totalVendaLinha
   };
+  if (cpu) {
+    obrasServicoAplicarCPU(item, cpu);
+    item.origemMetodo = `${item.origemMetodo || 'importacao'} · CPU vinculada`;
+  } else if (!isPrincipal && composicaoCod) {
+    item.composicaoCodPendente = composicaoCod;
+    item.origemMetodo = `${item.origemMetodo || 'importacao'} · CPU não localizada`;
+  }
+  return item;
+}
+
+function obrasServicosImportarSheetAtual() {
+  return (OBRA_SERV_IMPORT.sheets || [])[Number(OBRA_SERV_IMPORT.currentIndex) || 0] || null;
+}
+
+function obrasServicosImportarRenderSheets() {
+  const select = document.getElementById('obra-serv-import-sheet');
+  if (!select) return;
+  const sheets = OBRA_SERV_IMPORT.sheets || [];
+  select.innerHTML = sheets.map((entry, index) => `<option value="${index}">${escapeHtml(entry.fileName || '')} · ${escapeHtml(entry.sheetName || '')} · ${entry.raw?.length || 0} linha(s)</option>`).join('');
+  select.value = String(OBRA_SERV_IMPORT.currentIndex || 0);
+}
+
+function obrasServicosImportarCancelar() {
+  OBRA_SERV_IMPORT = { sheets: [], currentIndex: 0, avisos: [] };
+  const card = document.getElementById('obra-serv-import-map-card');
+  if (card) card.style.display = 'none';
+  const preview = document.getElementById('obra-serv-import-preview');
+  if (preview) preview.innerHTML = '';
+  const status = document.getElementById('obra-serv-import-status');
+  if (status) { status.textContent = ''; status.className = 'form-help'; }
+}
+
+function obrasServicosImportarSelecionarAba(value) {
+  OBRA_SERV_IMPORT.currentIndex = Number(value) || 0;
+  obrasServicosImportarSugerirColunas();
+}
+
+function obrasServicosImportarSetCol(id, index) {
+  cpuImportarBibliotecaSetCol(id, index >= 0 ? index : -1);
+}
+
+function obrasServicosImportarGetCol(id) {
+  return cpuColumnIndexFromLetter(document.getElementById(id)?.value || '');
+}
+
+function obrasServicosImportarMapeamento() {
+  return {
+    cod: obrasServicosImportarGetCol('obra-map-serv-cod'),
+    desc: obrasServicosImportarGetCol('obra-map-serv-desc'),
+    unid: obrasServicosImportarGetCol('obra-map-serv-unid'),
+    qtd: obrasServicosImportarGetCol('obra-map-serv-qtd'),
+    preco: obrasServicosImportarGetCol('obra-map-serv-custo'),
+    precoVenda: obrasServicosImportarGetCol('obra-map-serv-venda'),
+    total: obrasServicosImportarGetCol('obra-map-serv-total'),
+    totalVenda: obrasServicosImportarGetCol('obra-map-serv-total-venda'),
+    composicaoCod: obrasServicosImportarGetCol('obra-map-serv-cpu')
+  };
+}
+
+function obrasServicosImportarSugerirColunas() {
+  const entry = obrasServicosImportarSheetAtual();
+  if (!entry) return;
+  const sugestao = sheetSuggestMapping(entry.raw, 'orcamento');
+  const maxCols = Math.max(0, ...sheetNormalizeRows(entry.raw).slice(0, 50).map(row => row.length));
+  const fallback = sheetDefaultMapping('orcamento', Math.max(maxCols, 8));
+  const hasHeader = sugestao.headerRow >= 0;
+  const map = hasHeader ? sugestao.mapping : fallback;
+  const set = (id, index) => obrasServicosImportarSetCol(id, index >= 0 ? index : -1);
+  set('obra-map-serv-cod', map.cod ?? fallback.cod ?? 0);
+  set('obra-map-serv-desc', map.desc ?? fallback.desc ?? 1);
+  set('obra-map-serv-unid', map.unid ?? fallback.unid ?? 2);
+  set('obra-map-serv-qtd', map.qtd ?? fallback.qtd ?? 3);
+  set('obra-map-serv-custo', map.preco ?? fallback.preco ?? 4);
+  set('obra-map-serv-venda', map.precoVenda ?? -1);
+  set('obra-map-serv-total', map.total ?? fallback.total ?? 5);
+  set('obra-map-serv-total-venda', map.totalVenda ?? -1);
+  set('obra-map-serv-cpu', hasHeader ? (map.composicaoCod ?? -1) : -1);
+  const start = document.getElementById('obra-serv-import-start-row');
+  if (start) start.value = String(Math.max(1, sugestao.headerRow >= 0 ? sugestao.headerRow + 2 : 2));
+  const label = document.getElementById('obra-serv-import-file-label');
+  if (label) label.textContent = `${entry.fileName || ''} · ${entry.sheetName || ''}`;
+  obrasServicosImportarPreview();
+}
+
+function obrasServicosImportarParseAtual() {
+  const entry = obrasServicosImportarSheetAtual();
+  if (!entry) return { items: [], issues: ['Nenhuma aba selecionada.'] };
+  const startInput = Number(document.getElementById('obra-serv-import-start-row')?.value || 1);
+  const start = Math.max(0, startInput - 1);
+  const rows = (entry.raw || []).slice(start);
+  const parsed = sheetParseMappedRows(rows, obrasServicosImportarMapeamento(), 'orcamento', -1);
+  return {
+    ...parsed,
+    items: parsed.items.map(item => ({ ...item, origemMetodo: `Planilha ${entry.sheetName}` })),
+    issues: parsed.issues.map(msg => `${entry.fileName || ''}/${entry.sheetName || ''}: ${msg}`)
+  };
+}
+
+function obrasServicosImportarPreview() {
+  const entry = obrasServicosImportarSheetAtual();
+  const preview = document.getElementById('obra-serv-import-preview');
+  const status = document.getElementById('obra-serv-import-status');
+  if (!entry || !preview) return;
+  const cols = obrasServicosImportarMapeamento();
+  const startInput = Number(document.getElementById('obra-serv-import-start-row')?.value || 1);
+  const start = Math.max(0, startInput - 1);
+  const rows = sheetNormalizeRows(entry.raw || []);
+  const sample = rows.slice(start, start + 8);
+  const headers = [
+    ['cod', 'Item'],
+    ['desc', 'Serviço'],
+    ['unid', 'Un'],
+    ['qtd', 'Qtd'],
+    ['preco', 'Custo'],
+    ['precoVenda', 'Venda'],
+    ['total', 'Total custo'],
+    ['totalVenda', 'Total venda'],
+    ['composicaoCod', 'CPU']
+  ];
+  preview.innerHTML = `<table><thead><tr>${headers.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join('')}</tr></thead><tbody>${
+    sample.map(row => `<tr>${headers.map(([key]) => `<td>${escapeHtml(sheetCell(row, cols[key]))}</td>`).join('')}</tr>`).join('')
+  }</tbody></table>`;
+  if (status) {
+    const parsed = obrasServicosImportarParseAtual();
+    const cpuCodes = parsed.items.map(it => obrasServicoExtrairCodigoCPU(it.composicaoCod)).filter(Boolean);
+    const vinculadas = cpuCodes.filter(code => obrasServicoCpuPorCodigo(code)).length;
+    const pendentes = cpuCodes.length - vinculadas;
+    status.textContent = `${parsed.items.length} serviço(s) detectado(s). ${vinculadas} CPU(s) serão vinculadas automaticamente${pendentes ? `; ${pendentes} código(s) ainda não existem na biblioteca.` : '.'}`;
+    status.className = pendentes ? 'form-help warning' : 'form-help success';
+  }
+}
+
+function obrasServicosAplicarImportados(importados, avisos = [], options = {}) {
+  if (!importados.length) {
+    toast(avisos[0] || 'Nenhum serviço válido foi encontrado no arquivo.', 'error');
+    return;
+  }
+  STATE.orcamento = options.overwrite ? importados : [...(STATE.orcamento || []), ...importados];
+  STATE.orcamento.forEach((it, idx) => { it.ordem = idx + 1; });
+  invalidarDescontoPregao('serviços importados para a obra');
+  saveState();
+  obrasRender();
+  if (typeof renderElaborar === 'function') renderElaborar();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
+  const extra = avisos.length ? ` ${Math.min(avisos.length, 3)} aviso(s) para revisar.` : '';
+  toast(`${importados.length} serviço(s) importado(s) para a obra.${extra}`, avisos.length ? 'info' : 'success');
+}
+
+function obrasServicosImportarExecutar() {
+  const parsed = obrasServicosImportarParseAtual();
+  const entry = obrasServicosImportarSheetAtual();
+  const importados = parsed.items
+    .map((item, idx) => obrasServicoNormalizarImportado(item, entry?.fileName || '', idx))
+    .filter(Boolean);
+  const overwrite = !!document.getElementById('obra-serv-import-overwrite')?.checked;
+  obrasServicosAplicarImportados(importados, [...(OBRA_SERV_IMPORT.avisos || []), ...(parsed.issues || [])], { overwrite });
+  obrasServicosImportarCancelar();
 }
 
 async function obrasServicosImportarArquivo(event) {
@@ -1858,18 +2041,16 @@ async function obrasServicosImportarArquivo(event) {
 
   const importados = [];
   const avisos = [];
+  const sheetsImportacao = [];
   for (const file of files) {
     try {
       const ext = getFileExt(file);
       let items = [];
       if (SPREADSHEET_EXTS.includes(ext)) {
+        if (!window.XLSX) throw new Error('Leitor de Excel não carregado.');
         const sheets = await lerPlanilhasArquivo(file);
-        sheets.forEach(entry => {
-          const sugestao = sheetSuggestMapping(entry.raw, 'orcamento');
-          const parsed = sheetParseMappedRows(entry.raw, sugestao.mapping, 'orcamento', sugestao.headerRow);
-          items.push(...parsed.items.map(it => ({ ...it, origemMetodo: `Planilha ${entry.sheetName}` })));
-          avisos.push(...parsed.issues.map(msg => `${file.name}/${entry.sheetName}: ${msg}`));
-        });
+        sheetsImportacao.push(...sheets.map(entry => ({ ...entry, fileName: file.name })));
+        continue;
       } else if (ext === 'pdf') {
         items = await obrasServicosExtrairPDF(file);
       } else {
@@ -1885,21 +2066,18 @@ async function obrasServicosImportarArquivo(event) {
     }
   }
 
-  if (!importados.length) {
-    toast(avisos[0] || 'Nenhum serviço válido foi encontrado no arquivo.', 'error');
+  if (sheetsImportacao.length) {
+    if (importados.length) obrasServicosAplicarImportados(importados, avisos);
+    OBRA_SERV_IMPORT = { sheets: sheetsImportacao, currentIndex: 0, avisos };
+    obrasServicosImportarRenderSheets();
+    const card = document.getElementById('obra-serv-import-map-card');
+    if (card) card.style.display = 'block';
+    obrasServicosImportarSugerirColunas();
+    toast('Planilha carregada. Confira as colunas e execute a importação.', 'info');
     return;
   }
 
-  STATE.orcamento = [...(STATE.orcamento || []), ...importados];
-  STATE.orcamento.forEach((it, idx) => { it.ordem = idx + 1; });
-  invalidarDescontoPregao('serviços importados para a obra');
-  saveState();
-  obrasRender();
-  if (typeof renderElaborar === 'function') renderElaborar();
-  if (typeof renderDashboard === 'function') renderDashboard();
-  if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
-  const extra = avisos.length ? ` ${Math.min(avisos.length, 3)} aviso(s) para revisar.` : '';
-  toast(`${importados.length} serviço(s) importado(s) para a obra.${extra}`, avisos.length ? 'info' : 'success');
+  obrasServicosAplicarImportados(importados, avisos);
 }
 
 async function obrasServicosExtrairPDF(file) {
@@ -1990,7 +2168,11 @@ function obrasServicosRender() {
     const total = principal ? subtotal : itemValor(it);
     const totalVenda = principal ? subtotalVenda : itemValorVenda(it);
     const qtdVazia = principal || it.quantidadeEmBranco === true || !(Number(it.qtd) > 0);
-    const cpuLabel = principal ? 'Item principal / subtotal' : (it.composicaoCod ? `${it.composicaoCod} · ${it.composicaoDesc || ''}` : 'Sem composição vinculada');
+    const cpuLabel = principal
+      ? 'Item principal / subtotal'
+      : (it.composicaoCod
+        ? `${it.composicaoCod} · ${it.composicaoDesc || ''}`
+        : (it.composicaoCodPendente ? `${it.composicaoCodPendente} · CPU não encontrada` : 'Sem composição vinculada'));
     return `<tr class="${principal ? 'obra-servico-principal' : ''}">
       <td class="td-mono">${escapeHtml(it.cod || '')}</td>
       <td><strong>${escapeHtml(it.desc || '')}</strong></td>
@@ -6624,6 +6806,7 @@ let IMP = {
 const IMPORT_EXTS = ['pdf','xlsx','xls','ods','csv','png','jpg','jpeg','tif','tiff'];
 const IMAGE_EXTS = ['png','jpg','jpeg','tif','tiff'];
 const SPREADSHEET_EXTS = ['xlsx','xls','ods','csv'];
+let OBRA_SERV_IMPORT = { sheets: [], currentIndex: 0, avisos: [] };
 const UNIDADES_IMPORTACAO = new Set(['UN','M','M2','M3','M2KM','M3KM','TKM','KG','T','L','H','HR','VG','VB','CJ','GL','MES','PONTO','KM','M2XMES']);
 const CODIGO_IMPORTACAO_RE = /(?:\b(ED-\d{3,6})\b|\b(CPU-\d+)\b|\b([A-Z0-9]{2}\.[A-Z0-9]{2}\.[A-Z0-9]{2})\b|(?<![,.])\b(\d{3,7})(?=\s+(?:SINAPI|SICRO|SICOR|ORSE|DNIT|SUDECAP)\b)(?![,.])|(?<![,.])\b(\d{5,7})\b(?![,.]))/i;
 const NUM_IMPORT_RE_SRC = String.raw`-?\d{1,3}(?:\.\d{3})*(?:,\d{1,8})|-?\d+(?:[.,]\d{1,8})?`;
@@ -6638,7 +6821,7 @@ const SHEET_FIELDS = {
     { key:'descricao', label:'Descrição complementar', hint:'Opcional', aliases:['observacao','observação','descricao complementar','descrição complementar','detalhe'] },
   ],
   orcamento: [
-    { key:'cod', label:'Código', hint:'Código do item ou composição', aliases:['codigo','cod','item','codigo item','codigo servico','codigo composicao'] },
+    { key:'cod', label:'Código', hint:'Código do item ou serviço', aliases:['codigo','cod','item','codigo item','codigo servico','código serviço','cod servico','cod serviço'] },
     { key:'desc', label:'Descrição', hint:'Serviço, insumo ou especificação', required:true, aliases:['descricao','descrição','servico','serviço','especificacao','especificação','insumo'] },
     { key:'unid', label:'Unidade', hint:'UN, M2, M3, H, KG...', aliases:['unidade','unid','und','un'] },
     { key:'qtd', label:'Quantidade', hint:'Quantidade do orçamento', numeric:true, aliases:['quantidade','quant','qtd','qtde'] },
@@ -6646,6 +6829,7 @@ const SHEET_FIELDS = {
     { key:'preco', label:'Custo unitário', hint:'Preço unitário sem BDI', numeric:true, aliases:['preco','preço','preco unit','preço unit','preco unitario','preço unitário','valor unit','valor unitário','valor unitario','custo unit','custo unitario','custo unitário','custo un','p unit','p unitario','p unitário','unitario','unitário'] },
     { key:'totalVenda', label:'Total venda', hint:'Total de venda da linha, quando existir', numeric:true, aliases:['total venda','venda total','preco venda total','preço venda total','valor venda total','total preco venda','total preço venda'] },
     { key:'total', label:'Total custo', hint:'Opcional, usado para conferência', numeric:true, aliases:['total','total custo','custo total','preco total','preço total','valor total','total da linha'] },
+    { key:'composicaoCod', label:'Código CPU', hint:'Código da composição vinculada ao serviço', aliases:['cpu','codigo cpu','código cpu','cod cpu','composicao','composição','cod composicao','cod composição','codigo composicao','código composição','composicao cpu','composição cpu','codigo da composicao','código da composição'] },
     { key:'categoria', label:'Categoria/capítulo', hint:'Grupo do item', aliases:['categoria','grupo','classe','capitulo','capítulo'] },
   ],
   insumos: [
@@ -6782,7 +6966,7 @@ function sheetDefaultMapping(purpose, maxCols) {
     set('insumoCod', 5); set('insumoDesc', 6); set('insumoUnid', 7); set('preco', 8); set('precoImprod', 9);
     set('coef', 10); set('coefImprod', 11); set('qtdEquip', 12);
   } else {
-    set('cod', 0); set('desc', 1); set('unid', 2); set('qtd', 3); set('preco', 4); set('total', 5); set('categoria', 6);
+    set('cod', 0); set('desc', 1); set('unid', 2); set('qtd', 3); set('preco', 4); set('total', 5); set('categoria', 6); set('composicaoCod', 7);
   }
   return map;
 }
@@ -6931,6 +7115,7 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
         precoVenda: precoVenda || preco,
         totalLinha,
         totalVendaLinha: totalVendaLinha || totalLinha,
+        composicaoCod: limparCodigo(sheetCell(row, mapping.composicaoCod)).toUpperCase(),
         cat: sheetCell(row, mapping.categoria) || 'Serviços',
         capitulo: sheetCell(row, mapping.categoria) || 'Serviços',
         origem: 'excel',

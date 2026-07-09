@@ -203,6 +203,56 @@
       </div>
     </div>
     <input id="obra-serv-import-input" type="file" accept=".xlsx,.xls,.ods,.csv,.pdf" multiple style="display:none" onchange="obrasServicosImportarArquivo(event)"/>
+    <div id="obra-serv-import-map-card" class="cpu-import-map-card obra-serv-import-map-card" style="display:none">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title">Importar <span>serviços via Excel</span></div>
+          <div id="obra-serv-import-file-label" class="text-sm" style="color:var(--text2);margin-top:4px">Confira as colunas antes de lançar os serviços na obra.</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="obrasServicosImportarCancelar()">Cancelar</button>
+      </div>
+
+      <div class="grid grid-4 cpu-import-settings" style="gap:10px">
+        <div>
+          <label class="form-label">Arquivo / aba</label>
+          <select id="obra-serv-import-sheet" class="form-select" onchange="obrasServicosImportarSelecionarAba(this.value)"></select>
+        </div>
+        <div>
+          <label class="form-label">Linha inicial</label>
+          <input id="obra-serv-import-start-row" class="form-input" type="number" min="1" step="1" value="2" oninput="obrasServicosImportarPreview()"/>
+        </div>
+        <label class="obra-checkline cpu-import-check">
+          <input id="obra-serv-import-overwrite" type="checkbox"/>
+          <span>Substituir serviços da obra</span>
+        </label>
+        <div class="cpu-import-detect">
+          <label class="form-label">&nbsp;</label>
+          <button class="btn btn-outline btn-sm" onclick="obrasServicosImportarSugerirColunas()">Detectar colunas</button>
+        </div>
+      </div>
+
+      <div class="cpu-import-map-block">
+        <div class="cpu-import-map-title">Serviço da obra (colunas)</div>
+        <div class="cpu-import-map-grid">
+          <div><label class="form-label">Item / código</label><input id="obra-map-serv-cod" class="form-input" placeholder="A" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Serviço</label><input id="obra-map-serv-desc" class="form-input" placeholder="B" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Unidade</label><input id="obra-map-serv-unid" class="form-input" placeholder="C" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Quantidade</label><input id="obra-map-serv-qtd" class="form-input" placeholder="D" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Custo unit.</label><input id="obra-map-serv-custo" class="form-input" placeholder="E" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Venda unit.</label><input id="obra-map-serv-venda" class="form-input" placeholder="0" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Total custo</label><input id="obra-map-serv-total" class="form-input" placeholder="F" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Total venda</label><input id="obra-map-serv-total-venda" class="form-input" placeholder="0" oninput="obrasServicosImportarPreview()"/></div>
+          <div><label class="form-label">Código CPU</label><input id="obra-map-serv-cpu" class="form-input" placeholder="G" oninput="obrasServicosImportarPreview()"/></div>
+        </div>
+      </div>
+
+      <div id="obra-serv-import-preview" class="sheet-preview-grid cpu-import-preview"></div>
+      <div id="obra-serv-import-status" class="form-help"></div>
+      <div class="flex flex-wrap mt-3">
+        <button class="btn btn-gold" onclick="obrasServicosImportarExecutar()">Executar importação</button>
+        <button class="btn btn-outline" onclick="obrasServicosImportarCancelar()">Cancelar</button>
+      </div>
+    </div>
     <div class="obra-servico-form">
       <div><label class="form-label">Item / código</label><input id="obra-serv-cod" class="form-input" placeholder="Ex: 01.01 ou SVC-001"/></div>
       <div class="obra-servico-desc"><label class="form-label">Serviço</label><input id="obra-serv-desc" class="form-input" placeholder="Ex: Escavação, transporte, concreto, drenagem..."/></div>
