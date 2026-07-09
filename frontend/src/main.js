@@ -207,6 +207,7 @@ function normalizarObras(obras) {
         cliente: String(obra.cliente || '').trim(),
         data: String(obra.data || todayIso()).slice(0, 10),
         bancoBase: String(obra.bancoBase || obra.banco || 'Base local').trim(),
+        encargosMaoObraPct: Number(obra.encargosMaoObraPct ?? obra.encargosMaoObra ?? obra.encargosPct ?? 0) || 0,
         multiPlanilha,
         lotes: normalizarLotesObra(obra.lotes, multiPlanilha),
         snapshot: obra.snapshot && typeof obra.snapshot === 'object' ? obra.snapshot : null,
@@ -1085,8 +1086,21 @@ function obrasLimparFormulario() {
   set('obra-nome');
   set('obra-cliente');
   set('obra-banco', 'Base local');
+  set('obra-encargos-mao-obra');
   const multi = document.getElementById('obra-multi');
   if (multi) multi.checked = false;
+}
+
+function obraEncargosMaoObraCampo() {
+  const el = document.getElementById('obra-encargos-mao-obra');
+  return el ? parseNumeroBR(el.value) : 0;
+}
+
+function obraEncargosMaoObraPct() {
+  const campo = obraEncargosMaoObraCampo();
+  if (campo > 0) return campo;
+  const obra = obraAtiva();
+  return Number(obra?.encargosMaoObraPct ?? obra?.encargosMaoObra ?? obra?.encargosPct ?? 0) || 0;
 }
 
 function obraSnapshotAtual() {
@@ -1181,6 +1195,7 @@ function obrasSalvarAtivaSnapshot(options = {}) {
   if (!Array.isArray(STATE.obras) || !STATE.obraAtivaId) return false;
   const obra = STATE.obras.find(o => o.id === STATE.obraAtivaId);
   if (!obra) return false;
+  obra.encargosMaoObraPct = obraEncargosMaoObraCampo();
   obra.snapshot = obraSnapshotAtual();
   obra.atualizadoEm = new Date().toISOString();
   const nomeCampo = document.getElementById('orcNome')?.value?.trim();
@@ -1192,6 +1207,8 @@ function obrasSalvarAtivaSnapshot(options = {}) {
 function obrasSalvarSessaoAtual() {
   normalizeState();
   if (STATE.obraAtivaId && obrasSalvarAtivaSnapshot({ silent:true })) {
+    const ativa = obraAtiva();
+    if (ativa) ativa.encargosMaoObraPct = obraEncargosMaoObraCampo();
     saveState();
     obrasRender();
     toast('Sessão atual salva na obra ativa', 'success');
@@ -1205,6 +1222,7 @@ function obrasSalvarSessaoAtual() {
     cliente: '',
     data: todayIso(),
     bancoBase: 'Base local',
+    encargosMaoObraPct: obraEncargosMaoObraCampo(),
     multiPlanilha: false,
     lotes: [lotePrincipalPadrao()],
     snapshot: obraSnapshotAtual(),
@@ -1231,6 +1249,7 @@ function obrasCriarNova() {
   const cliente = document.getElementById('obra-cliente')?.value?.trim() || '';
   const data = document.getElementById('obra-data')?.value || todayIso();
   const bancoBase = document.getElementById('obra-banco')?.value || 'Base local';
+  const encargosMaoObraPct = obraEncargosMaoObraCampo();
   const multiPlanilha = document.getElementById('obra-multi')?.checked === true;
   if (!nome) { toast('Informe o nome do projeto/obra.', 'error'); return; }
   obrasSalvarAtivaSnapshot({ silent:true });
@@ -1247,6 +1266,7 @@ function obrasCriarNova() {
     cliente,
     data,
     bancoBase,
+    encargosMaoObraPct,
     multiPlanilha,
     lotes,
     snapshot: obraSnapshotVazio(nome),
@@ -1449,13 +1469,17 @@ function obrasRender() {
   setText('obra-kpi-recentes', (STATE.obrasRecentes || []).length);
   setText('obra-active-title', active ? `${active.numero} · ${active.nome}` : 'Nenhuma obra cadastrada');
   setText('obra-active-meta', active
-    ? `${active.cliente || 'Cliente não informado'} · ${active.data || 'sem data'} · ${active.bancoBase || 'Base local'} · ${activeResumo.lotes} planilha(s)`
+    ? `${active.cliente || 'Cliente não informado'} · ${active.data || 'sem data'} · ${active.bancoBase || 'Base local'} · ${activeResumo.lotes} planilha(s)${Number(active.encargosMaoObraPct) > 0 ? ` · Encargos MO ${fmtNum(active.encargosMaoObraPct)}%` : ''}`
     : 'Crie uma obra para iniciar o núcleo de orçamento.');
 
   const dataInput = document.getElementById('obra-data');
   if (dataInput && !dataInput.value) dataInput.value = todayIso();
   const numeroInput = document.getElementById('obra-numero');
   if (numeroInput && !numeroInput.value) numeroInput.value = gerarNumeroObra();
+  const encargosInput = document.getElementById('obra-encargos-mao-obra');
+  if (encargosInput && active && document.activeElement !== encargosInput) {
+    encargosInput.value = Number(active.encargosMaoObraPct) > 0 ? active.encargosMaoObraPct : '';
+  }
 
   const busca = textoChave(document.getElementById('obra-busca')?.value || '');
   const obras = STATE.obras.filter(obra => {
@@ -1962,7 +1986,11 @@ function obrasCalculoGrupoInsumo(ins) {
   const cod = codigoChave(ins?.cod || ins?.codigo);
   if (cod.startsWith('IE')) return 'E';
   if (cod.startsWith('IH')) return 'S';
-  return cpuTipoManual(ins?.tipo || ins?.natureza || ins?.categoria, ins?.desc || ins?.descricao || '');
+  if (cod.startsWith('IM')) return 'M';
+  if (cod.startsWith('IS')) return 'SV';
+  if (cod.startsWith('IT')) return 'T';
+  if (cod && !cod.startsWith('I')) return 'AX';
+  return cpuTipoManual(cod || ins?.tipo || ins?.natureza || ins?.categoria, ins?.desc || ins?.descricao || '');
 }
 
 function obrasCalculoAtualizarInsumosCpu(flags = {}) {
@@ -6770,11 +6798,12 @@ function normalizarTipoInsumoImportacao(value) {
   if (/^IE/.test(raw)) return 'E';
   if (/^IT/.test(raw)) return 'T';
   if (/^IM/.test(raw)) return 'M';
-  if (/^IS/.test(raw)) return 'M';
+  if (/^IS/.test(raw)) return 'SV';
   const n = sheetNormText(value);
   if (/mao|mdo|obra|pedreiro|servente|oficial|horista|carpinteiro|eletricista|encanador|pintor/.test(n)) return 'S';
   if (/equip|maquina|caminhao|trator|escavadeira|betoneira|andaime|guindaste/.test(n)) return 'E';
   if (/transp|frete|dmt/.test(n)) return 'T';
+  if (/servic|terceir|empreitad/.test(n)) return 'SV';
   return 'M';
 }
 
@@ -7556,10 +7585,11 @@ function registrarComposicoesImportadas(composicoes) {
         precoImprod,
         precoImprodutivo: precoImprod,
         desc: ins.desc || lookup?.item?.descricao || ins.cod,
-        unid: ins.unid || lookup?.item?.unidade || 'UN'
+        unid: ins.unid || lookup?.item?.unidade || 'UN',
+        tipo: cpuTipoManual(ins.cod || ins.codigo || ins.tipo || lookup?.item?.tipo, ins.desc || lookup?.item?.descricao || '')
       };
     });
-    normalizada.precoUnitario = cpuEditorCalcularDetalhes(normalizada).custoUnitario;
+    cpuRecalcularComposicaoSalva(normalizada);
     if (idx >= 0) CPU_BIBLIOTECA[idx] = normalizada;
     else CPU_BIBLIOTECA.push(normalizada);
     count++;
@@ -7579,7 +7609,7 @@ function atualizarCpusPorInsumosImportados(insumos) {
       if (!ref) return;
       ins.desc = ref.descricao || ins.desc;
       ins.unid = ref.unidade || ins.unid;
-      ins.tipo = ref.tipo || ins.tipo;
+      ins.tipo = cpuTipoManual(ins.cod || ref.codigoSinapi || ref.codigo || ref.tipo || ins.tipo, ref.descricao || ins.desc || '');
       ins.preco = Number(ref.precoMedio) || Number(ins.preco) || 0;
       const improd = Number(ref.custoImprodutivo ?? ref.precoImprodutivo ?? ref.improdutivo ?? 0) || 0;
       if (improd) {
@@ -7588,7 +7618,7 @@ function atualizarCpusPorInsumosImportados(insumos) {
       }
       mudou = true;
     });
-    if (mudou) cpu.precoUnitario = cpuEditorCalcularDetalhes(cpu).custoUnitario;
+    if (mudou) cpuRecalcularComposicaoSalva(cpu);
   });
   if (mudou) {
     cpuSaveLib();
@@ -10352,15 +10382,23 @@ function cpuTipoManual(value, desc = '') {
   if (/^IE/.test(code)) return 'E';
   if (/^IT/.test(code)) return 'T';
   if (/^IM/.test(code)) return 'M';
+  if (/^IS/.test(code)) return 'SV';
+  const direto = textoChave(value || '');
+  if (['S','MO','MAO OBRA','MAO DE OBRA','HOMEM'].includes(direto)) return 'S';
+  if (['E','EQ','EQUIP','EQUIPAMENTO'].includes(direto)) return 'E';
+  if (['M','MAT','MATERIAL'].includes(direto)) return 'M';
+  if (['T','TR','TRANSP','TRANSPORTE','FRETE'].includes(direto)) return 'T';
+  if (['SV','SERV','SERVICO','SERVICOS'].includes(direto)) return 'SV';
   const raw = textoChave(`${value || ''} ${desc || ''}`);
-  if (['S','MO','MAO OBRA','MAO DE OBRA','SERVICO'].some(k => raw.includes(k))) return 'S';
-  if (['E','EQUIP','EQUIPAMENTO','MAQUINA'].some(k => raw.includes(k))) return 'E';
-  if (['T','TRANSP','TRANSPORTE','FRETE'].some(k => raw.includes(k))) return 'T';
+  if (raw.includes('MAO DE OBRA') || raw.includes('MAO OBRA') || raw.includes('HOMEM')) return 'S';
+  if (raw.includes('EQUIP') || raw.includes('EQUIPAMENTO') || raw.includes('MAQUINA')) return 'E';
+  if (raw.includes('TRANSP') || raw.includes('TRANSPORTE') || raw.includes('FRETE')) return 'T';
+  if (raw.includes('SERVICO') || raw.includes('SERVICOS') || raw.includes('TERCEIR')) return 'SV';
   return 'M';
 }
 
 function cpuTipoDescricao(tipo) {
-  return { M:'Material', E:'Equipamento', S:'Mão de obra', T:'Transporte' }[tipo] || 'Material';
+  return { M:'Material', E:'Equipamento', S:'Mão de obra', SV:'Serviço', T:'Transporte' }[tipo] || 'Material';
 }
 
 function cpuCodigoManual(codigo, desc = '') {
@@ -10375,7 +10413,7 @@ function cpuNormalizarInsumoManual(raw, options = {}) {
   const desc = String(raw.descricao || raw.desc || '').trim();
   const preco = Number(raw.precoMedio ?? raw.preco ?? raw.valor ?? 0) || 0;
   const cod = cpuCodigoManual(raw.codigoSinapi || raw.codigo || raw.cod, desc);
-  const tipo = cpuTipoManual(raw.tipo || raw.natureza || raw.categoria, desc);
+  const tipo = cpuTipoManual(cod || raw.tipo || raw.natureza || raw.categoria, desc);
   return {
     codigoSinapi: cod,
     codigo: cod,
@@ -10400,7 +10438,7 @@ function cpuSalvarInsumoManual(item) {
 }
 
 function cpuAdicionarInsumoNaComposicao(item, coef) {
-  const tipo = cpuTipoManual(item.tipo || item.natureza || item.categoria, item.descricao);
+  const tipo = cpuTipoManual(item.codigoSinapi || item.codigo || item.tipo || item.natureza || item.categoria, item.descricao);
   CPU.insumos.push({
     cod: item.codigoSinapi || item.codigo || '',
     desc: item.descricao || '',
@@ -10602,7 +10640,7 @@ function cpuSelecionarInsumo(cod) {
   // Auto-detect tipo: mão de obra keywords
   const desc = (item.descricao||'').toUpperCase();
   const tipoSel = document.getElementById('cpu-ins-tipo');
-  const tipoItem = cpuTipoManual(item.tipo || item.natureza || item.categoria, item.descricao);
+  const tipoItem = cpuTipoManual(item.codigoSinapi || item.codigo || item.tipo || item.natureza || item.categoria, item.descricao);
   if (item.manual || item.importado || item.tipo) {
     tipoSel.value = tipoItem;
   } else if (/SERVENTE|PEDREIRO|MESTRE|OFICIAL|CARPINTEIRO|FERREI|ENCANADOR|ELETRICISTA|PINTOR|AJUDANTE/.test(desc)) {
@@ -10659,8 +10697,8 @@ function cpuRenderInsumos() {
     const preco = Number(ins.preco) || 0;
     const sub = coef * preco;
     cd += sub;
-    const tagColors = { M:'cpu-tag-M', E:'cpu-tag-E', S:'cpu-tag-S', T:'cpu-tag-T' };
-    const tagLabels = { M:'Material', E:'Equip.', S:'MO', T:'Transp.' };
+    const tagColors = { M:'cpu-tag-M', E:'cpu-tag-E', S:'cpu-tag-S', SV:'cpu-tag-M', T:'cpu-tag-T' };
+    const tagLabels = { M:'Material', E:'Equip.', S:'MO', SV:'Serv.', T:'Transp.' };
     return `<div class="cpu-insumo-row">
       <span class="td-mono" style="color:var(--gold);font-size:11px">${escapeHtml(ins.cod)}</span>
       <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(ins.desc)}">
@@ -10702,14 +10740,14 @@ function cpuCalcEncargos() {
 
 // ─── RESULTADO ─────────────────────────────────────────────
 function cpuCalcPrecoUnitario() {
-  const grupos = { M: 0, E: 0, S: 0, T: 0, AX: 0 };
+  const grupos = { M: 0, E: 0, S: 0, SV: 0, T: 0, AX: 0 };
   CPU.insumos.forEach(i => {
-    const tipo = ['M','E','S','T','AX'].includes(i.tipo) ? i.tipo : 'M';
+    const tipo = ['M','E','S','SV','T','AX'].includes(i.tipo) ? i.tipo : 'M';
     grupos[tipo] += i.coef * i.preco;
   });
   const moComEnc = grupos.S * (1 + CPU.encPct / 100);
   const prod = Math.max(0.0001, Number(CPU.prod) || readNumeroCampo('cpu-prod') || 1);
-  const custoTotal = grupos.M + grupos.T + grupos.AX + ((grupos.E + moComEnc) / prod);
+  const custoTotal = grupos.M + grupos.SV + grupos.T + grupos.AX + ((grupos.E + moComEnc) / prod);
   return { grupos, moComEnc, prod, custoTotal };
 }
 
@@ -10729,6 +10767,7 @@ function cpuRenderResultado() {
     ['Encargos Sociais (' + CPU.encPct + '%)', grupos.S * CPU.encPct / 100],
     ['Mão de Obra c/ Encargos', moComEnc],
     ['Equipamentos (E)', grupos.E],
+    ['Serviços (IS)', grupos.SV],
     ['Composições Auxiliares', grupos.AX],
     ['Transportes (T)', grupos.T],
   ].filter(([,v]) => v > 0);
@@ -10867,6 +10906,12 @@ function cpuInsumoQtdEquipamento(ins) {
   return Math.max(1, Number(ins?.qtdEquip ?? ins?.quantidadeEquipamento ?? ins?.qtdeEquip ?? 1) || 1);
 }
 
+function cpuInsumoTipo(ins, usarCompor = false) {
+  const code = codigoChave(ins?.cod || ins?.codigo || ins?.codigoSinapi);
+  if (usarCompor && code && !code.startsWith('I')) return 'AX';
+  return cpuTipoManual(code || ins?.tipo || ins?.natureza || ins?.categoria, ins?.desc || ins?.descricao || '');
+}
+
 function cpuUsaModeloCompor(cpu) {
   return !!(cpu?.modeloCalculo === 'compor' || cpu?.importadoCompor || (cpu?.insumos || []).some(ins =>
     cpuInsumoIndiceImprodutivo(ins) || cpuInsumoPrecoImprodutivo(ins) || Number(ins?.qtdEquip ?? ins?.quantidadeEquipamento ?? 0)
@@ -10894,20 +10939,22 @@ function cpuEditorAbrir(id, options = {}) {
 }
 
 function cpuEditorCalcularDetalhes(cpu) {
-  const grupos = { E:0, S:0, M:0, T:0, AX:0 };
+  const grupos = { E:0, S:0, M:0, SV:0, T:0, AX:0 };
   const encPct = Number(cpu?.encPct) || 0;
   const prod = Math.max(0.0001, Number(cpu?.prod) || 1);
   const usarCompor = cpuUsaModeloCompor(cpu);
+  const encargoObraPct = obraEncargosMaoObraPct();
+  const maoEncPct = encargoObraPct > 0 ? encargoObraPct : (usarCompor ? 0 : encPct);
   (cpu?.insumos || []).forEach(ins => {
-    const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
+    const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuInsumoTipo(ins, usarCompor);
     const total = cpuInsumoTotalHora(ins, tipo, usarCompor);
     grupos[tipo] = (grupos[tipo] || 0) + total;
   });
-  const maoComEnc = usarCompor ? grupos.S : grupos.S * (1 + encPct / 100);
+  const maoComEnc = grupos.S * (1 + maoEncPct / 100);
   const equipamentoProd = grupos.E / prod;
   const maoProd = maoComEnc / prod;
-  const custoUnitario = roundUnitPrice(grupos.M + grupos.T + grupos.AX + equipamentoProd + maoProd);
-  return { grupos, encPct, prod, maoComEnc, equipamentoProd, maoProd, custoUnitario, usarCompor };
+  const custoUnitario = roundUnitPrice(grupos.M + grupos.SV + grupos.T + grupos.AX + equipamentoProd + maoProd);
+  return { grupos, encPct, encargoObraPct, maoEncPct, prod, maoComEnc, equipamentoProd, maoProd, custoUnitario, usarCompor };
 }
 
 function cpuEditorRender() {
@@ -10938,8 +10985,9 @@ function cpuEditorRender() {
   if (gruposEl) {
     gruposEl.innerHTML = [
       ['Equipamentos/h', detalhes.grupos.E, detalhes.equipamentoProd],
-      ['Mão de obra/h', detalhes.grupos.S, detalhes.maoProd],
+      ['Mão de obra/h', detalhes.maoComEnc, detalhes.maoProd],
       ['Materiais', detalhes.grupos.M, detalhes.grupos.M],
+      ['Serviços', detalhes.grupos.SV, detalhes.grupos.SV],
       ['Auxiliares', detalhes.grupos.AX, detalhes.grupos.AX],
       ['Transporte', detalhes.grupos.T, detalhes.grupos.T]
     ].map(([label, hora, unit]) => `<div><span>${escapeHtml(label)}</span><strong>${fmtMoeda(hora)}</strong><small>${fmtMoeda(unit)} no unitário</small></div>`).join('');
@@ -10953,13 +11001,14 @@ function cpuEditorRender() {
   }
   tbody.innerHTML = rows.map((ins, idx) => {
     const aux = cpuEditorFindByCode(ins.cod);
-    const tipo = aux ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
+    const tipo = aux ? 'AX' : cpuInsumoTipo(ins, detalhes.usarCompor);
     const coef = Number(ins.coef) || 0;
     const coefImprod = cpuInsumoIndiceImprodutivo(ins);
     const qtdEquip = tipo === 'E' ? cpuInsumoQtdEquipamento(ins) : 0;
     const preco = Number(ins.preco) || 0;
     const precoImprod = cpuInsumoPrecoImprodutivo(ins);
-    const total = cpuInsumoTotalHora(ins, tipo, detalhes.usarCompor);
+    const totalBase = cpuInsumoTotalHora(ins, tipo, detalhes.usarCompor);
+    const total = tipo === 'S' ? totalBase * (1 + detalhes.maoEncPct / 100) : totalBase;
     const totalProd = (tipo === 'E' || tipo === 'S') ? total / detalhes.prod : total;
     return `<tr class="${CPU_EDITOR.selectedIndex === idx ? 'cpu-editor-selected' : ''}">
       <td><input type="radio" name="cpu-editor-row" ${CPU_EDITOR.selectedIndex === idx ? 'checked' : ''} onchange="cpuEditorSelecionarLinha(${idx})"/></td>
@@ -11020,8 +11069,9 @@ function cpuEditorRecalcular(options = {}) {
 }
 
 function cpuRecalcularComposicaoSalva(cpu) {
+  const usarCompor = cpuUsaModeloCompor(cpu);
   (cpu.insumos || []).forEach(ins => {
-    const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuTipoManual(ins.tipo || ins.natureza || ins.categoria, ins.desc || ins.descricao);
+    const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuInsumoTipo(ins, usarCompor);
     ins.tipo = tipo;
   });
   const detalhes = cpuEditorCalcularDetalhes(cpu);
@@ -11181,7 +11231,7 @@ function cpuOperacaoTrocar() {
     ins.cod = ref.codigo;
     ins.desc = ref.descricao;
     ins.unid = ref.unidade;
-    ins.tipo = cpuTipoManual(ref.tipo, ref.descricao);
+    ins.tipo = cpuTipoManual(ref.codigo || ref.tipo, ref.descricao);
     ins.preco = ref.precoUnitario;
     ins.fonte = ref.fonte;
     cpuRecalcularComposicaoSalva(cpu);
@@ -11258,7 +11308,7 @@ function cpuNormalizarComposicaoExterna(raw, bancoNome = 'Banco externo') {
       cod: String(ins.cod || ins.codigo || ins.codigoInsumo || '').trim().toUpperCase(),
       desc: String(ins.desc || ins.descricao || '').trim(),
       unid: String(ins.unid || ins.unidade || ins.un || 'UN').trim() || 'UN',
-      tipo: cpuTipoManual(ins.tipo || ins.grupo || ins.categoria, ins.desc || ins.descricao),
+      tipo: cpuTipoManual(ins.cod || ins.codigo || ins.codigoInsumo || ins.tipo || ins.grupo || ins.categoria, ins.desc || ins.descricao),
       coef: Number(ins.coef ?? ins.indice ?? ins.consumo ?? ins.qtd ?? 1) || 1,
       preco: Number(ins.preco ?? ins.precoUnitario ?? ins.valor ?? 0) || 0,
       fonte: ins.fonte || bancoNome
@@ -11330,7 +11380,7 @@ function cpuParseBancoExternoSheets(wb, fileName) {
             cod: insCod,
             desc,
             unid: unid || 'UN',
-            tipo: cpuTipoManual(tipo, desc),
+            tipo: cpuTipoManual(insCod || tipo, desc),
             coef: coef || 1,
             preco: preco || 0,
             fonte: `${fileName}/${sheetName}`
@@ -11472,16 +11522,17 @@ function cpuVerFicha(id) {
   if (!c) return;
   _cpuFichaSelecionada = c;
   document.getElementById('cpu-ficha-card').style.display = 'block';
-  const grupos = { M:0, E:0, S:0, T:0, AX:0 };
+  const usarCompor = cpuUsaModeloCompor(c);
+  const grupos = { M:0, E:0, S:0, SV:0, T:0, AX:0 };
   c.insumos.forEach(i => {
-    const tipo = ['M','E','S','T','AX'].includes(i.tipo) ? i.tipo : (cpuEditorFindByCode(i.cod) ? 'AX' : 'M');
+    const tipo = cpuEditorFindByCode(i.cod) ? 'AX' : cpuInsumoTipo(i, usarCompor);
     grupos[tipo] += i.coef * i.preco;
   });
   const moEnc = grupos.S * c.encPct / 100;
   const rows = c.insumos.map(ins => {
-    const tagLabels = { M:'Mat', E:'Eq', S:'MO', T:'Tr', AX:'Aux' };
-    const tagColors = { M:'cpu-tag-M', E:'cpu-tag-E', S:'cpu-tag-S', T:'cpu-tag-T', AX:'cpu-tag-M' };
-    const tipo = ['M','E','S','T','AX'].includes(ins.tipo) ? ins.tipo : (cpuEditorFindByCode(ins.cod) ? 'AX' : 'M');
+    const tagLabels = { M:'Mat', E:'Eq', S:'MO', SV:'Serv', T:'Tr', AX:'Aux' };
+    const tagColors = { M:'cpu-tag-M', E:'cpu-tag-E', S:'cpu-tag-S', SV:'cpu-tag-M', T:'cpu-tag-T', AX:'cpu-tag-M' };
+    const tipo = cpuEditorFindByCode(ins.cod) ? 'AX' : cpuInsumoTipo(ins, usarCompor);
     return `<div class="cpu-insumo-row" style="padding:5px 0;font-size:11px">
       <span style="color:var(--gold);font-family:monospace">${ins.cod}</span>
       <span style="overflow:hidden;text-overflow:ellipsis" title="${ins.desc}">
@@ -11810,12 +11861,12 @@ function cpuImportarBibliotecaParseAtual() {
     const precoImprodMapeado = precoImprodCell ? parseNumeroBR(precoImprodCell) : 0;
     const precoImprodLookup = Number(lookup?.item?.custoImprodutivo ?? lookup?.item?.precoImprodutivo ?? lookup?.item?.improdutivo ?? 0) || 0;
     const precoImprod = precoImprodCell ? precoImprodMapeado : precoImprodLookup;
-    const tipoBase = cpuImportarBibliotecaCell(row, cols.insTipo) || insCod || lookup?.item?.tipo || lookup?.item?.categoria || lookup?.item?.natureza || '';
+    const tipoBase = cpuImportarBibliotecaCell(row, cols.insTipo) || lookup?.item?.tipo || lookup?.item?.categoria || lookup?.item?.natureza || '';
     cpu.insumos.push({
       cod: insCod,
       desc,
       unid: normalizarUnidadeImportacao(cpuImportarBibliotecaCell(row, cols.insUnid) || lookup?.item?.unidade || 'UN'),
-      tipo: cpuTipoManual(tipoBase, desc),
+      tipo: cpuTipoManual(insCod || tipoBase, desc),
       coef,
       indice: coef,
       coefImprod,
