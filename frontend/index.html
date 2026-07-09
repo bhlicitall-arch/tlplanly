@@ -172,6 +172,11 @@
       <div class="obra-active-meta" id="obra-active-meta">Crie uma obra para iniciar o núcleo de orçamento.</div>
     </div>
     <div class="obra-active-actions">
+      <div class="obra-active-param" id="obra-active-param" style="display:none">
+        <label class="form-label">Encargos mão de obra (%)</label>
+        <input id="obra-active-encargos-mao-obra" class="form-input" type="number" min="0" step="0.01" placeholder="0 = já embutido"/>
+        <button class="btn btn-outline btn-sm" onclick="obrasSalvarParametrosAtiva()">Salvar encargos</button>
+      </div>
       <button class="btn btn-outline btn-sm" onclick="obrasSalvarSessaoAtual()">Salvar sessão atual como obra</button>
       <button class="btn btn-gold btn-sm" onclick="obrasScrollServicos()">Cadastrar serviços</button>
       <button class="btn btn-outline btn-sm" onclick="showView('cpu')">Ir para composições</button>

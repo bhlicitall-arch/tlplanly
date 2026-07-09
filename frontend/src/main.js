@@ -1091,14 +1091,15 @@ function obrasLimparFormulario() {
   if (multi) multi.checked = false;
 }
 
-function obraEncargosMaoObraCampo() {
-  const el = document.getElementById('obra-encargos-mao-obra');
+function obraEncargosMaoObraCampo(origem = 'ativa') {
+  const id = origem === 'nova' ? 'obra-encargos-mao-obra' : 'obra-active-encargos-mao-obra';
+  const el = document.getElementById(id);
   return el ? parseNumeroBR(el.value) : 0;
 }
 
 function obraEncargosMaoObraPct() {
-  const campo = obraEncargosMaoObraCampo();
-  if (campo > 0) return campo;
+  const campoAtivo = document.getElementById('obra-active-encargos-mao-obra');
+  if (campoAtivo) return parseNumeroBR(campoAtivo.value);
   const obra = obraAtiva();
   return Number(obra?.encargosMaoObraPct ?? obra?.encargosMaoObra ?? obra?.encargosPct ?? 0) || 0;
 }
@@ -1222,7 +1223,7 @@ function obrasSalvarSessaoAtual() {
     cliente: '',
     data: todayIso(),
     bancoBase: 'Base local',
-    encargosMaoObraPct: obraEncargosMaoObraCampo(),
+    encargosMaoObraPct: obraEncargosMaoObraCampo('nova'),
     multiPlanilha: false,
     lotes: [lotePrincipalPadrao()],
     snapshot: obraSnapshotAtual(),
@@ -1237,6 +1238,21 @@ function obrasSalvarSessaoAtual() {
   toast('Sessão atual transformada em obra', 'success');
 }
 
+function obrasSalvarParametrosAtiva() {
+  normalizeState();
+  const obra = obraAtiva();
+  if (!obra) {
+    toast('Abra uma obra antes de salvar encargos.', 'error');
+    return;
+  }
+  obra.encargosMaoObraPct = obraEncargosMaoObraCampo();
+  obra.atualizadoEm = new Date().toISOString();
+  obrasSalvarAtivaSnapshot({ silent:true });
+  saveState();
+  obrasRender();
+  toast('Encargos de mão de obra salvos na obra ativa.', 'success');
+}
+
 function obrasMarcarRecente(id) {
   if (!id) return;
   STATE.obrasRecentes = [id, ...(STATE.obrasRecentes || []).filter(item => item !== id)].slice(0, 4);
@@ -1249,7 +1265,7 @@ function obrasCriarNova() {
   const cliente = document.getElementById('obra-cliente')?.value?.trim() || '';
   const data = document.getElementById('obra-data')?.value || todayIso();
   const bancoBase = document.getElementById('obra-banco')?.value || 'Base local';
-  const encargosMaoObraPct = obraEncargosMaoObraCampo();
+  const encargosMaoObraPct = obraEncargosMaoObraCampo('nova');
   const multiPlanilha = document.getElementById('obra-multi')?.checked === true;
   if (!nome) { toast('Informe o nome do projeto/obra.', 'error'); return; }
   obrasSalvarAtivaSnapshot({ silent:true });
@@ -1476,9 +1492,11 @@ function obrasRender() {
   if (dataInput && !dataInput.value) dataInput.value = todayIso();
   const numeroInput = document.getElementById('obra-numero');
   if (numeroInput && !numeroInput.value) numeroInput.value = gerarNumeroObra();
-  const encargosInput = document.getElementById('obra-encargos-mao-obra');
-  if (encargosInput && active && document.activeElement !== encargosInput) {
-    encargosInput.value = Number(active.encargosMaoObraPct) > 0 ? active.encargosMaoObraPct : '';
+  const activeParam = document.getElementById('obra-active-param');
+  if (activeParam) activeParam.style.display = active ? '' : 'none';
+  const activeEncargosInput = document.getElementById('obra-active-encargos-mao-obra');
+  if (activeEncargosInput && document.activeElement !== activeEncargosInput) {
+    activeEncargosInput.value = active && Number(active.encargosMaoObraPct) > 0 ? active.encargosMaoObraPct : '';
   }
 
   const busca = textoChave(document.getElementById('obra-busca')?.value || '');
