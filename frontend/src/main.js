@@ -1737,11 +1737,52 @@ function obrasServicoExcluir(id) {
   toast('Serviço excluído da obra.', 'info');
 }
 
+function obrasServicoCpuLista() {
+  return typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
+}
+
+function obrasServicoAtualizarCodigoCPU(options = {}) {
+  const select = document.getElementById('obra-serv-cpu');
+  const input = document.getElementById('obra-serv-cpu-codigo');
+  if (!select || !input) return;
+  if (options.preserveFocus && document.activeElement === input) return;
+  const cpu = obrasServicoCpuLista().find(c => String(c.id) === String(select.value));
+  input.value = cpu?.cod || '';
+}
+
+function obrasServicoSelecionarCPUPorCodigo(options = {}) {
+  const input = document.getElementById('obra-serv-cpu-codigo');
+  const select = document.getElementById('obra-serv-cpu');
+  if (!input || !select) return false;
+  const code = codigoChave(input.value);
+  if (!code) return false;
+  const cpus = obrasServicoCpuLista();
+  const exact = cpus.find(cpu => codigoChave(cpu.cod) === code);
+  const partial = exact ? [] : cpus.filter(cpu => codigoChave(cpu.cod).startsWith(code));
+  const cpu = exact || (partial.length === 1 ? partial[0] : null);
+  if (!cpu) {
+    if (!options.silent) toast('Composição não encontrada para o código informado.', 'error');
+    return false;
+  }
+  select.value = String(cpu.id);
+  input.value = cpu.cod || input.value;
+  if (!options.silent) toast(`Composição selecionada: ${cpu.cod || ''}`, 'success');
+  return true;
+}
+
+function obrasServicoCpuCodigoKeydown(event) {
+  if (event?.key !== 'Enter') return;
+  event.preventDefault();
+  obrasServicoSelecionarCPUPorCodigo({ silent:false });
+}
+
 function obrasServicoVincularCPU() {
+  const cpuCodeInput = document.getElementById('obra-serv-cpu-codigo');
+  if (cpuCodeInput?.value?.trim() && !obrasServicoSelecionarCPUPorCodigo({ silent:false })) return;
   const itemId = document.getElementById('obra-serv-select')?.value || '';
   const cpuId = document.getElementById('obra-serv-cpu')?.value || '';
   const item = (STATE.orcamento || []).find(it => it.id === itemId);
-  const cpu = (typeof CPU_BIBLIOTECA !== 'undefined' ? CPU_BIBLIOTECA : []).find(c => String(c.id) === String(cpuId));
+  const cpu = obrasServicoCpuLista().find(c => String(c.id) === String(cpuId));
   if (!item) { toast('Selecione um serviço cadastrado.', 'error'); return; }
   if (obrasServicoEhPrincipal(item)) { toast('Item principal recebe subtotal dos itens filhos. Vincule CPU em um serviço como 100.1, 100.2 etc.', 'warning'); return; }
   if (!cpu) { toast('Selecione uma composição para vincular ao serviço.', 'error'); return; }
@@ -1921,7 +1962,8 @@ function obrasServicosRender() {
   const tbody = document.getElementById('obra-servicos-lista');
   const servSelect = document.getElementById('obra-serv-select');
   const cpuSelect = document.getElementById('obra-serv-cpu');
-  if (!tbody && !servSelect && !cpuSelect) return;
+  const cpuCodeInput = document.getElementById('obra-serv-cpu-codigo');
+  if (!tbody && !servSelect && !cpuSelect && !cpuCodeInput) return;
   const servicos = Array.isArray(STATE.orcamento) ? STATE.orcamento : [];
   if (servSelect) {
     const vinculaveis = servicos.filter(it => !obrasServicoEhPrincipal(it));
@@ -1929,11 +1971,12 @@ function obrasServicosRender() {
       ? vinculaveis.map(it => `<option value="${escapeHtml(it.id)}">${escapeHtml(it.cod || '')} · ${escapeHtml(it.desc || '')}</option>`).join('')
       : '<option value="">Nenhum serviço item cadastrado</option>';
   }
-  const cpus = typeof CPU_BIBLIOTECA !== 'undefined' && Array.isArray(CPU_BIBLIOTECA) ? CPU_BIBLIOTECA : [];
+  const cpus = obrasServicoCpuLista();
   if (cpuSelect) {
     cpuSelect.innerHTML = cpus.length
       ? cpus.map(cpu => `<option value="${escapeHtml(String(cpu.id))}">${escapeHtml(cpu.cod || '')} · ${escapeHtml(cpu.desc || '')} · ${fmtMoeda(cpu.precoUnitario || 0)}</option>`).join('')
       : '<option value="">Nenhuma CPU salva ainda</option>';
+    obrasServicoAtualizarCodigoCPU({ preserveFocus:true });
   }
   if (!tbody) return;
   if (!servicos.length) {

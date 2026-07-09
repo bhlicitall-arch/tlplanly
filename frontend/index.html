@@ -214,7 +214,8 @@
     </div>
     <div class="obra-vinculo-form">
       <div><label class="form-label">Serviço cadastrado</label><select id="obra-serv-select" class="form-select"></select></div>
-      <div><label class="form-label">Composição / CPU</label><select id="obra-serv-cpu" class="form-select"></select></div>
+      <div><label class="form-label">Código CPU</label><input id="obra-serv-cpu-codigo" class="form-input" placeholder="Ex: CA0001" oninput="obrasServicoSelecionarCPUPorCodigo({silent:true})" onkeydown="obrasServicoCpuCodigoKeydown(event)"/></div>
+      <div><label class="form-label">Composição / CPU</label><select id="obra-serv-cpu" class="form-select" onchange="obrasServicoAtualizarCodigoCPU()"></select></div>
       <button class="btn btn-outline" onclick="obrasServicoVincularCPU()">Vincular composição</button>
       <button class="btn btn-outline" onclick="showView('cpu')">Criar composição</button>
     </div>

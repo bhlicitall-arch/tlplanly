@@ -312,7 +312,7 @@ body.core-only .core-section{
 }
 .obra-servico-desc{min-width:0}
 .obra-vinculo-form{
-  display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,1.4fr) auto auto;
+  display:grid;grid-template-columns:minmax(210px,1fr) minmax(110px,.42fr) minmax(250px,1.35fr) auto auto;
   gap:10px;align-items:end;margin-bottom:12px;padding:12px;border:1px solid color-mix(in srgb,var(--gold) 18%,var(--border));border-radius:var(--radius);background:color-mix(in srgb,var(--gold) 5%,var(--bg3));
 }
 .obra-checkline{
