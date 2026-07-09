@@ -6592,10 +6592,47 @@ function parseNumeroBR(valor) {
     .replace(/\s+/g, '')
     .replace(/[^\d,.\-]/g, '');
   if (!clean || clean === '-' || clean === ',' || clean === '.') return 0;
-  if (clean.includes(',') && clean.includes('.')) return Number(clean.replace(/\./g, '').replace(',', '.')) || 0;
+  if (clean.includes(',') && clean.includes('.')) {
+    const lastComma = clean.lastIndexOf(',');
+    const lastDot = clean.lastIndexOf('.');
+    const normalizado = lastComma > lastDot
+      ? clean.replace(/\./g, '').replace(',', '.')
+      : clean.replace(/,/g, '');
+    return Number(normalizado) || 0;
+  }
   if (clean.includes(',')) return Number(clean.replace(',', '.')) || 0;
   if ((clean.match(/\./g) || []).length > 1) return Number(clean.replace(/\./g, '')) || 0;
   return Number(clean) || 0;
+}
+
+function parseNumeroImportacaoCandidatos(valor) {
+  const base = parseNumeroBR(valor);
+  const candidatos = [base];
+  if (typeof valor === 'number') return candidatos;
+  const clean = String(valor ?? '')
+    .replace(/R\$/gi, '')
+    .replace(/\s+/g, '')
+    .replace(/[^\d,.\-]/g, '');
+  if (/^-?\d{1,3}[,.]\d{3}$/.test(clean) && !/^-?0[,.]/.test(clean)) {
+    const milhares = Number(clean.replace(/[,.]/g, '')) || 0;
+    if (milhares && !candidatos.some(n => Math.abs(n - milhares) < 0.000001)) candidatos.push(milhares);
+  }
+  return candidatos;
+}
+
+function escolherQuantidadePrecoPorTotal(qtdRaw, precoRaw, totalRaw) {
+  const total = parseNumeroBR(totalRaw);
+  const qtdBase = parseNumeroBR(qtdRaw);
+  const precoBase = parseNumeroBR(precoRaw);
+  if (!(total > 0)) return { qtd: qtdBase, preco: precoBase, total };
+  let melhor = { qtd: qtdBase, preco: precoBase, total, diff: Math.abs((qtdBase * precoBase) - total) };
+  parseNumeroImportacaoCandidatos(qtdRaw).forEach(qtd => {
+    parseNumeroImportacaoCandidatos(precoRaw).forEach(preco => {
+      const diff = Math.abs((qtd * preco) - total);
+      if (diff < melhor.diff) melhor = { qtd, preco, total, diff };
+    });
+  });
+  return melhor;
 }
 
 function normalizarUnidadeImportacao(unid) {
@@ -6784,11 +6821,14 @@ function sheetParseMappedRows(rawRows, mapping, purpose = 'orcamento', headerRow
       const qtdRaw = sheetCell(row, mapping.qtd);
       const unidRawOriginal = sheetCell(row, mapping.unid);
       const unidRaw = /^(0|[-—])$/i.test(unidRawOriginal) ? '' : unidRawOriginal;
-      const qtdInformada = String(qtdRaw ?? '').trim() !== '' && parseNumeroBR(qtdRaw) > 0;
-      const qtd = qtdInformada ? parseNumeroBR(qtdRaw) : 0;
-      const preco = parseNumeroBR(sheetCell(row, mapping.preco));
+      const precoRaw = sheetCell(row, mapping.preco);
+      const totalRaw = sheetCell(row, mapping.total);
+      const ajustadoPorTotal = escolherQuantidadePrecoPorTotal(qtdRaw, precoRaw, totalRaw);
+      const qtdInformada = String(qtdRaw ?? '').trim() !== '' && ajustadoPorTotal.qtd > 0;
+      const qtd = qtdInformada ? ajustadoPorTotal.qtd : 0;
+      const preco = ajustadoPorTotal.preco;
       const precoVenda = parseNumeroBR(sheetCell(row, mapping.precoVenda));
-      const totalLinha = parseNumeroBR(sheetCell(row, mapping.total));
+      const totalLinha = ajustadoPorTotal.total;
       const totalVendaLinha = parseNumeroBR(sheetCell(row, mapping.totalVenda));
       const semUnidQtd = !unidRaw && !qtdInformada;
       const item = {
@@ -10307,6 +10347,11 @@ function cpuRenderManualCount() {
 }
 
 function cpuTipoManual(value, desc = '') {
+  const code = String(value || '').trim().toUpperCase();
+  if (/^IH/.test(code)) return 'S';
+  if (/^IE/.test(code)) return 'E';
+  if (/^IT/.test(code)) return 'T';
+  if (/^IM/.test(code)) return 'M';
   const raw = textoChave(`${value || ''} ${desc || ''}`);
   if (['S','MO','MAO OBRA','MAO DE OBRA','SERVICO'].some(k => raw.includes(k))) return 'S';
   if (['E','EQUIP','EQUIPAMENTO','MAQUINA'].some(k => raw.includes(k))) return 'E';
@@ -11616,32 +11661,34 @@ function cpuImportarBibliotecaSugerirColunas() {
   if (!entry) return;
   const sugestao = sheetSuggestMapping(entry.raw, 'composicoes');
   const maxCols = Math.max(0, ...sheetNormalizeRows(entry.raw).slice(0, 50).map(row => row.length));
-  const fallback = maxCols >= 10
-    ? { cpuCod:0, cpuDesc:1, cpuUnid:2, cpuTipo:3, cpuProd:4, insumoCod:5, insQtd:6, coef:7, insDmt:8, insumoDesc:9 }
+  const fallback = maxCols >= 13
+    ? { cpuCod:0, cpuDesc:1, cpuDescFull:2, cpuUnid:3, cpuProd:4, insumoCod:5, insumoDesc:6, insumoUnid:7, preco:8, precoImprod:9, coef:10, coefImprod:11, qtdEquip:12 }
     : sheetDefaultMapping('composicoes', Math.max(maxCols, 8));
   const map = sugestao.headerRow >= 0 ? sugestao.mapping : {};
   const descFullCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['descricao completa','descrição completa','desc completa','memorial']);
   const cpuTipoCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['tipo da composicao','tipo da composição','tipo composicao','tipo composição','categoria servico','categoria serviço']);
   const cpuProdCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['producao por hora','produção por hora','prod equipe','produtividade','producao','produção']);
-  const insQtdCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['quantidade','quant','qtd','qtde']);
-  const insDmtCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['dmt','distancia','distância']);
+  const insPrecoImprodCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['preco improd','preço improd','preco improdutivo','preço improdutivo','custo improd','custo improdutivo']);
+  const insCoefImprodCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['indice improd','índice improd','indice improdutivo','índice improdutivo','coef improd','coeficiente improd']);
+  const insQtdEquipCol = cpuImportarBibliotecaHeaderIndex(entry.raw, ['qtde equip','qtd equip','quantidade equip','quantidade equipamento','qtde equipamento']);
 
   const set = (id, index) => cpuImportarBibliotecaSetCol(id, index >= 0 ? index : -1);
   set('cpu-map-cpu-cod', map.cpuCod ?? fallback.cpuCod ?? 0);
   set('cpu-map-cpu-desc', map.cpuDesc ?? fallback.cpuDesc ?? 1);
-  set('cpu-map-cpu-unid', map.cpuUnid ?? fallback.cpuUnid ?? 2);
-  set('cpu-map-ins-cod', map.insumoCod ?? fallback.insumoCod ?? 3);
-  set('cpu-map-ins-desc', map.insumoDesc ?? fallback.insumoDesc ?? 4);
-  set('cpu-map-ins-unid', map.insumoUnid ?? fallback.insumoUnid ?? -1);
+  set('cpu-map-cpu-unid', map.cpuUnid ?? fallback.cpuUnid ?? 3);
+  set('cpu-map-ins-cod', map.insumoCod ?? fallback.insumoCod ?? 5);
+  set('cpu-map-ins-desc', map.insumoDesc ?? fallback.insumoDesc ?? 6);
+  set('cpu-map-ins-unid', map.insumoUnid ?? fallback.insumoUnid ?? 7);
   set('cpu-map-ins-tipo', map.tipo ?? fallback.tipo ?? -1);
-  set('cpu-map-ins-coef', map.coef ?? fallback.coef ?? 6);
-  set('cpu-map-ins-preco', map.preco ?? fallback.preco ?? -1);
+  set('cpu-map-ins-preco', map.preco ?? fallback.preco ?? 8);
+  set('cpu-map-ins-coef', map.coef ?? fallback.coef ?? 10);
 
-  set('cpu-map-cpu-desc-full', descFullCol);
+  set('cpu-map-cpu-desc-full', descFullCol >= 0 ? descFullCol : (map.cpuDescCompleta ?? fallback.cpuDescFull ?? fallback.cpuDescCompleta ?? 2));
   set('cpu-map-cpu-tipo', cpuTipoCol >= 0 ? cpuTipoCol : (fallback.cpuTipo ?? -1));
   set('cpu-map-cpu-prod', cpuProdCol >= 0 ? cpuProdCol : (fallback.cpuProd ?? -1));
-  set('cpu-map-ins-qtd', insQtdCol >= 0 ? insQtdCol : (fallback.insQtd ?? -1));
-  set('cpu-map-ins-dmt', insDmtCol >= 0 ? insDmtCol : (fallback.insDmt ?? -1));
+  set('cpu-map-ins-preco-improd', insPrecoImprodCol >= 0 ? insPrecoImprodCol : (map.precoImprod ?? fallback.precoImprod ?? 9));
+  set('cpu-map-ins-coef-improd', insCoefImprodCol >= 0 ? insCoefImprodCol : (map.coefImprod ?? fallback.coefImprod ?? 11));
+  set('cpu-map-ins-qtd', insQtdEquipCol >= 0 ? insQtdEquipCol : (map.qtdEquip ?? fallback.qtdEquip ?? 12));
 
   const start = document.getElementById('cpu-import-start-row');
   if (start) start.value = String(Math.max(1, sugestao.headerRow >= 0 ? sugestao.headerRow + 2 : 2));
@@ -11657,13 +11704,14 @@ function cpuImportarBibliotecaMapeamento() {
     cpuTipo: cpuImportarBibliotecaGetCol('cpu-map-cpu-tipo'),
     cpuProd: cpuImportarBibliotecaGetCol('cpu-map-cpu-prod'),
     insCod: cpuImportarBibliotecaGetCol('cpu-map-ins-cod'),
-    insQtd: cpuImportarBibliotecaGetCol('cpu-map-ins-qtd'),
+    insQtdEquip: cpuImportarBibliotecaGetCol('cpu-map-ins-qtd'),
     insCoef: cpuImportarBibliotecaGetCol('cpu-map-ins-coef'),
-    insDmt: cpuImportarBibliotecaGetCol('cpu-map-ins-dmt'),
+    insCoefImprod: cpuImportarBibliotecaGetCol('cpu-map-ins-coef-improd'),
     insDesc: cpuImportarBibliotecaGetCol('cpu-map-ins-desc'),
     insUnid: cpuImportarBibliotecaGetCol('cpu-map-ins-unid'),
     insTipo: cpuImportarBibliotecaGetCol('cpu-map-ins-tipo'),
-    insPreco: cpuImportarBibliotecaGetCol('cpu-map-ins-preco')
+    insPreco: cpuImportarBibliotecaGetCol('cpu-map-ins-preco'),
+    insPrecoImprod: cpuImportarBibliotecaGetCol('cpu-map-ins-preco-improd')
   };
 }
 
@@ -11689,7 +11737,7 @@ function cpuImportarBibliotecaParseAtual() {
     const cod = limparCodigo(code).toUpperCase();
     if (!cod) return null;
     const descFull = cpuImportarBibliotecaCell(row, cols.cpuDescFull);
-    const desc = descFull || cpuImportarBibliotecaCell(row, cols.cpuDesc);
+    const desc = cpuImportarBibliotecaCell(row, cols.cpuDesc) || descFull;
     const unid = normalizarUnidadeImportacao(cpuImportarBibliotecaCell(row, cols.cpuUnid) || 'UN');
     const tipo = cpuImportarBibliotecaCell(row, cols.cpuTipo);
     const prod = parseNumeroBR(cpuImportarBibliotecaCell(row, cols.cpuProd));
@@ -11699,11 +11747,15 @@ function cpuImportarBibliotecaParseAtual() {
         cod,
         desc: desc || cod,
         descCompleta: descFull || '',
+        descricaoCompleta: descFull || '',
         unid,
         tipo: tipo || 'Serviços Gerais',
-        encargos: 'nd',
-        encPct: Number(STATE.bdiComponents?.encargos ?? 127.5) || 127.5,
+        encargos: 'importado',
+        encPct: 0,
         prod: Math.max(0.0001, prod || 1),
+        producaoEquipe: Math.max(0.0001, prod || 1),
+        modeloCalculo: 'compor',
+        importadoCompor: true,
         insumos: [],
         precoUnitario: 0,
         origemBanco: entry.fileName,
@@ -11714,9 +11766,11 @@ function cpuImportarBibliotecaParseAtual() {
       const cpu = composicoes.get(cod);
       if (desc && (!cpu.desc || cpu.desc === cod)) cpu.desc = desc;
       if (descFull) cpu.descCompleta = descFull;
+      if (descFull) cpu.descricaoCompleta = descFull;
       if (unid && unid !== 'UN') cpu.unid = unid;
       if (tipo) cpu.tipo = tipo;
       if (prod > 0) cpu.prod = Math.max(0.0001, prod);
+      if (prod > 0) cpu.producaoEquipe = Math.max(0.0001, prod);
     }
     return composicoes.get(cod);
   };
@@ -11737,29 +11791,41 @@ function cpuImportarBibliotecaParseAtual() {
 
     const insCodeRaw = cpuImportarBibliotecaCell(row, cols.insCod);
     const insDescCell = cpuImportarBibliotecaCell(row, cols.insDesc);
-    const qtdCell = cpuImportarBibliotecaCell(row, cols.insQtd);
+    const qtdEquipCell = cpuImportarBibliotecaCell(row, cols.insQtdEquip);
     const coefCell = cpuImportarBibliotecaCell(row, cols.insCoef);
+    const coefImprodCell = cpuImportarBibliotecaCell(row, cols.insCoefImprod);
     const precoCell = cpuImportarBibliotecaCell(row, cols.insPreco);
-    const hasResource = insCodeRaw || insDescCell || qtdCell || coefCell || precoCell;
+    const precoImprodCell = cpuImportarBibliotecaCell(row, cols.insPrecoImprod);
+    const hasResource = insCodeRaw || insDescCell || qtdEquipCell || coefCell || coefImprodCell || precoCell || precoImprodCell;
     if (!hasResource) return;
 
     const insCod = limparCodigo(insCodeRaw).toUpperCase() || `IMP-${String(rowNumber).padStart(4, '0')}`;
     const lookup = insCod ? lookupPreco(insCod) : null;
     const desc = insDescCell || lookup?.item?.descricao || insCod;
-    const coef = parseNumeroBR(coefCell) || parseNumeroBR(qtdCell) || 1;
+    const coef = parseNumeroBR(coefCell) || 0;
+    const coefImprod = parseNumeroBR(coefImprodCell) || 0;
+    const qtdEquip = parseNumeroBR(qtdEquipCell) || 0;
     const precoMapeado = precoCell ? parseNumeroBR(precoCell) : 0;
     const preco = precoCell ? precoMapeado : (Number(lookup?.preco) || 0);
-    const tipoBase = cpuImportarBibliotecaCell(row, cols.insTipo) || lookup?.item?.tipo || lookup?.item?.categoria || lookup?.item?.natureza || '';
-    const dmt = parseNumeroBR(cpuImportarBibliotecaCell(row, cols.insDmt));
+    const precoImprodMapeado = precoImprodCell ? parseNumeroBR(precoImprodCell) : 0;
+    const precoImprodLookup = Number(lookup?.item?.custoImprodutivo ?? lookup?.item?.precoImprodutivo ?? lookup?.item?.improdutivo ?? 0) || 0;
+    const precoImprod = precoImprodCell ? precoImprodMapeado : precoImprodLookup;
+    const tipoBase = cpuImportarBibliotecaCell(row, cols.insTipo) || insCod || lookup?.item?.tipo || lookup?.item?.categoria || lookup?.item?.natureza || '';
     cpu.insumos.push({
       cod: insCod,
       desc,
       unid: normalizarUnidadeImportacao(cpuImportarBibliotecaCell(row, cols.insUnid) || lookup?.item?.unidade || 'UN'),
       tipo: cpuTipoManual(tipoBase, desc),
       coef,
-      qtd: parseNumeroBR(qtdCell) || coef,
-      dmt: dmt || 0,
+      indice: coef,
+      coefImprod,
+      indiceImprodutivo: coefImprod,
+      qtd: qtdEquip || 0,
+      qtdEquip: qtdEquip || 0,
+      quantidadeEquipamento: qtdEquip || 0,
       preco,
+      precoImprod,
+      precoImprodutivo: precoImprod,
       fonte: precoCell ? `${entry.fileName}/${entry.sheetName}` : (lookup?.fonte || `${entry.fileName}/${entry.sheetName}`)
     });
     if (!preco && !lookup) result.issues.push(`Linha ${rowNumber}: recurso ${insCod} sem preço mapeado e não encontrado na base.`);
@@ -11787,13 +11853,16 @@ function cpuImportarBibliotecaPreview() {
   const previewRows = rows.slice(Math.max(0, start - 1), start + 8);
   const columns = [
     ['CPU', cols.cpuCod],
-    ['Descrição CPU', cols.cpuDescFull >= 0 ? cols.cpuDescFull : cols.cpuDesc],
+    ['Descrição CPU', cols.cpuDesc],
     ['Un', cols.cpuUnid],
     ['Prod.', cols.cpuProd],
     ['Recurso', cols.insCod],
     ['Descrição recurso', cols.insDesc],
-    ['Coef.', cols.insCoef >= 0 ? cols.insCoef : cols.insQtd],
-    ['Preço', cols.insPreco]
+    ['Preço', cols.insPreco],
+    ['Preço improd.', cols.insPrecoImprod],
+    ['Índice', cols.insCoef],
+    ['Índice improd.', cols.insCoefImprod],
+    ['Qtde equip.', cols.insQtdEquip]
   ];
   preview.innerHTML = `<table><thead><tr><th>Linha</th>${columns.map(([label, idx]) => `<th>${escapeHtml(label)}${idx >= 0 ? ` (${sheetColumnLetter(idx)})` : ''}</th>`).join('')}</tr></thead><tbody>
     ${previewRows.map((row, i) => {
