@@ -1748,6 +1748,13 @@ function obrasServicoExtrairCodigoCPU(value) {
   return limparCodigo(match ? match[0] : raw).toUpperCase();
 }
 
+function obrasServicoCodigoImportacaoChave(value) {
+  return limparCodigo(value || '')
+    .replace(/\s+/g, '')
+    .replace(/[.\-]+$/g, '')
+    .toUpperCase();
+}
+
 function obrasServicoCpuPorCodigo(codigo) {
   const code = codigoChave(obrasServicoExtrairCodigoCPU(codigo));
   if (!code) return null;
@@ -1936,6 +1943,19 @@ function obrasServicosImportarSugerirColunas() {
   const fallback = sheetDefaultMapping('orcamento', Math.max(maxCols, 8));
   const hasHeader = sugestao.headerRow >= 0;
   const map = hasHeader ? sugestao.mapping : fallback;
+  const cpuCol = cpuImportarBibliotecaHeaderIndex(entry.raw, [
+    'cod composicao',
+    'cod. composicao',
+    'cod composição',
+    'cod. composição',
+    'codigo composicao',
+    'código composição',
+    'codigo da composicao',
+    'código da composição',
+    'codigo cpu',
+    'código cpu',
+    'cod cpu'
+  ]);
   const set = (id, index) => obrasServicosImportarSetCol(id, index >= 0 ? index : -1);
   set('obra-map-serv-cod', map.cod ?? fallback.cod ?? 0);
   set('obra-map-serv-desc', map.desc ?? fallback.desc ?? 1);
@@ -1945,7 +1965,7 @@ function obrasServicosImportarSugerirColunas() {
   set('obra-map-serv-venda', map.precoVenda ?? -1);
   set('obra-map-serv-total', map.total ?? fallback.total ?? 5);
   set('obra-map-serv-total-venda', map.totalVenda ?? -1);
-  set('obra-map-serv-cpu', hasHeader ? (map.composicaoCod ?? -1) : -1);
+  set('obra-map-serv-cpu', cpuCol >= 0 ? cpuCol : (hasHeader ? (map.composicaoCod ?? -1) : -1));
   const start = document.getElementById('obra-serv-import-start-row');
   if (start) start.value = String(Math.max(1, sugestao.headerRow >= 0 ? sugestao.headerRow + 2 : 2));
   const label = document.getElementById('obra-serv-import-file-label');
@@ -2006,7 +2026,43 @@ function obrasServicosAplicarImportados(importados, avisos = [], options = {}) {
     toast(avisos[0] || 'Nenhum serviço válido foi encontrado no arquivo.', 'error');
     return;
   }
-  STATE.orcamento = options.overwrite ? importados : [...(STATE.orcamento || []), ...importados];
+  let atualizados = 0;
+  let adicionados = 0;
+  let duplicadosRemovidos = 0;
+  if (options.overwrite) {
+    STATE.orcamento = importados;
+    adicionados = importados.length;
+  } else {
+    const base = [];
+    const posPorCodigo = new Map();
+    (STATE.orcamento || []).forEach(item => {
+      const key = obrasServicoCodigoImportacaoChave(item?.cod);
+      if (key && posPorCodigo.has(key)) {
+        duplicadosRemovidos++;
+        return;
+      }
+      if (key) posPorCodigo.set(key, base.length);
+      base.push(item);
+    });
+    importados.forEach(item => {
+      const key = obrasServicoCodigoImportacaoChave(item?.cod);
+      if (key && posPorCodigo.has(key)) {
+        const idx = posPorCodigo.get(key);
+        const anterior = base[idx] || {};
+        base[idx] = {
+          ...item,
+          id: anterior.id || item.id,
+          ordem: anterior.ordem || item.ordem
+        };
+        atualizados++;
+        return;
+      }
+      if (key) posPorCodigo.set(key, base.length);
+      base.push(item);
+      adicionados++;
+    });
+    STATE.orcamento = base;
+  }
   STATE.orcamento.forEach((it, idx) => { it.ordem = idx + 1; });
   invalidarDescontoPregao('serviços importados para a obra');
   saveState();
@@ -2015,7 +2071,10 @@ function obrasServicosAplicarImportados(importados, avisos = [], options = {}) {
   if (typeof renderDashboard === 'function') renderDashboard();
   if (typeof preencherSelectsOperacionais === 'function') preencherSelectsOperacionais();
   const extra = avisos.length ? ` ${Math.min(avisos.length, 3)} aviso(s) para revisar.` : '';
-  toast(`${importados.length} serviço(s) importado(s) para a obra.${extra}`, avisos.length ? 'info' : 'success');
+  const resumo = options.overwrite
+    ? `${adicionados} serviço(s) importado(s)`
+    : `${adicionados} novo(s), ${atualizados} atualizado(s)${duplicadosRemovidos ? `, ${duplicadosRemovidos} duplicado(s) removido(s)` : ''}`;
+  toast(`${resumo} na obra.${extra}`, avisos.length ? 'info' : 'success');
 }
 
 function obrasServicosImportarExecutar() {
@@ -6822,14 +6881,14 @@ const SHEET_FIELDS = {
   ],
   orcamento: [
     { key:'cod', label:'Código', hint:'Código do item ou serviço', aliases:['codigo','cod','item','codigo item','codigo servico','código serviço','cod servico','cod serviço'] },
-    { key:'desc', label:'Descrição', hint:'Serviço, insumo ou especificação', required:true, aliases:['descricao','descrição','servico','serviço','especificacao','especificação','insumo'] },
+    { key:'desc', label:'Descrição', hint:'Serviço, insumo ou especificação', required:true, aliases:['desc','descricao','descrição','desc completa','descrição completa','descricao completa','servico','serviço','especificacao','especificação','insumo'] },
     { key:'unid', label:'Unidade', hint:'UN, M2, M3, H, KG...', aliases:['unidade','unid','und','un'] },
     { key:'qtd', label:'Quantidade', hint:'Quantidade do orçamento', numeric:true, aliases:['quantidade','quant','qtd','qtde'] },
     { key:'precoVenda', label:'Venda unitária', hint:'Preço de venda unitário, quando existir', numeric:true, aliases:['venda unit','venda unitario','venda unitária','preco venda','preço venda','preco de venda','preço de venda','preco venda unit','preço venda unit','valor venda','valor de venda','pv unit','p venda'] },
     { key:'preco', label:'Custo unitário', hint:'Preço unitário sem BDI', numeric:true, aliases:['preco','preço','preco unit','preço unit','preco unitario','preço unitário','valor unit','valor unitário','valor unitario','custo unit','custo unitario','custo unitário','custo un','p unit','p unitario','p unitário','unitario','unitário'] },
     { key:'totalVenda', label:'Total venda', hint:'Total de venda da linha, quando existir', numeric:true, aliases:['total venda','venda total','preco venda total','preço venda total','valor venda total','total preco venda','total preço venda'] },
     { key:'total', label:'Total custo', hint:'Opcional, usado para conferência', numeric:true, aliases:['total','total custo','custo total','preco total','preço total','valor total','total da linha'] },
-    { key:'composicaoCod', label:'Código CPU', hint:'Código da composição vinculada ao serviço', aliases:['cpu','codigo cpu','código cpu','cod cpu','composicao','composição','cod composicao','cod composição','codigo composicao','código composição','composicao cpu','composição cpu','codigo da composicao','código da composição'] },
+    { key:'composicaoCod', label:'Código CPU', hint:'Código da composição vinculada ao serviço', aliases:['cpu','codigo cpu','código cpu','cod cpu','cod. cpu','composicao','composição','cod composicao','cod composição','cod. composicao','cod. composição','codigo composicao','código composição','codigo da composicao','código da composição','composicao cpu','composição cpu'] },
     { key:'categoria', label:'Categoria/capítulo', hint:'Grupo do item', aliases:['categoria','grupo','classe','capitulo','capítulo'] },
   ],
   insumos: [
